@@ -31,6 +31,15 @@ void validate_positive(Triple values, const char* name) {
     }
 }
 
+bool has_center_offset(Triple kernel_size) {
+    for (auto size : kernel_size) {
+        if (size % 2 == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 // MARK: - helpers
@@ -77,8 +86,8 @@ KernelMapData
 build_kernel_map(const mx::array& coords, Triple kernel_size, Triple stride) {
     validate_coords(coords);
     validate_positive(stride, "stride");
-    if (stride == Triple{1, 1, 1} && coords.dtype() == mx::int32 &&
-        mx::is_available(mx::Device::gpu)) {
+    if (stride == Triple{1, 1, 1} && has_center_offset(kernel_size) &&
+        coords.dtype() == mx::int32 && mx::is_available(mx::Device::gpu)) {
         return metal::build_subm_kernel_map(coords, kernel_size);
     }
     return cpu::build_kernel_map(coords, kernel_size, stride);

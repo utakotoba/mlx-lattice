@@ -167,9 +167,20 @@ make_empty_map(const mx::array& coords, const std::vector<Triple>& offsets) {
         make_i32_array({}, mx::Shape{0, 2}),
         mx::zeros({int(offsets.size())}, mx::int32, mx::Device::cpu),
         make_i32_array({}, mx::Shape{0}),
+        make_i32_array({}, mx::Shape{0, 2}),
+        make_i32_array({}, mx::Shape{0}),
+        make_i32_array({0}, mx::Shape{1}),
         make_coords_array({}, coords.dtype()),
         make_i32_array(flat_offsets, mx::Shape{int(offsets.size()), 3}),
     };
+}
+
+int center_kernel(const std::vector<Triple>& offsets) {
+    auto center = std::find(offsets.begin(), offsets.end(), Triple{0, 0, 0});
+    if (center == offsets.end()) {
+        return -1;
+    }
+    return int(std::distance(offsets.begin(), center));
 }
 
 } // namespace
@@ -261,7 +272,10 @@ build_kernel_map(const mx::array& coords, Triple kernel_size, Triple stride) {
     std::vector<int32_t> maps;
     std::vector<int32_t> kernels;
     std::vector<int32_t> sizes;
+    std::vector<std::vector<std::array<int32_t, 2>>> residual_rows(out.size());
+    std::vector<std::vector<int32_t>> residual_kernel_rows(out.size());
     sizes.reserve(offsets.size());
+    int center = center_kernel(offsets);
 
     for (int kernel = 0; kernel < int(offsets.size()); ++kernel) {
         auto offset = offsets[kernel];
@@ -289,10 +303,32 @@ build_kernel_map(const mx::array& coords, Triple kernel_size, Triple stride) {
                 maps.push_back(static_cast<int32_t>(in_row));
                 maps.push_back(static_cast<int32_t>(out_row));
                 kernels.push_back(kernel);
+                if (kernel != center) {
+                    residual_rows[out_row].push_back(
+                        {static_cast<int32_t>(in_row),
+                         static_cast<int32_t>(out_row)}
+                    );
+                    residual_kernel_rows[out_row].push_back(kernel);
+                }
                 ++count;
             }
         }
         sizes.push_back(count);
+    }
+
+    std::vector<int32_t> residual_maps;
+    std::vector<int32_t> residual_kernels;
+    std::vector<int32_t> residual_offsets;
+    residual_offsets.reserve(out.size() + 1);
+    residual_offsets.push_back(0);
+    for (int out_row = 0; out_row < int(out.size()); ++out_row) {
+        for (int idx = 0; idx < int(residual_rows[out_row].size()); ++idx) {
+            auto pair = residual_rows[out_row][idx];
+            residual_maps.push_back(pair[0]);
+            residual_maps.push_back(pair[1]);
+            residual_kernels.push_back(residual_kernel_rows[out_row][idx]);
+        }
+        residual_offsets.push_back(int32_t(residual_kernels.size()));
     }
 
     std::vector<int32_t> flat_offsets;
@@ -305,6 +341,15 @@ build_kernel_map(const mx::array& coords, Triple kernel_size, Triple stride) {
         make_i32_array(maps, mx::Shape{int(maps.size() / 2), 2}),
         make_i32_array(sizes, mx::Shape{int(sizes.size())}),
         make_i32_array(kernels, mx::Shape{int(kernels.size())}),
+        make_i32_array(
+            residual_maps, mx::Shape{int(residual_maps.size() / 2), 2}
+        ),
+        make_i32_array(
+            residual_kernels, mx::Shape{int(residual_kernels.size())}
+        ),
+        make_i32_array(
+            residual_offsets, mx::Shape{int(residual_offsets.size())}
+        ),
         make_coords_array(out, coords.dtype()),
         make_i32_array(flat_offsets, mx::Shape{int(offsets.size()), 3}),
     };

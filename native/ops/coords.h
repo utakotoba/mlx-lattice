@@ -15,6 +15,9 @@ struct KernelMapData {
     mx::array maps;
     mx::array sizes;
     mx::array kernels;
+    mx::array residual_maps;
+    mx::array residual_kernels;
+    mx::array residual_offsets;
     mx::array out_coords;
     mx::array offsets;
 };

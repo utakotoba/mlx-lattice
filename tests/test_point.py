@@ -53,6 +53,8 @@ def test_build_kernel_map_submanifold_k3s1():
     assert sum(sizes) == 7
     center = mapping.offsets.index((0, 0, 0))
     assert sizes[center] == 3
+    assert mapping.center == center
+    assert int(mx.sum(mapping.residual_kernels >= 0).item()) == 4
 
 
 def test_build_kernel_map_uses_padded_metal_map_for_submanifold_int32():
@@ -72,6 +74,8 @@ def test_build_kernel_map_uses_padded_metal_map_for_submanifold_int32():
 
     assert mapping.maps.shape == (coords.shape[0] * 27, 2)
     assert int(mx.sum(mapping.kernels < 0).item()) > 0
+    assert mapping.residual_offsets.shape == (coords.shape[0] + 1,)
+    assert int(mx.sum(mapping.residual_kernels >= 0).item()) == 4
 
 
 def test_build_kernel_map_stride_two_pooling():

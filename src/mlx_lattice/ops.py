@@ -6,6 +6,9 @@ from typing import Literal
 import mlx.core as mx
 
 from mlx_lattice._native import conv3d_feats as _conv3d_feats
+from mlx_lattice._native import (
+    conv3d_residual_feats as _conv3d_residual_feats,
+)
 from mlx_lattice.point import downsample, kernel_offsets
 from mlx_lattice.tensor import SparseTensor
 from mlx_lattice.types import triple
@@ -44,26 +47,41 @@ def conv3d(
             'weight input channels must match tensor features.'
         )
 
-    mapping = x.kernel_map(kernel_size=kernel, stride=stride)
+    op_stride = triple(stride, name='stride')
+    mapping = x.kernel_map(kernel_size=kernel, stride=op_stride)
     if weight.shape[0] != len(mapping.offsets):
         raise ValueError(
             'weight kernel dimension does not match kernel_size.'
         )
 
     out_rows = int(mapping.out_coords.shape[0])
-    feats = _conv3d_feats(
-        x.feats,
-        weight,
-        mapping.maps,
-        mapping.kernels,
-        out_rows,
-    )
+    if (
+        op_stride == (1, 1, 1)
+        and out_rows == x.n_points
+        and mapping.center >= 0
+    ):
+        center = x.feats @ weight[mapping.center]
+        feats = _conv3d_residual_feats(
+            center,
+            x.feats,
+            weight,
+            mapping.residual_maps,
+            mapping.residual_kernels,
+            mapping.residual_offsets,
+        )
+    else:
+        feats = _conv3d_feats(
+            x.feats,
+            weight,
+            mapping.maps,
+            mapping.kernels,
+            out_rows,
+        )
     if bias is not None:
         if bias.ndim != 1 or bias.shape[0] != weight.shape[2]:
             raise ValueError('bias must have shape (Cout,).')
         feats = feats + bias
 
-    op_stride = triple(stride, name='stride')
     out_stride = tuple(
         a * b for a, b in zip(x.stride, op_stride, strict=True)
     )

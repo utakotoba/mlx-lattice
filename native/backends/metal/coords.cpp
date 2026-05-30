@@ -2,6 +2,7 @@
 
 #include <dlfcn.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -46,8 +47,9 @@ mx::array make_offsets_array(const std::vector<Triple>& offsets) {
 
 class SubmKernelMap : public mx::Primitive {
   public:
-    SubmKernelMap(mx::Stream stream, int rows, int kernels)
-        : mx::Primitive(stream), rows_(rows), kernels_(kernels) {}
+    SubmKernelMap(mx::Stream stream, int rows, int kernels, int center_kernel)
+        : mx::Primitive(stream), rows_(rows), kernels_(kernels),
+          center_kernel_(center_kernel) {}
 
     // MARK: - primitive
 
@@ -66,10 +68,20 @@ class SubmKernelMap : public mx::Primitive {
         auto& maps = outputs[0];
         auto& sizes = outputs[1];
         auto& kernels = outputs[2];
+        auto& residual_maps = outputs[3];
+        auto& residual_kernels = outputs[4];
+        auto& residual_offsets = outputs[5];
 
         maps.set_data(mx::allocator::malloc(maps.nbytes()));
         sizes.set_data(mx::allocator::malloc(sizes.nbytes()));
         kernels.set_data(mx::allocator::malloc(kernels.nbytes()));
+        residual_maps.set_data(mx::allocator::malloc(residual_maps.nbytes()));
+        residual_kernels.set_data(
+            mx::allocator::malloc(residual_kernels.nbytes())
+        );
+        residual_offsets.set_data(
+            mx::allocator::malloc(residual_offsets.nbytes())
+        );
 
         auto& s = stream();
         auto& device = mx::metal::device(s.device);
@@ -107,6 +119,36 @@ class SubmKernelMap : public mx::Primitive {
             MTL::Size(kernel_group, 1, 1)
         );
 
+        int residual_slots = rows_ * std::max(kernels_ - 1, 0);
+        encoder.set_compute_pipeline_state(fill);
+        encoder.set_output_array(residual_kernels, 0);
+        encoder.set_bytes(invalid, 1);
+        encoder.set_bytes(residual_slots, 2);
+        auto residual_group = std::min(
+            static_cast<size_t>(std::max(residual_slots, 1)),
+            fill->maxTotalThreadsPerThreadgroup()
+        );
+        encoder.dispatch_threads(
+            MTL::Size(static_cast<size_t>(residual_slots), 1, 1),
+            MTL::Size(residual_group, 1, 1)
+        );
+
+        auto fill_linear = device.get_kernel("fill_linear_i32", library);
+        encoder.set_compute_pipeline_state(fill_linear);
+        encoder.set_output_array(residual_offsets, 0);
+        int residual_step = std::max(kernels_ - 1, 0);
+        int residual_offset_count = rows_ + 1;
+        encoder.set_bytes(residual_step, 1);
+        encoder.set_bytes(residual_offset_count, 2);
+        auto offset_group = std::min(
+            static_cast<size_t>(std::max(residual_offset_count, 1)),
+            fill_linear->maxTotalThreadsPerThreadgroup()
+        );
+        encoder.dispatch_threads(
+            MTL::Size(static_cast<size_t>(residual_offset_count), 1, 1),
+            MTL::Size(offset_group, 1, 1)
+        );
+
         if (pair_slots == 0) {
             return;
         }
@@ -118,8 +160,11 @@ class SubmKernelMap : public mx::Primitive {
         encoder.set_output_array(maps, 2);
         encoder.set_output_array(sizes, 3);
         encoder.set_output_array(kernels, 4);
-        encoder.set_bytes(rows_, 5);
-        encoder.set_bytes(kernels_, 6);
+        encoder.set_output_array(residual_maps, 5);
+        encoder.set_output_array(residual_kernels, 6);
+        encoder.set_bytes(rows_, 7);
+        encoder.set_bytes(kernels_, 8);
+        encoder.set_bytes(center_kernel_, 9);
         auto build_group = std::min(
             static_cast<size_t>(pair_slots),
             build->maxTotalThreadsPerThreadgroup()
@@ -157,12 +202,14 @@ class SubmKernelMap : public mx::Primitive {
 
     bool is_equivalent(const mx::Primitive& other) const override {
         const auto& map = static_cast<const SubmKernelMap&>(other);
-        return rows_ == map.rows_ && kernels_ == map.kernels_;
+        return rows_ == map.rows_ && kernels_ == map.kernels_ &&
+               center_kernel_ == map.center_kernel_;
     }
 
   private:
     int rows_;
     int kernels_;
+    int center_kernel_;
 };
 
 } // namespace
@@ -179,15 +226,29 @@ build_subm_kernel_map(const mx::array& coords, Triple kernel_size) {
 
     auto offsets = kernel_offsets(kernel_size);
     auto offset_values = make_offsets_array(offsets);
+    auto center = std::find(offsets.begin(), offsets.end(), Triple{0, 0, 0});
+    if (center == offsets.end()) {
+        throw std::invalid_argument(
+            "submanifold maps require a kernel with center offset."
+        );
+    }
+    int center_kernel = int(std::distance(offsets.begin(), center));
     auto rows = coords.shape(0);
     auto pair_slots = rows * int(offsets.size());
+    auto residual_slots = rows * std::max(int(offsets.size()) - 1, 0);
     auto outputs = mx::array::make_arrays(
         {mx::Shape{pair_slots, 2},
          mx::Shape{int(offsets.size())},
-         mx::Shape{pair_slots}},
-        {mx::int32, mx::int32, mx::int32},
+         mx::Shape{pair_slots},
+         mx::Shape{residual_slots, 2},
+         mx::Shape{residual_slots},
+         mx::Shape{rows + 1}},
+        {mx::int32, mx::int32, mx::int32, mx::int32, mx::int32, mx::int32},
         std::make_shared<SubmKernelMap>(
-            mx::default_stream(mx::Device::gpu), rows, int(offsets.size())
+            mx::default_stream(mx::Device::gpu),
+            rows,
+            int(offsets.size()),
+            center_kernel
         ),
         {mx::contiguous(coords, false, mx::Device::gpu),
          mx::contiguous(offset_values, false, mx::Device::gpu)}
@@ -197,6 +258,9 @@ build_subm_kernel_map(const mx::array& coords, Triple kernel_size) {
         outputs[0],
         outputs[1],
         outputs[2],
+        outputs[3],
+        outputs[4],
+        outputs[5],
         coords,
         offset_values,
     };

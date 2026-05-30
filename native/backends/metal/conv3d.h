@@ -18,4 +18,23 @@ void eval_conv3d_feats(
     int out_channels
 );
 
+void eval_conv3d_subm_feats(
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs,
+    mx::Stream stream,
+    int rows,
+    int in_channels,
+    int out_channels,
+    int center_kernel
+);
+
+void eval_conv3d_residual_feats(
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs,
+    mx::Stream stream,
+    int rows,
+    int in_channels,
+    int out_channels
+);
+
 } // namespace mlx_lattice::metal

@@ -33,7 +33,16 @@ def build_kernel_map(
     coords: mx.array,
     kernel_size: tuple[int, int, int],
     stride: tuple[int, int, int],
-) -> tuple[mx.array, mx.array, mx.array, mx.array, mx.array]:
+) -> tuple[
+    mx.array,
+    mx.array,
+    mx.array,
+    mx.array,
+    mx.array,
+    mx.array,
+    mx.array,
+    mx.array,
+]:
     return _ext().build_kernel_map(coords, *kernel_size, *stride)
 
 
@@ -60,5 +69,62 @@ def conv3d_feats(
         maps,
         kernels,
         out_rows,
+        stream=stream,
+    )
+
+
+def conv3d_subm_feats(
+    feats: mx.array,
+    weight: mx.array,
+    maps: mx.array,
+    kernels: mx.array,
+    center_kernel: int,
+    *,
+    stream: Any | None = None,
+) -> mx.array:
+    if stream is None:
+        return _ext().conv3d_subm_feats(
+            feats,
+            weight,
+            maps,
+            kernels,
+            center_kernel,
+        )
+    return _ext().conv3d_subm_feats(
+        feats,
+        weight,
+        maps,
+        kernels,
+        center_kernel,
+        stream=stream,
+    )
+
+
+def conv3d_residual_feats(
+    base: mx.array,
+    feats: mx.array,
+    weight: mx.array,
+    maps: mx.array,
+    kernels: mx.array,
+    offsets: mx.array,
+    *,
+    stream: Any | None = None,
+) -> mx.array:
+    if stream is None:
+        return _ext().conv3d_residual_feats(
+            base,
+            feats,
+            weight,
+            maps,
+            kernels,
+            offsets,
+        )
+    return _ext().conv3d_residual_feats(
+        base,
+        feats,
+        weight,
+        maps,
+        kernels,
+        offsets,
         stream=stream,
     )

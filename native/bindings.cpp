@@ -34,6 +34,29 @@ NB_MODULE(_ext, m) {
         "stream"_a = nb::none()
     );
     m.def(
+        "conv3d_subm_feats",
+        &mlx_lattice::conv3d_subm_feats,
+        "feats"_a,
+        "weight"_a,
+        "maps"_a,
+        "kernels"_a,
+        "center_kernel"_a,
+        nb::kw_only(),
+        "stream"_a = nb::none()
+    );
+    m.def(
+        "conv3d_residual_feats",
+        &mlx_lattice::conv3d_residual_feats,
+        "base"_a,
+        "feats"_a,
+        "weight"_a,
+        "maps"_a,
+        "kernels"_a,
+        "offsets"_a,
+        nb::kw_only(),
+        "stream"_a = nb::none()
+    );
+    m.def(
         "downsample_coords",
         [](const mlx_lattice::mx::array& coords, int sx, int sy, int sz) {
             return mlx_lattice::downsample_coords(coords, {sx, sy, sz});
@@ -56,7 +79,14 @@ NB_MODULE(_ext, m) {
                 coords, {kx, ky, kz}, {sx, sy, sz}
             );
             return nb::make_tuple(
-                out.maps, out.sizes, out.kernels, out.out_coords, out.offsets
+                out.maps,
+                out.sizes,
+                out.kernels,
+                out.residual_maps,
+                out.residual_kernels,
+                out.residual_offsets,
+                out.out_coords,
+                out.offsets
             );
         },
         "coords"_a,

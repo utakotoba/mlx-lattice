@@ -17,4 +17,23 @@ mx::array conv3d_feats(
     mx::StreamOrDevice stream = {}
 );
 
+mx::array conv3d_subm_feats(
+    const mx::array& feats,
+    const mx::array& weight,
+    const mx::array& maps,
+    const mx::array& kernels,
+    int center_kernel,
+    mx::StreamOrDevice stream = {}
+);
+
+mx::array conv3d_residual_feats(
+    const mx::array& base,
+    const mx::array& feats,
+    const mx::array& weight,
+    const mx::array& maps,
+    const mx::array& kernels,
+    const mx::array& offsets,
+    mx::StreamOrDevice stream = {}
+);
+
 } // namespace mlx_lattice

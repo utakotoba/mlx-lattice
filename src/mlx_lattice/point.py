@@ -20,8 +20,18 @@ class KernelMap:
     maps: mx.array
     sizes: mx.array
     kernels: mx.array
+    residual_maps: mx.array
+    residual_kernels: mx.array
+    residual_offsets: mx.array
     out_coords: mx.array
     offsets: tuple[Triple, ...]
+
+    @property
+    def center(self) -> int:
+        try:
+            return self.offsets.index((0, 0, 0))
+        except ValueError:
+            return -1
 
 
 def kernel_offsets(kernel_size: int | Sequence[int]) -> tuple[Triple, ...]:
@@ -72,13 +82,23 @@ def build_kernel_map(
     if any(value <= 0 for value in step):
         raise ValueError('stride values must be positive.')
 
-    maps, sizes, kernels, out_coords, offset_values = _build_kernel_map(
-        coords, kernel, step
-    )
+    (
+        maps,
+        sizes,
+        kernels,
+        residual_maps,
+        residual_kernels,
+        residual_offsets,
+        out_coords,
+        offset_values,
+    ) = _build_kernel_map(coords, kernel, step)
     return KernelMap(
         maps=maps,
         sizes=sizes,
         kernels=kernels,
+        residual_maps=residual_maps,
+        residual_kernels=residual_kernels,
+        residual_offsets=residual_offsets,
         out_coords=out_coords,
         offsets=_offsets_from_array(offset_values),
     )

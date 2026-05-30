@@ -1,6 +1,5 @@
 #include "ops/conv3d.h"
 
-#include <algorithm>
 #include <stdexcept>
 
 #include "backends/cpu/conv3d.h"
@@ -44,6 +43,29 @@ void validate_conv3d_feats(
     }
     if (weight.shape(1) != feats.shape(1)) {
         throw std::invalid_argument("weight input channels must match feats.");
+    }
+}
+
+void validate_conv3d_residual_feats(
+    const mx::array& base,
+    const mx::array& feats,
+    const mx::array& weight,
+    const mx::array& maps,
+    const mx::array& kernels,
+    const mx::array& offsets
+) {
+    validate_conv3d_feats(feats, weight, maps, kernels, base.shape(0));
+    if (base.ndim() != 2 || base.dtype() != mx::float32) {
+        throw std::invalid_argument("base must be a float32 matrix.");
+    }
+    if (base.shape(1) != weight.shape(2)) {
+        throw std::invalid_argument("base output channels must match weight.");
+    }
+    if (offsets.ndim() != 1 || offsets.shape(0) != base.shape(0) + 1) {
+        throw std::invalid_argument("offsets must have shape (rows + 1,).");
+    }
+    if (offsets.dtype() != mx::int32) {
+        throw std::invalid_argument("offsets must be int32.");
     }
 }
 
@@ -107,6 +129,157 @@ class Conv3dFeats : public mx::Primitive {
     int out_channels_;
 };
 
+class Conv3dSubmFeats : public mx::Primitive {
+  public:
+    Conv3dSubmFeats(
+        mx::Stream stream,
+        int rows,
+        int in_channels,
+        int out_channels,
+        int center_kernel
+    )
+        : mx::Primitive(stream), rows_(rows), in_channels_(in_channels),
+          out_channels_(out_channels), center_kernel_(center_kernel) {}
+
+    // MARK: - primitive
+
+    void eval_cpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        cpu::eval_conv3d_subm_feats(
+            inputs,
+            outputs,
+            stream(),
+            rows_,
+            in_channels_,
+            out_channels_,
+            center_kernel_
+        );
+    }
+
+    void eval_gpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        metal::eval_conv3d_subm_feats(
+            inputs,
+            outputs,
+            stream(),
+            rows_,
+            in_channels_,
+            out_channels_,
+            center_kernel_
+        );
+    }
+
+    std::vector<mx::array>
+    jvp(const std::vector<mx::array>&,
+        const std::vector<mx::array>&,
+        const std::vector<int>&) override {
+        throw std::runtime_error("Conv3dSubmFeats has no jvp implementation.");
+    }
+
+    std::vector<mx::array>
+    vjp(const std::vector<mx::array>&,
+        const std::vector<mx::array>&,
+        const std::vector<int>&,
+        const std::vector<mx::array>&) override {
+        throw std::runtime_error("Conv3dSubmFeats has no vjp implementation.");
+    }
+
+    std::pair<std::vector<mx::array>, std::vector<int>>
+    vmap(const std::vector<mx::array>&, const std::vector<int>&) override {
+        throw std::runtime_error("Conv3dSubmFeats has no vmap implementation.");
+    }
+
+    const char* name() const override { return "Conv3dSubmFeats"; }
+
+    bool is_equivalent(const mx::Primitive& other) const override {
+        const auto& conv = static_cast<const Conv3dSubmFeats&>(other);
+        return rows_ == conv.rows_ && in_channels_ == conv.in_channels_ &&
+               out_channels_ == conv.out_channels_ &&
+               center_kernel_ == conv.center_kernel_;
+    }
+
+  private:
+    int rows_;
+    int in_channels_;
+    int out_channels_;
+    int center_kernel_;
+};
+
+class Conv3dResidualFeats : public mx::Primitive {
+  public:
+    Conv3dResidualFeats(
+        mx::Stream stream,
+        int rows,
+        int in_channels,
+        int out_channels
+    )
+        : mx::Primitive(stream), rows_(rows), in_channels_(in_channels),
+          out_channels_(out_channels) {}
+
+    // MARK: - primitive
+
+    void eval_cpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        cpu::eval_conv3d_residual_feats(
+            inputs, outputs, stream(), rows_, in_channels_, out_channels_
+        );
+    }
+
+    void eval_gpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        metal::eval_conv3d_residual_feats(
+            inputs, outputs, stream(), rows_, in_channels_, out_channels_
+        );
+    }
+
+    std::vector<mx::array>
+    jvp(const std::vector<mx::array>&,
+        const std::vector<mx::array>&,
+        const std::vector<int>&) override {
+        throw std::runtime_error(
+            "Conv3dResidualFeats has no jvp implementation."
+        );
+    }
+
+    std::vector<mx::array>
+    vjp(const std::vector<mx::array>&,
+        const std::vector<mx::array>&,
+        const std::vector<int>&,
+        const std::vector<mx::array>&) override {
+        throw std::runtime_error(
+            "Conv3dResidualFeats has no vjp implementation."
+        );
+    }
+
+    std::pair<std::vector<mx::array>, std::vector<int>>
+    vmap(const std::vector<mx::array>&, const std::vector<int>&) override {
+        throw std::runtime_error(
+            "Conv3dResidualFeats has no vmap implementation."
+        );
+    }
+
+    const char* name() const override { return "Conv3dResidualFeats"; }
+
+    bool is_equivalent(const mx::Primitive& other) const override {
+        const auto& conv = static_cast<const Conv3dResidualFeats&>(other);
+        return rows_ == conv.rows_ && in_channels_ == conv.in_channels_ &&
+               out_channels_ == conv.out_channels_;
+    }
+
+  private:
+    int rows_;
+    int in_channels_;
+    int out_channels_;
+};
+
 } // namespace
 
 // MARK: - api
@@ -137,6 +310,72 @@ mx::array conv3d_feats(
          weight_contiguous,
          maps_contiguous,
          kernels_contiguous}
+    );
+}
+
+mx::array conv3d_subm_feats(
+    const mx::array& feats,
+    const mx::array& weight,
+    const mx::array& maps,
+    const mx::array& kernels,
+    int center_kernel,
+    mx::StreamOrDevice stream
+) {
+    validate_conv3d_feats(feats, weight, maps, kernels, feats.shape(0));
+    if (center_kernel < 0 || center_kernel >= weight.shape(0)) {
+        throw std::invalid_argument("center_kernel is out of bounds.");
+    }
+
+    auto s = to_stream(stream);
+    auto feats_contiguous = mx::contiguous(feats, false, s);
+    auto weight_contiguous = mx::contiguous(weight, false, s);
+    auto maps_contiguous = mx::contiguous(maps, false, s);
+    auto kernels_contiguous = mx::contiguous(kernels, false, s);
+
+    return mx::array(
+        mx::Shape{feats.shape(0), weight.shape(2)},
+        mx::float32,
+        std::make_shared<Conv3dSubmFeats>(
+            s, feats.shape(0), feats.shape(1), weight.shape(2), center_kernel
+        ),
+        {feats_contiguous,
+         weight_contiguous,
+         maps_contiguous,
+         kernels_contiguous}
+    );
+}
+
+mx::array conv3d_residual_feats(
+    const mx::array& base,
+    const mx::array& feats,
+    const mx::array& weight,
+    const mx::array& maps,
+    const mx::array& kernels,
+    const mx::array& offsets,
+    mx::StreamOrDevice stream
+) {
+    validate_conv3d_residual_feats(base, feats, weight, maps, kernels, offsets);
+
+    auto s = to_stream(stream);
+    auto base_contiguous = mx::contiguous(base, false, s);
+    auto feats_contiguous = mx::contiguous(feats, false, s);
+    auto weight_contiguous = mx::contiguous(weight, false, s);
+    auto maps_contiguous = mx::contiguous(maps, false, s);
+    auto kernels_contiguous = mx::contiguous(kernels, false, s);
+    auto offsets_contiguous = mx::contiguous(offsets, false, s);
+
+    return mx::array(
+        base.shape(),
+        mx::float32,
+        std::make_shared<Conv3dResidualFeats>(
+            s, base.shape(0), feats.shape(1), weight.shape(2)
+        ),
+        {base_contiguous,
+         feats_contiguous,
+         weight_contiguous,
+         maps_contiguous,
+         kernels_contiguous,
+         offsets_contiguous}
     );
 }
 
