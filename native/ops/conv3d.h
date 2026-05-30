@@ -36,6 +36,23 @@ mx::array conv3d_residual_feats(
     mx::StreamOrDevice stream = {}
 );
 
+mx::array pool3d_feats(
+    const mx::array& feats,
+    const mx::array& maps,
+    const mx::array& kernels,
+    const mx::array& offsets,
+    int out_rows,
+    mx::StreamOrDevice stream = {}
+);
+
+mx::array pool3d_feats_grad(
+    const mx::array& grad,
+    const mx::array& maps,
+    const mx::array& kernels,
+    int rows,
+    mx::StreamOrDevice stream = {}
+);
+
 mx::array conv3d_feats_grad(
     const mx::array& grad,
     const mx::array& weight,

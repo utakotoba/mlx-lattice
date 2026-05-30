@@ -74,3 +74,12 @@ def conv3d_residual_feats(
     *,
     stream: Any | None = None,
 ) -> mx.array: ...
+def pool3d_feats(
+    feats: mx.array,
+    maps: mx.array,
+    kernels: mx.array,
+    offsets: mx.array,
+    out_rows: int,
+    *,
+    stream: Any | None = None,
+) -> mx.array: ...

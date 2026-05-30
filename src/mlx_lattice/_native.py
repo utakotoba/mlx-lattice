@@ -145,3 +145,30 @@ def conv3d_residual_feats(
         offsets,
         stream=stream,
     )
+
+
+def pool3d_feats(
+    feats: mx.array,
+    maps: mx.array,
+    kernels: mx.array,
+    offsets: mx.array,
+    out_rows: int,
+    *,
+    stream: Any | None = None,
+) -> mx.array:
+    if stream is None:
+        return _ext().pool3d_feats(
+            feats,
+            maps,
+            kernels,
+            offsets,
+            out_rows,
+        )
+    return _ext().pool3d_feats(
+        feats,
+        maps,
+        kernels,
+        offsets,
+        out_rows,
+        stream=stream,
+    )

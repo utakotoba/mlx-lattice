@@ -37,6 +37,22 @@ void eval_conv3d_residual_feats(
     int out_channels
 );
 
+void eval_pool3d_feats(
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs,
+    mx::Stream stream,
+    int rows,
+    int channels
+);
+
+void eval_pool3d_feats_grad(
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs,
+    mx::Stream stream,
+    int rows,
+    int channels
+);
+
 void eval_conv3d_feats_grad(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs,

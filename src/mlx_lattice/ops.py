@@ -9,6 +9,7 @@ from mlx_lattice._native import conv3d_feats as _conv3d_feats
 from mlx_lattice._native import (
     conv3d_residual_feats as _conv3d_residual_feats,
 )
+from mlx_lattice._native import pool3d_feats as _pool3d_feats
 from mlx_lattice.point import (
     build_generative_map,
     downsample,
@@ -202,10 +203,18 @@ def conv3d(
             raise ValueError('bias must have shape (Cout,).')
         feats = feats + bias
 
+    if op_stride == (1, 1, 1) and out_rows == x.n_points:
+        return x.replace(feats=feats)
+
     out_stride = tuple(
         a * b for a, b in zip(x.stride, op_stride, strict=True)
     )
-    return SparseTensor(mapping.out_coords, feats, out_stride)
+    return SparseTensor(
+        mapping.out_coords,
+        feats,
+        out_stride,
+        coord_manager=x.coord_manager,
+    )
 
 
 def generative_conv_transpose3d(
@@ -249,7 +258,12 @@ def generative_conv_transpose3d(
     out_stride = tuple(
         a // b for a, b in zip(x.stride, op_stride, strict=True)
     )
-    return SparseTensor(mapping.out_coords, feats, out_stride)
+    return SparseTensor(
+        mapping.out_coords,
+        feats,
+        out_stride,
+        coord_manager=x.coord_manager,
+    )
 
 
 def pool3d(
@@ -258,9 +272,33 @@ def pool3d(
     kernel_size: int | Sequence[int] = 2,
     stride: int | Sequence[int] = 2,
 ) -> SparseTensor:
-    volume = len(kernel_offsets(kernel_size))
-    weight = mx.ones((volume, x.channels, x.channels), dtype=x.feats.dtype)
-    return conv3d(x, weight, kernel_size=kernel_size, stride=stride)
+    kernel = triple(kernel_size, name='kernel_size')
+    op_stride = triple(stride, name='stride')
+    mapping = x.kernel_map(kernel_size=kernel, stride=op_stride)
+
+    if mapping.center >= 0:
+        volume = len(kernel_offsets(kernel))
+        weight = mx.ones(
+            (volume, x.channels, x.channels), dtype=x.feats.dtype
+        )
+        return conv3d(x, weight, kernel_size=kernel, stride=op_stride)
+
+    feats = _pool3d_feats(
+        x.feats,
+        mapping.residual_maps,
+        mapping.residual_kernels,
+        mapping.residual_offsets,
+        int(mapping.out_coords.shape[0]),
+    )
+    out_stride = tuple(
+        a * b for a, b in zip(x.stride, op_stride, strict=True)
+    )
+    return SparseTensor(
+        mapping.out_coords,
+        feats,
+        out_stride,
+        coord_manager=x.coord_manager,
+    )
 
 
 spdownsample = downsample

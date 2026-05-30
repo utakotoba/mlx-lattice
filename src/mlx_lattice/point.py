@@ -95,6 +95,25 @@ def build_kernel_map(
         out_coords,
         offset_values,
     ) = _build_kernel_map(coords, kernel, step)
+    offsets = _offsets_from_array(offset_values)
+    (
+        maps,
+        sizes,
+        kernels,
+        residual_maps,
+        residual_kernels,
+        residual_offsets,
+        out_coords,
+    ) = _place_cached_map_arrays(
+        coords,
+        maps,
+        sizes,
+        kernels,
+        residual_maps,
+        residual_kernels,
+        residual_offsets,
+        out_coords,
+    )
     return KernelMap(
         maps=maps,
         sizes=sizes,
@@ -103,7 +122,7 @@ def build_kernel_map(
         residual_kernels=residual_kernels,
         residual_offsets=residual_offsets,
         out_coords=out_coords,
-        offsets=_offsets_from_array(offset_values),
+        offsets=offsets,
     )
 
 
@@ -131,6 +150,25 @@ def build_generative_map(
         out_coords,
         offset_values,
     ) = _build_generative_map(coords, kernel, step)
+    offsets = _offsets_from_array(offset_values)
+    (
+        maps,
+        sizes,
+        kernels,
+        residual_maps,
+        residual_kernels,
+        residual_offsets,
+        out_coords,
+    ) = _place_cached_map_arrays(
+        coords,
+        maps,
+        sizes,
+        kernels,
+        residual_maps,
+        residual_kernels,
+        residual_offsets,
+        out_coords,
+    )
     return KernelMap(
         maps=maps,
         sizes=sizes,
@@ -139,10 +177,26 @@ def build_generative_map(
         residual_kernels=residual_kernels,
         residual_offsets=residual_offsets,
         out_coords=out_coords,
-        offsets=_offsets_from_array(offset_values),
+        offsets=offsets,
     )
 
 
 def _offsets_from_array(values: mx.array) -> tuple[Triple, ...]:
     rows = cast(list[list[int]], values.tolist())
     return tuple((int(row[0]), int(row[1]), int(row[2])) for row in rows)
+
+
+def _place_cached_map_arrays(
+    coords: mx.array,
+    *arrays: mx.array,
+) -> tuple[mx.array, ...]:
+    if (
+        coords.dtype == mx.int32
+        and mx.metal.is_available()
+        and mx.default_device() == mx.Device(mx.gpu)
+    ):
+        device = mx.default_device()
+        return tuple(
+            mx.contiguous(array, stream=device) for array in arrays
+        )
+    return arrays

@@ -69,6 +69,36 @@ void validate_conv3d_residual_feats(
     }
 }
 
+void validate_pool3d_feats(
+    const mx::array& feats,
+    const mx::array& maps,
+    const mx::array& kernels,
+    const mx::array& offsets,
+    int out_rows
+) {
+    if (out_rows < 0) {
+        throw std::invalid_argument("out_rows must be non-negative.");
+    }
+    if (feats.ndim() != 2 || feats.dtype() != mx::float32) {
+        throw std::invalid_argument("feats must be a float32 matrix.");
+    }
+    if (maps.ndim() != 2 || maps.shape(1) != 2) {
+        throw std::invalid_argument("maps must have shape (M, 2).");
+    }
+    if (kernels.ndim() != 1 || kernels.shape(0) != maps.shape(0)) {
+        throw std::invalid_argument("kernels must have shape (M,).");
+    }
+    if (offsets.ndim() != 1 || offsets.shape(0) != out_rows + 1) {
+        throw std::invalid_argument("offsets must have shape (rows + 1,).");
+    }
+    if (maps.dtype() != mx::int32 || kernels.dtype() != mx::int32 ||
+        offsets.dtype() != mx::int32) {
+        throw std::invalid_argument(
+            "maps, kernels, and offsets must be int32."
+        );
+    }
+}
+
 std::vector<mx::array> conv3d_vjp(
     const std::vector<mx::array>& primals,
     const std::vector<mx::array>& cotangents,
@@ -308,6 +338,127 @@ class Conv3dResidualFeats : public mx::Primitive {
     int rows_;
     int in_channels_;
     int out_channels_;
+};
+
+class Pool3dFeats : public mx::Primitive {
+  public:
+    Pool3dFeats(mx::Stream stream, int rows, int channels)
+        : mx::Primitive(stream), rows_(rows), channels_(channels) {}
+
+    // MARK: - primitive
+
+    void eval_cpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        cpu::eval_pool3d_feats(inputs, outputs, stream(), rows_, channels_);
+    }
+
+    void eval_gpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        metal::eval_pool3d_feats(inputs, outputs, stream(), rows_, channels_);
+    }
+
+    std::vector<mx::array>
+    jvp(const std::vector<mx::array>&,
+        const std::vector<mx::array>&,
+        const std::vector<int>&) override {
+        throw std::runtime_error("Pool3dFeats has no jvp implementation.");
+    }
+
+    std::vector<mx::array>
+    vjp(const std::vector<mx::array>& primals,
+        const std::vector<mx::array>& cotangents,
+        const std::vector<int>& argnums,
+        const std::vector<mx::array>&) override {
+        std::vector<mx::array> out;
+        out.reserve(argnums.size());
+        for (auto argnum : argnums) {
+            if (argnum == 0) {
+                out.push_back(pool3d_feats_grad(
+                    cotangents[0], primals[1], primals[2], primals[0].shape(0)
+                ));
+            } else {
+                out.push_back(mx::zeros_like(primals[argnum]));
+            }
+        }
+        return out;
+    }
+
+    std::pair<std::vector<mx::array>, std::vector<int>>
+    vmap(const std::vector<mx::array>&, const std::vector<int>&) override {
+        throw std::runtime_error("Pool3dFeats has no vmap implementation.");
+    }
+
+    const char* name() const override { return "Pool3dFeats"; }
+
+    bool is_equivalent(const mx::Primitive& other) const override {
+        const auto& pool = static_cast<const Pool3dFeats&>(other);
+        return rows_ == pool.rows_ && channels_ == pool.channels_;
+    }
+
+  private:
+    int rows_;
+    int channels_;
+};
+
+class Pool3dFeatsGrad : public mx::Primitive {
+  public:
+    Pool3dFeatsGrad(mx::Stream stream, int rows, int channels)
+        : mx::Primitive(stream), rows_(rows), channels_(channels) {}
+
+    // MARK: - primitive
+
+    void eval_cpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        cpu::eval_pool3d_feats_grad(
+            inputs, outputs, stream(), rows_, channels_
+        );
+    }
+
+    void eval_gpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        metal::eval_pool3d_feats_grad(
+            inputs, outputs, stream(), rows_, channels_
+        );
+    }
+
+    std::vector<mx::array>
+    jvp(const std::vector<mx::array>&,
+        const std::vector<mx::array>&,
+        const std::vector<int>&) override {
+        throw std::runtime_error("Pool3dFeatsGrad has no jvp implementation.");
+    }
+
+    std::vector<mx::array>
+    vjp(const std::vector<mx::array>&,
+        const std::vector<mx::array>&,
+        const std::vector<int>&,
+        const std::vector<mx::array>&) override {
+        throw std::runtime_error("Pool3dFeatsGrad has no vjp implementation.");
+    }
+
+    std::pair<std::vector<mx::array>, std::vector<int>>
+    vmap(const std::vector<mx::array>&, const std::vector<int>&) override {
+        throw std::runtime_error("Pool3dFeatsGrad has no vmap implementation.");
+    }
+
+    const char* name() const override { return "Pool3dFeatsGrad"; }
+
+    bool is_equivalent(const mx::Primitive& other) const override {
+        const auto& grad = static_cast<const Pool3dFeatsGrad&>(other);
+        return rows_ == grad.rows_ && channels_ == grad.channels_;
+    }
+
+  private:
+    int rows_;
+    int channels_;
 };
 
 class Conv3dFeatsGrad : public mx::Primitive {
@@ -566,6 +717,67 @@ mx::array conv3d_residual_feats(
          maps_contiguous,
          kernels_contiguous,
          offsets_contiguous}
+    );
+}
+
+mx::array pool3d_feats(
+    const mx::array& feats,
+    const mx::array& maps,
+    const mx::array& kernels,
+    const mx::array& offsets,
+    int out_rows,
+    mx::StreamOrDevice stream
+) {
+    validate_pool3d_feats(feats, maps, kernels, offsets, out_rows);
+
+    auto s = to_stream(stream);
+    auto feats_contiguous = mx::contiguous(feats, false, s);
+    auto maps_contiguous = mx::contiguous(maps, false, s);
+    auto kernels_contiguous = mx::contiguous(kernels, false, s);
+    auto offsets_contiguous = mx::contiguous(offsets, false, s);
+
+    return mx::array(
+        mx::Shape{out_rows, feats.shape(1)},
+        mx::float32,
+        std::make_shared<Pool3dFeats>(s, out_rows, feats.shape(1)),
+        {feats_contiguous,
+         maps_contiguous,
+         kernels_contiguous,
+         offsets_contiguous}
+    );
+}
+
+mx::array pool3d_feats_grad(
+    const mx::array& grad,
+    const mx::array& maps,
+    const mx::array& kernels,
+    int rows,
+    mx::StreamOrDevice stream
+) {
+    if (rows < 0) {
+        throw std::invalid_argument("rows must be non-negative.");
+    }
+    if (grad.ndim() != 2 || grad.dtype() != mx::float32) {
+        throw std::invalid_argument("grad must be a float32 matrix.");
+    }
+    if (maps.ndim() != 2 || maps.shape(1) != 2 || kernels.ndim() != 1 ||
+        kernels.shape(0) != maps.shape(0)) {
+        throw std::invalid_argument("invalid map shapes.");
+    }
+    if (maps.dtype() != mx::int32 || kernels.dtype() != mx::int32) {
+        throw std::invalid_argument("maps and kernels must be int32.");
+    }
+
+    auto s = to_stream(stream);
+    auto grad_contiguous = mx::contiguous(grad, false, s);
+    auto maps_contiguous = mx::contiguous(maps, false, s);
+    auto kernels_contiguous = mx::contiguous(kernels, false, s);
+
+    return mx::array(
+        mx::Shape{rows, grad.shape(1)},
+        mx::float32,
+        std::make_shared<Pool3dFeatsGrad>(s, rows, grad.shape(1)),
+        {grad_contiguous, maps_contiguous, kernels_contiguous}
     );
 }
 

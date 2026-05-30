@@ -19,6 +19,9 @@ class CoordinateMapKey:
 class CoordinateManager:
     _next_id: int = 0
     _coords: dict[CoordinateMapKey, mx.array] = field(default_factory=dict)
+    _coord_keys: dict[tuple[int, Triple], CoordinateMapKey] = field(
+        default_factory=dict
+    )
     _maps: dict[tuple[CoordinateMapKey, Triple, Triple], KernelMap] = field(
         default_factory=dict
     )
@@ -28,9 +31,15 @@ class CoordinateManager:
         coords: mx.array,
         stride: int | Sequence[int] = 1,
     ) -> CoordinateMapKey:
-        key = CoordinateMapKey(self._next_id, triple(stride, name='stride'))
+        normalized = triple(stride, name='stride')
+        cache_key = (id(coords), normalized)
+        if cache_key in self._coord_keys:
+            return self._coord_keys[cache_key]
+
+        key = CoordinateMapKey(self._next_id, normalized)
         self._next_id += 1
         self._coords[key] = coords
+        self._coord_keys[cache_key] = key
         return key
 
     def coords(self, key: CoordinateMapKey) -> mx.array:
