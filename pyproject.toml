@@ -5,14 +5,21 @@ description = "Sparse point cloud convolution library for MLX"
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "Yu", email = "i@letter.cafe" }]
-dependencies = []
+dependencies = ["mlx>=0.31"]
 
 [build-system]
-requires = ["uv_build>=0.11.17,<0.12.0"]
-build-backend = "uv_build"
+requires = ["scikit-build-core>=0.12", "nanobind>=2", "mlx>=0.31"]
+build-backend = "scikit_build_core.build"
 
 [dependency-groups]
 dev = ["ruff>=0.15.15", "ty>=0.0.40"]
+
+[tool.scikit-build]
+minimum-version = "0.12"
+build-dir = "build/{wheel_tag}"
+wheel.packages = ["src/mlx_lattice"]
+wheel.platlib = true
+sdist.include = ["CMakeLists.txt", "native/**", "src/**"]
 
 [tool.ruff]
 line-length = 76

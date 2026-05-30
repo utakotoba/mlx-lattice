@@ -1,2 +1,3 @@
-def hello() -> str:
-    return 'Hello from mlx-lattice!'
+from mlx_lattice._native import capabilities, version
+
+__all__ = ['capabilities', 'version']

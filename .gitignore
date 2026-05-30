@@ -2,7 +2,9 @@
 .venv
 .python-version
 .ruff_cache
+__pycache__
 dist
+build
 
 # preferences
 /.vscode
