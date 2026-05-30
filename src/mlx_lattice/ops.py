@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Literal
 
 import mlx.core as mx
 import numpy as np
@@ -18,19 +19,25 @@ def conv3d(
     *,
     kernel_size: int | Sequence[int] = 3,
     stride: int | Sequence[int] = 1,
+    padding: int | Sequence[int] = 0,
     dilation: int | Sequence[int] = 1,
     transposed: bool = False,
+    weight_layout: Literal['flat', 'mlx'] | None = None,
 ) -> SparseTensor:
     if transposed:
         raise NotImplementedError(
             'transposed sparse conv is not implemented.'
         )
+    if triple(padding, name='padding') != (0, 0, 0):
+        raise NotImplementedError(
+            'sparse conv currently supports padding=0.'
+        )
     if triple(dilation, name='dilation') != (1, 1, 1):
         raise NotImplementedError(
             'sparse conv currently supports dilation=1.'
         )
-    if weight.ndim != 3:
-        raise ValueError('weight must have shape (K, Cin, Cout).')
+    kernel = triple(kernel_size, name='kernel_size')
+    weight = _normalize_weight(weight, kernel, weight_layout)
     if weight.dtype != mx.float32 or x.feats.dtype != mx.float32:
         raise ValueError('conv3d currently supports float32 tensors.')
     if weight.shape[1] != x.channels:
@@ -38,7 +45,7 @@ def conv3d(
             'weight input channels must match tensor features.'
         )
 
-    mapping = x.kernel_map(kernel_size=kernel_size, stride=stride)
+    mapping = x.kernel_map(kernel_size=kernel, stride=stride)
     if weight.shape[0] != len(mapping.offsets):
         raise ValueError(
             'weight kernel dimension does not match kernel_size.'
@@ -77,3 +84,32 @@ def pool3d(
 spdownsample = downsample
 sparse_conv3d = conv3d
 sparse_pool3d = pool3d
+
+
+def _normalize_weight(
+    weight: mx.array,
+    kernel_size: tuple[int, int, int],
+    layout: Literal['flat', 'mlx'] | None,
+) -> mx.array:
+    if layout is None:
+        layout = 'mlx' if weight.ndim == 5 else 'flat'
+
+    if layout == 'flat':
+        if weight.ndim != 3:
+            raise ValueError('flat weight must have shape (K, Cin, Cout).')
+        return weight
+
+    if layout != 'mlx':
+        raise ValueError("weight_layout must be 'flat', 'mlx', or None.")
+    if weight.ndim != 5:
+        raise ValueError(
+            'MLX weight must have shape (Cout, Kx, Ky, Kz, Cin).'
+        )
+    if tuple(int(v) for v in weight.shape[1:4]) != kernel_size:
+        raise ValueError('MLX weight spatial shape must match kernel_size.')
+
+    out_channels = int(weight.shape[0])
+    in_channels = int(weight.shape[4])
+    return mx.moveaxis(weight, 0, -1).reshape(
+        (-1, in_channels, out_channels)
+    )
