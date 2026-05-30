@@ -67,6 +67,7 @@ target_sources(
   mlx_lattice_native
   PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/native/backends/cpu/coords.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/native/backends/cpu/conv3d.cpp
     ${CMAKE_CURRENT_LIST_DIR}/native/backends/metal/conv3d.cpp
     ${CMAKE_CURRENT_LIST_DIR}/native/backends/metal/coords.cpp
     ${CMAKE_CURRENT_LIST_DIR}/native/ops/conv3d.cpp
