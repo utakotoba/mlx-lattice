@@ -36,4 +36,22 @@ mx::array conv3d_residual_feats(
     mx::StreamOrDevice stream = {}
 );
 
+mx::array conv3d_feats_grad(
+    const mx::array& grad,
+    const mx::array& weight,
+    const mx::array& maps,
+    const mx::array& kernels,
+    int rows,
+    mx::StreamOrDevice stream = {}
+);
+
+mx::array conv3d_weight_grad(
+    const mx::array& feats,
+    const mx::array& grad,
+    const mx::array& maps,
+    const mx::array& kernels,
+    int kernel_count,
+    mx::StreamOrDevice stream = {}
+);
+
 } // namespace mlx_lattice

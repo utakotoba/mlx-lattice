@@ -65,6 +65,29 @@ def test_conv3d_k3s1_neighbor_sum():
     assert_allclose(out.feats, mx.array([[3.0], [6.0], [5.0]]))
 
 
+def test_conv3d_backward_for_features_and_weight():
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
+        dtype=mx.int32,
+    )
+    feats = mx.array([[1.0], [2.0], [3.0]], dtype=mx.float32)
+    weight = mx.ones((27, 1, 1), dtype=mx.float32)
+
+    def loss_feats(feats):
+        x = SparseTensor(coords, feats)
+        return mx.sum(conv3d(x, weight, kernel_size=3).feats)
+
+    def loss_weight(weight):
+        x = SparseTensor(coords, feats)
+        return mx.sum(conv3d(x, weight, kernel_size=3).feats)
+
+    assert_allclose(
+        mx.grad(loss_feats)(feats),
+        mx.array([[2.0], [3.0], [2.0]], dtype=mx.float32),
+    )
+    assert_allclose(mx.sum(mx.grad(loss_weight)(weight)), mx.array(14.0))
+
+
 def test_pool3d_k2s2():
     coords = mx.array(
         [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
@@ -93,3 +116,23 @@ def test_generative_conv_transpose3d_k2s2():
     assert coords_out[0] == [0, 2, 0, 0]
     assert coords_out[-1] == [0, 3, 1, 1]
     assert_allclose(out.feats, mx.full((8, 1), 2.0, dtype=mx.float32))
+
+
+def test_generative_conv_transpose3d_backward():
+    coords = mx.array([[0, 0, 0, 0]], dtype=mx.int32)
+    feats = mx.array([[2.0]], dtype=mx.float32)
+    weight = mx.ones((8, 1, 1), dtype=mx.float32)
+
+    def loss_feats(feats):
+        x = SparseTensor(coords, feats, stride=2)
+        return mx.sum(generative_conv_transpose3d(x, weight).feats)
+
+    def loss_weight(weight):
+        x = SparseTensor(coords, feats, stride=2)
+        return mx.sum(generative_conv_transpose3d(x, weight).feats)
+
+    assert_allclose(mx.grad(loss_feats)(feats), mx.array([[8.0]]))
+    assert_allclose(
+        mx.grad(loss_weight)(weight).reshape((-1,)),
+        mx.full((8,), 2.0, dtype=mx.float32),
+    )
