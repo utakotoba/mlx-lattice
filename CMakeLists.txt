@@ -66,7 +66,10 @@ add_library(mlx_lattice_native STATIC)
 target_sources(
   mlx_lattice_native
   PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/native/backends/cpu/point.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/native/backends/metal/conv3d.cpp
     ${CMAKE_CURRENT_LIST_DIR}/native/ops/conv3d.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/native/ops/point.cpp
     ${CMAKE_CURRENT_LIST_DIR}/native/lattice/runtime.cpp)
 target_include_directories(
   mlx_lattice_native
@@ -95,7 +98,7 @@ if(MLX_BUILD_METAL AND MLX_LATTICE_BUILD_METAL
   mlx_build_metallib(
     TARGET mlx_lattice_metallib
     TITLE mlx_lattice
-    SOURCES ${CMAKE_CURRENT_LIST_DIR}/native/kernels/conv3d.metal
+    SOURCES ${CMAKE_CURRENT_LIST_DIR}/native/backends/metal/conv3d.metal
     INCLUDE_DIRS ${PROJECT_SOURCE_DIR} ${MLX_INCLUDE_DIRS}
     OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
   add_dependencies(mlx_lattice_native mlx_lattice_metallib)

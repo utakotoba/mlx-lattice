@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 
 mx = pytest.importorskip('mlx.core')
@@ -22,9 +21,12 @@ def make_tensor():
 
 
 def center_weight() -> mx.array:
-    weight = np.zeros((1, 3, 3, 3, 1), dtype=np.float32)
-    weight[0, 1, 1, 1, 0] = 1.0
-    return mx.array(weight)
+    weight = mx.zeros((27, 1, 1), dtype=mx.float32)
+    weight = mx.concatenate(
+        [weight[:13], mx.ones((1, 1, 1), dtype=mx.float32), weight[14:]],
+        axis=0,
+    )
+    return mx.moveaxis(weight.reshape((3, 3, 3, 1, 1)), -1, 0)
 
 
 def test_conv3d_accepts_mlx_weight_layout():

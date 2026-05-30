@@ -1,4 +1,5 @@
-import numpy as np
+from typing import cast
+
 import pytest
 
 mx = pytest.importorskip('mlx.core')
@@ -48,7 +49,7 @@ def test_build_kernel_map_submanifold_k3s1():
     mapping = build_kernel_map(coords, kernel_size=3, stride=1)
 
     assert mapping.out_coords.tolist() == coords.tolist()
-    sizes = [int(v) for v in np.asarray(mapping.sizes)]
+    sizes = [int(v) for v in cast(list[int], mapping.sizes.tolist())]
     assert sum(sizes) == 7
     center = mapping.offsets.index((0, 0, 0))
     assert sizes[center] == 3
@@ -67,5 +68,6 @@ def test_build_kernel_map_stride_two_pooling():
     mapping = build_kernel_map(coords, kernel_size=2, stride=2)
 
     assert mapping.out_coords.tolist() == [[0, 0, 0, 0], [0, 1, 0, 0]]
-    assert sum(int(v) for v in np.asarray(mapping.sizes)) == 3
+    sizes = cast(list[int], mapping.sizes.tolist())
+    assert sum(int(v) for v in sizes) == 3
     assert len(mapping.offsets) == 8

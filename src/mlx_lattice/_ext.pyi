@@ -4,6 +4,21 @@ import mlx.core as mx
 
 def version() -> str: ...
 def capabilities() -> dict[str, bool]: ...
+def downsample_coords(
+    coords: mx.array,
+    sx: int,
+    sy: int,
+    sz: int,
+) -> mx.array: ...
+def build_kernel_map(
+    coords: mx.array,
+    kx: int,
+    ky: int,
+    kz: int,
+    sx: int,
+    sy: int,
+    sz: int,
+) -> tuple[mx.array, mx.array, mx.array, mx.array, mx.array]: ...
 def conv3d_feats(
     feats: mx.array,
     weight: mx.array,

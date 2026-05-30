@@ -1,37 +1,18 @@
 #include "ops/conv3d.h"
 
-#include <dlfcn.h>
-
 #include <algorithm>
-#include <filesystem>
 #include <stdexcept>
-#include <string>
 
+#include "backends/metal/conv3d.h"
 #include "mlx/backend/cpu/encoder.h"
 #include "mlx/ops.h"
 #include "mlx/primitives.h"
-
-#ifdef _METAL_
-#include "mlx/backend/metal/device.h"
-#include "mlx/backend/metal/utils.h"
-#endif
 
 namespace mlx_lattice {
 
 namespace {
 
-// MARK: - helpers
-
-std::string binary_dir() {
-    static std::string dir = [] {
-        Dl_info info;
-        if (!dladdr(reinterpret_cast<void*>(&binary_dir), &info)) {
-            throw std::runtime_error("Unable to resolve native module path.");
-        }
-        return std::filesystem::path(info.dli_fname).parent_path().string();
-    }();
-    return dir;
-}
+// MARK: - validation
 
 void validate_conv3d_feats(
     const mx::array& feats,
@@ -125,59 +106,9 @@ class Conv3dFeats : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-#ifdef _METAL_
-        const auto& feats = inputs[0];
-        const auto& weight = inputs[1];
-        const auto& maps = inputs[2];
-        const auto& kernels = inputs[3];
-        auto& out = outputs[0];
-
-        out.set_data(mx::allocator::malloc(out.nbytes()));
-        auto& s = stream();
-        auto& device = mx::metal::device(s.device);
-        auto library = device.get_library("mlx_lattice", binary_dir());
-        auto& encoder = mx::metal::get_command_encoder(s);
-
-        auto zero = device.get_kernel("fill_zero_float32", library);
-        int out_size = rows_ * out_channels_;
-        if (out_size > 0) {
-            encoder.set_compute_pipeline_state(zero);
-            encoder.set_output_array(out, 0);
-            encoder.set_bytes(out_size, 1);
-            auto zero_group = std::min(
-                static_cast<size_t>(out_size),
-                zero->maxTotalThreadsPerThreadgroup()
-            );
-            encoder.dispatch_threads(
-                MTL::Size(static_cast<size_t>(out_size), 1, 1),
-                MTL::Size(zero_group, 1, 1)
-            );
-        }
-
-        auto conv = device.get_kernel("conv3d_feats_float32", library);
-        auto elements = static_cast<size_t>(maps.shape(0)) *
-                        static_cast<size_t>(out_channels_);
-        if (elements == 0) {
-            return;
-        }
-        encoder.set_compute_pipeline_state(conv);
-        encoder.set_input_array(feats, 0);
-        encoder.set_input_array(weight, 1);
-        encoder.set_input_array(maps, 2);
-        encoder.set_input_array(kernels, 3);
-        encoder.set_output_array(out, 4);
-        int pair_count = maps.shape(0);
-        encoder.set_bytes(pair_count, 5);
-        encoder.set_bytes(in_channels_, 6);
-        encoder.set_bytes(out_channels_, 7);
-        auto conv_group =
-            std::min(elements, conv->maxTotalThreadsPerThreadgroup());
-        encoder.dispatch_threads(
-            MTL::Size(elements, 1, 1), MTL::Size(conv_group, 1, 1)
+        metal::eval_conv3d_feats(
+            inputs, outputs, stream(), rows_, in_channels_, out_channels_
         );
-#else
-        throw std::runtime_error("Metal support is not available.");
-#endif
     }
 
     std::vector<mx::array>

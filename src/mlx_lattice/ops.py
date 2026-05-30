@@ -4,7 +4,6 @@ from collections.abc import Sequence
 from typing import Literal
 
 import mlx.core as mx
-import numpy as np
 
 from mlx_lattice._native import conv3d_feats as _conv3d_feats
 from mlx_lattice.point import downsample, kernel_offsets
@@ -64,9 +63,10 @@ def conv3d(
             raise ValueError('bias must have shape (Cout,).')
         feats = feats + bias
 
-    in_stride = np.array(x.stride, dtype=np.int64)
-    op_stride = np.array(triple(stride, name='stride'), dtype=np.int64)
-    out_stride = tuple(int(v) for v in in_stride * op_stride)
+    op_stride = triple(stride, name='stride')
+    out_stride = tuple(
+        a * b for a, b in zip(x.stride, op_stride, strict=True)
+    )
     return SparseTensor(mapping.out_coords, feats, out_stride)
 
 

@@ -5,7 +5,7 @@ description = "Sparse point cloud convolution library for MLX"
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "Yu", email = "i@letter.cafe" }]
-dependencies = ["mlx>=0.31", "numpy>=1.26"]
+dependencies = ["mlx>=0.31"]
 
 [build-system]
 requires = ["scikit-build-core>=0.12", "nanobind>=2", "mlx>=0.31"]

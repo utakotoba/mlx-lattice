@@ -4,6 +4,7 @@
 
 #include "lattice/runtime.h"
 #include "ops/conv3d.h"
+#include "ops/point.h"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -31,5 +32,39 @@ NB_MODULE(_ext, m) {
         "out_rows"_a,
         nb::kw_only(),
         "stream"_a = nb::none()
+    );
+    m.def(
+        "downsample_coords",
+        [](const mlx_lattice::mx::array& coords, int sx, int sy, int sz) {
+            return mlx_lattice::downsample_coords(coords, {sx, sy, sz});
+        },
+        "coords"_a,
+        "sx"_a,
+        "sy"_a,
+        "sz"_a
+    );
+    m.def(
+        "build_kernel_map",
+        [](const mlx_lattice::mx::array& coords,
+           int kx,
+           int ky,
+           int kz,
+           int sx,
+           int sy,
+           int sz) {
+            auto out = mlx_lattice::build_kernel_map(
+                coords, {kx, ky, kz}, {sx, sy, sz}
+            );
+            return nb::make_tuple(
+                out.maps, out.sizes, out.kernels, out.out_coords, out.offsets
+            );
+        },
+        "coords"_a,
+        "kx"_a,
+        "ky"_a,
+        "kz"_a,
+        "sx"_a,
+        "sy"_a,
+        "sz"_a
     );
 }
