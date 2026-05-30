@@ -47,8 +47,32 @@ class SparseTensor:
         return int(self.coords.shape[0])
 
     @property
+    def shape(self) -> tuple[int, int]:
+        return (self.n_points, self.channels)
+
+    @property
+    def dtype(self) -> mx.Dtype:
+        return self.feats.dtype
+
+    @property
     def channels(self) -> int:
         return int(self.feats.shape[1])
+
+    def astype(self, dtype: mx.Dtype) -> SparseTensor:
+        return self.replace(feats=self.feats.astype(dtype))
+
+    def replace(
+        self,
+        *,
+        coords: mx.array | None = None,
+        feats: mx.array | None = None,
+        stride: int | Sequence[int] | None = None,
+    ) -> SparseTensor:
+        return SparseTensor(
+            self.coords if coords is None else coords,
+            self.feats if feats is None else feats,
+            self.stride if stride is None else stride,
+        )
 
     def kernel_map(
         self,
