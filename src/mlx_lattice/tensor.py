@@ -18,6 +18,7 @@ class SparseTensor:
     stride: Triple = (1, 1, 1)
     coord_key: CoordinateMapKey | None = None
     coord_manager: CoordinateManager | None = None
+    batch_counts: tuple[int, ...] | None = None
     _maps: dict[tuple[Triple, Triple], KernelMap] = field(
         default_factory=dict,
         init=False,
@@ -33,6 +34,7 @@ class SparseTensor:
         *,
         coord_key: CoordinateMapKey | None = None,
         coord_manager: CoordinateManager | None = None,
+        batch_counts: Sequence[int] | None = None,
     ) -> None:
         if coords.ndim != 2 or coords.shape[1] != 4:
             raise ValueError('coords must have shape (N, 4).')
@@ -58,6 +60,13 @@ class SparseTensor:
         object.__setattr__(self, 'stride', normalized_stride)
         object.__setattr__(self, 'coord_key', key)
         object.__setattr__(self, 'coord_manager', manager)
+        object.__setattr__(
+            self,
+            'batch_counts',
+            None
+            if batch_counts is None
+            else tuple(int(v) for v in batch_counts),
+        )
         object.__setattr__(self, '_maps', {})
 
     @property
@@ -93,6 +102,7 @@ class SparseTensor:
             self.stride if stride is None else stride,
             coord_key=self.coord_key if same_coords else None,
             coord_manager=self.coord_manager if same_coords else None,
+            batch_counts=self.batch_counts if same_coords else None,
         )
 
     def kernel_map(

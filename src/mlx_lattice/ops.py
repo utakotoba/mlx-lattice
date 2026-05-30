@@ -34,6 +34,7 @@ def sparse_collate(
     return SparseTensor(
         mx.concatenate(batched_coords, axis=0),
         mx.concatenate(list(feats), axis=0),
+        batch_counts=tuple(int(values.shape[0]) for values in coords),
     )
 
 
@@ -68,17 +69,31 @@ def topk_rows(
 ) -> mx.array:
     if rho <= 0:
         raise ValueError('rho must be positive.')
-    if len(counts) != len(x.batch_rows):
-        raise ValueError('counts must match the batch count.')
 
     selected = []
-    for rows, count in zip(x.batch_rows, counts, strict=True):
-        k = min(int(count * rho), int(rows.shape[0]))
+    start = 0
+    row_counts = x.batch_counts
+    if row_counts is None:
+        row_counts = tuple(int(rows.shape[0]) for rows in x.batch_rows)
+    if len(counts) != len(row_counts):
+        raise ValueError('counts must match the batch count.')
+
+    for keep, row_count in zip(counts, row_counts, strict=True):
+        stop = start + int(row_count)
+        if stop > x.n_points:
+            raise ValueError(
+                'batch row counts exceed sparse tensor row count.'
+            )
+        rows = mx.arange(start, stop, dtype=mx.int32)
+        start = stop
+        k = min(int(keep * rho), int(rows.shape[0]))
         if k <= 0:
             continue
         scores = mx.take(x.feats[:, 0], rows, axis=0)
         order = mx.argsort(scores)
         selected.append(mx.take(rows, order[-k:], axis=0))
+    if start != x.n_points:
+        raise ValueError('counts must cover all sparse tensor rows.')
     if not selected:
         return mx.array([], dtype=mx.int32)
     return mx.concatenate(selected, axis=0)
