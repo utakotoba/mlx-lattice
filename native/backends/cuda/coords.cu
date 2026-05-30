@@ -189,9 +189,9 @@ __global__ void build_subm_kernel_map_i32(
             kernels[elem] = kernel_index;
             atomicAdd(&sizes[kernel_index], 1);
             if (kernel_index != center_kernel) {
-                int local_slot =
-                    kernel_index < center_kernel ? kernel_index
-                                                 : kernel_index - 1;
+                int local_slot = kernel_index < center_kernel
+                                     ? kernel_index
+                                     : kernel_index - 1;
                 int residual = out_row * (kernel_count - 1) + local_slot;
                 residual_maps[residual * 2] = in_row;
                 residual_maps[residual * 2 + 1] = out_row;
@@ -303,7 +303,14 @@ class SubmKernelMap : public mx::Primitive {
         int invalid = -1;
         int empty_key = 0x7fffffff;
 
-        launch(encoder, fill_i32, kernels_, mx::gpu_ptr<int32_t>(sizes), 0, kernels_);
+        launch(
+            encoder,
+            fill_i32,
+            kernels_,
+            mx::gpu_ptr<int32_t>(sizes),
+            0,
+            kernels_
+        );
         launch(
             encoder,
             fill_i32,
@@ -507,7 +514,9 @@ class GenerativeMap : public mx::Primitive {
 KernelMapData
 build_subm_kernel_map(const mx::array& coords, Triple kernel_size) {
     if (coords.dtype() != mx::int32) {
-        throw std::invalid_argument("CUDA coordinate maps require int32 coords.");
+        throw std::invalid_argument(
+            "CUDA coordinate maps require int32 coords."
+        );
     }
 
     auto offsets = kernel_offsets(kernel_size);
@@ -570,7 +579,9 @@ KernelMapData build_generative_map(
     Triple stride
 ) {
     if (coords.dtype() != mx::int32) {
-        throw std::invalid_argument("CUDA generative maps require int32 coords.");
+        throw std::invalid_argument(
+            "CUDA generative maps require int32 coords."
+        );
     }
 
     auto offsets = kernel_offsets(kernel_size);

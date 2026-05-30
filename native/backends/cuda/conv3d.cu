@@ -74,8 +74,9 @@ __global__ void conv3d_subm_center_float32(
     float acc = 0.0f;
     for (int in_col = 0; in_col < in_channels; ++in_col) {
         acc += feats[row * in_channels + in_col] *
-               weight[(center_kernel * in_channels + in_col) * out_channels +
-                      out_col];
+               weight
+                   [(center_kernel * in_channels + in_col) * out_channels +
+                    out_col];
     }
     out[elem] = acc;
 }
@@ -142,10 +143,10 @@ __global__ void conv3d_residual_rows_float32(
         }
         int in_row = maps[pair * 2];
         for (int in_col = 0; in_col < in_channels; ++in_col) {
-            acc += feats[in_row * in_channels + in_col] *
-                   weight
-                       [(kernel * in_channels + in_col) * out_channels +
-                        out_col];
+            acc +=
+                feats[in_row * in_channels + in_col] *
+                weight
+                    [(kernel * in_channels + in_col) * out_channels + out_col];
         }
     }
     out[elem] = acc;
@@ -253,7 +254,9 @@ __global__ void pool3d_feats_grad_float32(
     int channel = elem - pair * channels;
     int in_row = maps[pair * 2];
     int out_row = maps[pair * 2 + 1];
-    atomicAdd(&out[in_row * channels + channel], grad[out_row * channels + channel]);
+    atomicAdd(
+        &out[in_row * channels + channel], grad[out_row * channels + channel]
+    );
 }
 
 __global__ void conv3d_feats_grad_float32(
@@ -314,11 +317,10 @@ __global__ void conv3d_weight_grad_float32(
     }
     int in_row = maps[pair * 2];
     int out_row = maps[pair * 2 + 1];
-    float value =
-        feats[in_row * in_channels + in_col] * grad[out_row * out_channels + out_col];
+    float value = feats[in_row * in_channels + in_col] *
+                  grad[out_row * out_channels + out_col];
     atomicAdd(
-        &out[(kernel * in_channels + in_col) * out_channels + out_col],
-        value
+        &out[(kernel * in_channels + in_col) * out_channels + out_col], value
     );
 }
 
@@ -339,7 +341,9 @@ void launch(
         return;
     }
     constexpr int block = 256;
-    encoder.add_kernel_node(kernel, grid_for(elements, block), dim3(block), args...);
+    encoder.add_kernel_node(
+        kernel, grid_for(elements, block), dim3(block), args...
+    );
 }
 
 } // namespace
@@ -369,7 +373,9 @@ void eval_conv3d_feats(
     encoder.set_output_array(out);
 
     int out_size = rows * out_channels;
-    launch(encoder, fill_zero_float32, out_size, mx::gpu_ptr<float>(out), out_size);
+    launch(
+        encoder, fill_zero_float32, out_size, mx::gpu_ptr<float>(out), out_size
+    );
     int pair_count = maps.shape(0);
     launch(
         encoder,
@@ -465,8 +471,9 @@ void eval_conv3d_residual_feats(
     encoder.set_output_array(out);
 
     bool use_vec4 = out_channels % 4 == 0;
-    auto elements = static_cast<size_t>(rows) *
-                    static_cast<size_t>(use_vec4 ? out_channels / 4 : out_channels);
+    auto elements =
+        static_cast<size_t>(rows) *
+        static_cast<size_t>(use_vec4 ? out_channels / 4 : out_channels);
     if (use_vec4) {
         launch(
             encoder,
@@ -557,7 +564,9 @@ void eval_pool3d_feats_grad(
     encoder.set_output_array(out);
 
     int out_size = rows * channels;
-    launch(encoder, fill_zero_float32, out_size, mx::gpu_ptr<float>(out), out_size);
+    launch(
+        encoder, fill_zero_float32, out_size, mx::gpu_ptr<float>(out), out_size
+    );
     int pair_count = maps.shape(0);
     launch(
         encoder,
@@ -595,7 +604,9 @@ void eval_conv3d_feats_grad(
     encoder.set_output_array(out);
 
     int out_size = rows * in_channels;
-    launch(encoder, fill_zero_float32, out_size, mx::gpu_ptr<float>(out), out_size);
+    launch(
+        encoder, fill_zero_float32, out_size, mx::gpu_ptr<float>(out), out_size
+    );
     int pair_count = maps.shape(0);
     launch(
         encoder,
@@ -635,7 +646,9 @@ void eval_conv3d_weight_grad(
     encoder.set_output_array(out);
 
     int out_size = kernels * in_channels * out_channels;
-    launch(encoder, fill_zero_float32, out_size, mx::gpu_ptr<float>(out), out_size);
+    launch(
+        encoder, fill_zero_float32, out_size, mx::gpu_ptr<float>(out), out_size
+    );
     int pair_count = maps.shape(0);
     launch(
         encoder,

@@ -21,5 +21,5 @@ hooks = [
     "pyi",
   ] },
   { id = "ty-check", name = "ty check", entry = "uv run ty check", language = "system", pass_filenames = false },
-  { id = "clang-format", name = "clang-format", entry = "clang-format -i", language = "system", files = '^native/.*\.(c|cc|cpp|cxx|h|hh|hpp|hxx|metal)$' },
+  { id = "clang-format", name = "clang-format", entry = "clang-format -i", language = "system", files = '^native/.*\.(c|cc|cpp|cxx|h|hh|hpp|hxx|metal|cu)$' },
 ]
