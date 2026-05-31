@@ -5,6 +5,17 @@ Sparse point cloud convolution library for Apple [MLX](https://github.com/ml-exp
 > [!CAUTION]
 > We're working on the proofing of math correctness between those operators in different backends. Currently, only the Metal operators have the identical math property, while the CUDA operators still need to be verified.
 
+### Operations
+
+Currently, the following operations are supported:
+
+- Tensor: `SparseTensor`, `sparse_collate`, `cat`, `prune`, `topk_rows`
+- Coordinates: `downsample`, `build_kernel_map`, `build_generative_map`
+- Features: `linear`, `relu`, `sigmoid`
+- Sparse ops: `conv3d`, `generative_conv_transpose3d`, `pool3d`
+- Modules: `Linear`, `Conv3d`, `GenerativeConvTranspose3d`, `SumPool3d`,
+  `BatchNorm`, `ReLU`, `Sigmoid`
+
 ### Usage
 
 ```python
