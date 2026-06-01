@@ -81,7 +81,10 @@ rebuild = true
 
 [tool.scikit-build.metadata.optional-dependencies]
 provider = "scikit_build_core.metadata.template"
-result = { cuda13 = [
+result = { cuda = [
+  "mlx[cuda13]>=0.31; platform_system == 'Linux'",
+  "mlx-lattice-cuda13=={project[version]}; platform_system == 'Linux'",
+], cuda13 = [
   "mlx[cuda13]>=0.31; platform_system == 'Linux'",
   "mlx-lattice-cuda13=={project[version]}; platform_system == 'Linux'",
 ] }

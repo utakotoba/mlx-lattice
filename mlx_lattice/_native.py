@@ -3,19 +3,26 @@ from __future__ import annotations
 import importlib
 import importlib.util
 from collections.abc import Mapping
+from functools import cache
+from types import ModuleType
 from typing import Any
 
 import mlx.core as mx
 
+_OPTIONAL_BACKENDS = ('mlx_lattice_cuda13._ext',)
 
-def _ext():
+
+@cache
+def _ext() -> ModuleType:
     import mlx.core  # noqa: F401
 
-    if (
-        importlib.util.find_spec('mlx_lattice_cuda13') is not None
-        and importlib.util.find_spec('mlx_lattice_cuda13._ext') is not None
-    ):
-        return importlib.import_module('mlx_lattice_cuda13._ext')
+    for module_name in _OPTIONAL_BACKENDS:
+        parent_name = module_name.partition('.')[0]
+        if (
+            importlib.util.find_spec(parent_name) is not None
+            and importlib.util.find_spec(module_name) is not None
+        ):
+            return importlib.import_module(module_name)
 
     from . import _ext as native
 

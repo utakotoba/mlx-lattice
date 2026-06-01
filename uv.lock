@@ -137,6 +137,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+cuda = [
+    { name = "mlx", version = "0.31.1", source = { registry = "https://pypi.org/simple" }, extra = ["cuda13"], marker = "sys_platform == 'linux'" },
+    { name = "mlx-lattice-cuda13", marker = "sys_platform == 'linux'" },
+]
 cuda13 = [
     { name = "mlx", version = "0.31.1", source = { registry = "https://pypi.org/simple" }, extra = ["cuda13"], marker = "sys_platform == 'linux'" },
     { name = "mlx-lattice-cuda13", marker = "sys_platform == 'linux'" },
@@ -161,10 +165,12 @@ dev = [
 requires-dist = [
     { name = "mlx", marker = "sys_platform == 'darwin'", specifier = ">=0.31" },
     { name = "mlx", extras = ["cpu"], marker = "sys_platform == 'linux'", specifier = ">=0.31" },
+    { name = "mlx", extras = ["cuda13"], marker = "sys_platform == 'linux' and extra == 'cuda'", specifier = ">=0.31" },
     { name = "mlx", extras = ["cuda13"], marker = "sys_platform == 'linux' and extra == 'cuda13'", specifier = ">=0.31" },
+    { name = "mlx-lattice-cuda13", marker = "sys_platform == 'linux' and extra == 'cuda'", editable = "packages/mlx_lattice_cuda13" },
     { name = "mlx-lattice-cuda13", marker = "sys_platform == 'linux' and extra == 'cuda13'", editable = "packages/mlx_lattice_cuda13" },
 ]
-provides-extras = ["cuda13"]
+provides-extras = ["cuda", "cuda13"]
 
 [package.metadata.requires-dev]
 cuda-build = [{ name = "mlx", extras = ["cuda13"], marker = "sys_platform == 'linux'", specifier = ">=0.31" }]

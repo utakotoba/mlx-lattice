@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
 target="${1:?usage: scripts/build-wheels.sh <macos|linux-cpu|linux-cuda13>}"
 pythons="${MLX_LATTICE_PYTHONS:-3.12 3.13 3.14}"
@@ -11,22 +11,20 @@ mkdir -p "${out_dir}"
 uv python install ${pythons}
 
 retag_linux_wheel() {
-  local package="${1}"
-  local python_tag="${2}"
-  local python_version="${3}"
-  local wheel_file
+  package="${1}"
+  python_tag="${2}"
+  python_version="${3}"
 
   wheel_file="$(
     find "${out_dir}" \
-      -maxdepth 1 \
       -type f \
       -name "${package}-*-${python_tag}-${python_tag}-linux_x86_64.whl" \
       -print \
-      -quit
+      | sed -n '1p'
   )"
-  if [[ -z "${wheel_file}" ]]; then
+  if [ -z "${wheel_file}" ]; then
     echo "Could not find linux_x86_64 wheel for ${package} ${python_tag} in ${out_dir}" >&2
-    find "${out_dir}" -maxdepth 1 -type f -name '*.whl' -print >&2
+    find "${out_dir}" -type f -name '*.whl' -print >&2
     exit 1
   fi
 
@@ -38,7 +36,7 @@ retag_linux_wheel() {
 
 for python in ${pythons}; do
   echo "::group::Build ${target} wheel for Python ${python}"
-  python_tag="cp${python/./}"
+  python_tag="cp$(printf '%s' "${python}" | tr -d '.')"
 
   case "${target}" in
     macos)

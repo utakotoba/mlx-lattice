@@ -23,7 +23,7 @@ runs:
   using: composite
   steps:
     - name: Install common dependencies
-      shell: bash
+      shell: sh
       run: |
         echo "::group::Install common dependencies"
         sudo apt-get update
@@ -59,7 +59,7 @@ runs:
 
     - name: Install CUDA toolkit
       if: ${{ startsWith(inputs.toolkit, 'cuda') }}
-      shell: bash
+      shell: sh
       run: |
         echo "::group::Install CUDA toolkit"
         case "${RUNNER_ARCH}" in
@@ -94,7 +94,7 @@ runs:
 
     - name: CUDA packages and driver report
       if: ${{ startsWith(inputs.toolkit, 'cuda') }}
-      shell: bash
+      shell: sh
       run: |
         echo "::group::Installed NVIDIA and CUDA packages"
         dpkg -l | grep -Ei "cuda|nvidia|cublas|cudnn|nccl" || true
