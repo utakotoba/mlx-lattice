@@ -60,21 +60,41 @@ find_package(MLX CONFIG REQUIRED PATHS "${MLX_DIR}" NO_DEFAULT_PATH)
 
 # MARK: - native
 
-add_library(mlx_lattice_native STATIC)
-target_sources(
-  mlx_lattice_native
-  PRIVATE
+set(MLX_LATTICE_CPU_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/native/backends/cpu/coords.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/native/backends/cpu/conv3d.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/native/backends/metal/conv3d.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/native/backends/metal/coords.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/native/backends/cpu/conv3d_backward.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/native/backends/cpu/conv3d_forward.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/native/backends/cpu/conv3d_pool.cpp)
+
+set(MLX_LATTICE_METAL_SOURCES
+    ${CMAKE_CURRENT_LIST_DIR}/native/backends/metal/conv3d_backward.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/native/backends/metal/conv3d_forward.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/native/backends/metal/conv3d_pool.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/native/backends/metal/coords.cpp)
+
+set(MLX_LATTICE_CUDA_SOURCES
+    ${CMAKE_CURRENT_LIST_DIR}/native/backends/cuda/conv3d.cu
+    ${CMAKE_CURRENT_LIST_DIR}/native/backends/cuda/coords.cu)
+
+set(MLX_LATTICE_OP_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/native/ops/conv3d.cpp
     ${CMAKE_CURRENT_LIST_DIR}/native/ops/conv3d/dispatch.cpp
     ${CMAKE_CURRENT_LIST_DIR}/native/ops/conv3d/primitives.cpp
     ${CMAKE_CURRENT_LIST_DIR}/native/ops/conv3d/validation.cpp
     ${CMAKE_CURRENT_LIST_DIR}/native/ops/coords.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/native/ops/coords/dispatch.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/native/ops/coords/dispatch.cpp)
+
+set(MLX_LATTICE_RUNTIME_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/native/lattice/runtime.cpp)
+
+add_library(mlx_lattice_native STATIC)
+target_sources(
+  mlx_lattice_native
+  PRIVATE
+    ${MLX_LATTICE_CPU_SOURCES}
+    ${MLX_LATTICE_METAL_SOURCES}
+    ${MLX_LATTICE_OP_SOURCES}
+    ${MLX_LATTICE_RUNTIME_SOURCES})
 target_include_directories(
   mlx_lattice_native
   PUBLIC
@@ -127,9 +147,7 @@ if(MLX_LATTICE_BUILD_CUDA AND NOT APPLE)
       set(MLX_LATTICE_HAS_CUDA 1)
       target_sources(
         mlx_lattice_native
-        PRIVATE
-          ${CMAKE_CURRENT_LIST_DIR}/native/backends/cuda/conv3d.cu
-          ${CMAKE_CURRENT_LIST_DIR}/native/backends/cuda/coords.cu)
+        PRIVATE ${MLX_LATTICE_CUDA_SOURCES})
       target_link_libraries(
         mlx_lattice_native
         PUBLIC CUDA::cudart CUDA::cuda_driver)
