@@ -90,9 +90,12 @@ runs:
           libnccl2 \
           libnccl-dev \
           ${cuda_packages}
+        sudo ln -sf \
+          "/usr/local/${{ inputs.toolkit }}/targets/x86_64-linux/lib/stubs/libcuda.so" \
+          "/usr/local/${{ inputs.toolkit }}/targets/x86_64-linux/lib/stubs/libcuda.so.1"
         echo "/usr/local/${{ inputs.toolkit }}/bin" >> "${GITHUB_PATH}"
         echo "CUDA_PATH=/usr/local/${{ inputs.toolkit }}" >> "${GITHUB_ENV}"
-        echo "LD_LIBRARY_PATH=/usr/local/${{ inputs.toolkit }}/lib64:${LD_LIBRARY_PATH:-}" >> "${GITHUB_ENV}"
+        echo "LD_LIBRARY_PATH=/usr/local/${{ inputs.toolkit }}/targets/x86_64-linux/lib/stubs:/usr/local/${{ inputs.toolkit }}/lib64:${LD_LIBRARY_PATH:-}" >> "${GITHUB_ENV}"
         echo "::endgroup::"
 
     - name: CUDA packages and driver report
