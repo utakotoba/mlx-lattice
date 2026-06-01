@@ -89,12 +89,75 @@ jobs:
           nvcc --version
           echo "CUDA_PATH=${CUDA_PATH}"
 
-      - name: Install dependencies
+      - name: Install build dependencies
+        run: |
+          uv sync \
+            --group dev \
+            --no-install-project
+
+      - name: Configure CUDA dependency paths
+        run: |
+          uv run --no-sync python - <<'PY' >> "${GITHUB_ENV}"
+          import importlib.util
+          import os
+          import pathlib
+          import sys
+
+          packages = [
+              "nvidia.cublas",
+              "nvidia.cuda_nvrtc",
+              "nvidia.cudnn",
+              "nvidia.nccl",
+          ]
+          include_dirs = []
+          lib_dirs = []
+
+          for package in packages:
+              spec = importlib.util.find_spec(package)
+              if spec is None or spec.submodule_search_locations is None:
+                  continue
+
+              root = pathlib.Path(next(iter(spec.submodule_search_locations)))
+              include = root / "include"
+              lib = root / "lib"
+
+              if include.is_dir():
+                  include_dirs.append(str(include))
+              if lib.is_dir():
+                  lib_dirs.append(str(lib))
+
+          if not any((pathlib.Path(path) / "cublasLt.h").exists() for path in include_dirs):
+              print("Could not find cublasLt.h in CUDA dependency include dirs:", file=sys.stderr)
+              for path in include_dirs:
+                  print(f"  {path}", file=sys.stderr)
+              raise SystemExit(1)
+
+          print("CUDA dependency include dirs:", file=sys.stderr)
+          for path in include_dirs:
+              print(f"  {path}", file=sys.stderr)
+          print("CUDA dependency library dirs:", file=sys.stderr)
+          for path in lib_dirs:
+              print(f"  {path}", file=sys.stderr)
+
+          print(f"CUDA_DEP_INCLUDE_DIRS={';'.join(include_dirs)}")
+          print(f"CUDA_DEP_LIBRARY_DIRS={';'.join(lib_dirs)}")
+          ld_paths = [
+              *lib_dirs,
+              f"{os.environ['CUDA_PATH']}/lib64",
+              f"{os.environ['CUDA_PATH']}/lib64/stubs",
+              os.environ.get("LD_LIBRARY_PATH", ""),
+          ]
+          print(f"LD_LIBRARY_PATH={':'.join(path for path in ld_paths if path)}")
+          PY
+
+      - name: Build project
         run: |
           uv sync \
             --group dev \
             --reinstall-package mlx-lattice \
             -Ccmake.define.CMAKE_CUDA_ARCHITECTURES=80 \
+            -Ccmake.define.MLX_LATTICE_CUDA_INCLUDE_DIRS="${CUDA_DEP_INCLUDE_DIRS}" \
+            -Ccmake.define.MLX_LATTICE_CUDA_LIBRARY_DIRS="${CUDA_DEP_LIBRARY_DIRS}" \
             -Ccmake.define.MLX_LATTICE_REQUIRE_CUDA=ON \
             -Ccmake.define.MLX_LATTICE_BUILD_CUDA=ON \
             -Ccmake.define.MLX_LATTICE_BUILD_METAL=OFF
@@ -107,7 +170,7 @@ jobs:
 
           {
             echo "MLX_PACKAGE_DIR=${mlx_package_dir}"
-            echo "LD_LIBRARY_PATH=${mlx_package_dir}/lib:${CUDA_PATH}/lib64:${CUDA_PATH}/lib64/stubs:${LD_LIBRARY_PATH:-}"
+            echo "LD_LIBRARY_PATH=${mlx_package_dir}/lib:${LD_LIBRARY_PATH:-}"
           } >> "${GITHUB_ENV}"
 
       - name: Check built backend flags

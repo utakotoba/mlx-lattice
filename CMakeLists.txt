@@ -164,6 +164,17 @@ if(MLX_LATTICE_BUILD_CUDA AND NOT APPLE)
       target_link_libraries(
         mlx_lattice_native
         PUBLIC CUDA::cudart CUDA::cuda_driver)
+      if(DEFINED MLX_LATTICE_CUDA_INCLUDE_DIRS)
+        target_include_directories(
+          mlx_lattice_native
+          SYSTEM
+          PRIVATE ${MLX_LATTICE_CUDA_INCLUDE_DIRS})
+      endif()
+      if(DEFINED MLX_LATTICE_CUDA_LIBRARY_DIRS)
+        target_link_directories(
+          mlx_lattice_native
+          PRIVATE ${MLX_LATTICE_CUDA_LIBRARY_DIRS})
+      endif()
       target_compile_options(
         mlx_lattice_native
         PRIVATE
