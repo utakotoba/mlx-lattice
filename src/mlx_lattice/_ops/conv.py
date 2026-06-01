@@ -84,6 +84,8 @@ def conv3d(
     if (
         op_stride == (1, 1, 1)
         and out_rows == x.n_points
+        and pad == (0, 0, 0)
+        and rate == (1, 1, 1)
         and mapping.center >= 0
     ):
         center = x.feats @ weight[mapping.center]
