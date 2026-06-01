@@ -22,6 +22,10 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(MLX_LATTICE_BUILD_METAL "Build the mlx-lattice Metal library" ON)
 option(MLX_LATTICE_BUILD_CUDA "Build the mlx-lattice CUDA kernels" ON)
+option(
+  MLX_LATTICE_REQUIRE_CUDA
+  "Fail configuration when CUDA kernels cannot be built"
+  OFF)
 set(MLX_LATTICE_HAS_METAL 0)
 set(MLX_LATTICE_HAS_CUDA 0)
 
@@ -97,7 +101,6 @@ target_sources(
   mlx_lattice_native
   PRIVATE
     ${MLX_LATTICE_CPU_SOURCES}
-    ${MLX_LATTICE_METAL_SOURCES}
     ${MLX_LATTICE_OP_SOURCES}
     ${MLX_LATTICE_RUNTIME_SOURCES})
 target_include_directories(
@@ -124,6 +127,9 @@ if(APPLE)
   if(MLX_BUILD_METAL AND MLX_LATTICE_BUILD_METAL
      AND MLX_LATTICE_METAL_FIND_RESULT EQUAL 0)
     set(MLX_LATTICE_HAS_METAL 1)
+    target_sources(
+      mlx_lattice_native
+      PRIVATE ${MLX_LATTICE_METAL_SOURCES})
     mlx_build_metallib(
       TARGET mlx_lattice_metallib
       TITLE mlx_lattice
@@ -168,6 +174,13 @@ if(MLX_LATTICE_BUILD_CUDA AND NOT APPLE)
           CUDA_SEPARABLE_COMPILATION ON)
     endif()
   endif()
+endif()
+
+if(MLX_LATTICE_REQUIRE_CUDA AND NOT MLX_LATTICE_HAS_CUDA)
+  message(
+    FATAL_ERROR
+      "MLX_LATTICE_REQUIRE_CUDA is ON, but CUDA compiler/toolkit was not found."
+  )
 endif()
 
 target_compile_definitions(

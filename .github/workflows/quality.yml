@@ -16,8 +16,8 @@ env:
   UV_LINK_MODE: copy
 
 jobs:
-  quality:
-    name: Python ${{ matrix.python-version }}
+  mac-quality:
+    name: macOS quality (Python ${{ matrix.python-version }})
     runs-on: macos-latest
 
     strategy:
@@ -53,3 +53,68 @@ jobs:
 
       - name: Test
         run: uv run --no-sync pytest
+
+  cuda-quality:
+    name: Linux CUDA quality (Python 3.12)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.17"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up CUDA toolkit
+        id: cuda-toolkit
+        uses: Jimver/cuda-toolkit@v0.2.35
+        with:
+          cuda: "13.2.0"
+          method: network
+          sub-packages: '["nvcc","cudart-dev","driver-dev"]'
+          log-file-suffix: "ubuntu-latest.txt"
+
+      - name: Check CUDA compiler
+        run: |
+          nvcc --version
+          echo "CUDA_PATH=${CUDA_PATH}"
+
+      - name: Install dependencies
+        run: |
+          uv sync \
+            --group dev \
+            --reinstall-package mlx-lattice \
+            -Ccmake.define.CMAKE_CUDA_ARCHITECTURES=80 \
+            -Ccmake.define.MLX_LATTICE_REQUIRE_CUDA=ON \
+            -Ccmake.define.MLX_LATTICE_BUILD_CUDA=ON \
+            -Ccmake.define.MLX_LATTICE_BUILD_METAL=OFF
+
+      - name: Check built backend flags
+        run: |
+          export LD_LIBRARY_PATH="${CUDA_PATH}/lib64:${CUDA_PATH}/lib64/stubs:${LD_LIBRARY_PATH:-}"
+
+          uv run --no-sync python - <<'PY'
+          import mlx_lattice as lattice
+
+          capabilities = lattice.capabilities()
+          print("MLX Lattice capabilities:", capabilities)
+
+          if not capabilities.get("cuda"):
+              raise SystemExit("mlx-lattice was not built with CUDA support")
+          PY
+
+      - name: Test
+        run: |
+          export LD_LIBRARY_PATH="${CUDA_PATH}/lib64:${CUDA_PATH}/lib64/stubs:${LD_LIBRARY_PATH:-}"
+
+          uv run --no-sync pytest
