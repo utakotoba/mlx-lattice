@@ -43,6 +43,9 @@ sdist.exclude = [
   "tests/**/__pycache__/**",
 ]
 
+[tool.scikit-build.editable]
+rebuild = true
+
 [tool.ruff]
 line-length = 76
 target-version = "py312"

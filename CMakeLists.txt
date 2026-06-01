@@ -33,28 +33,33 @@ endif()
 
 # MARK: - dependencies
 
-if(DEFINED ENV{VIRTUAL_ENV} AND NOT DEFINED Python_EXECUTABLE)
+if(DEFINED ENV{VIRTUAL_ENV}
+   AND (NOT DEFINED Python_EXECUTABLE OR NOT EXISTS "${Python_EXECUTABLE}"))
   set(Python_EXECUTABLE
       "$ENV{VIRTUAL_ENV}/bin/python"
-      CACHE FILEPATH "Python executable from active virtual environment")
+      CACHE FILEPATH "Python executable from active virtual environment" FORCE)
 endif()
 find_package(Python 3.12 COMPONENTS Interpreter Development.Module REQUIRED)
 
-if(NOT DEFINED nanobind_DIR)
+if(NOT DEFINED nanobind_DIR OR NOT EXISTS "${nanobind_DIR}")
   execute_process(
     COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
     OUTPUT_STRIP_TRAILING_WHITESPACE
     OUTPUT_VARIABLE nanobind_DIR
     COMMAND_ERROR_IS_FATAL ANY)
+  set(nanobind_DIR
+      "${nanobind_DIR}"
+      CACHE PATH "nanobind CMake package directory" FORCE)
 endif()
 find_package(nanobind CONFIG REQUIRED PATHS "${nanobind_DIR}" NO_DEFAULT_PATH)
 
-if(NOT DEFINED MLX_DIR)
+if(NOT DEFINED MLX_DIR OR NOT EXISTS "${MLX_DIR}")
   execute_process(
     COMMAND "${Python_EXECUTABLE}" -m mlx --cmake-dir
     OUTPUT_STRIP_TRAILING_WHITESPACE
     OUTPUT_VARIABLE MLX_DIR
     COMMAND_ERROR_IS_FATAL ANY)
+  set(MLX_DIR "${MLX_DIR}" CACHE PATH "MLX CMake package directory" FORCE)
 endif()
 find_package(MLX CONFIG REQUIRED PATHS "${MLX_DIR}" NO_DEFAULT_PATH)
 
