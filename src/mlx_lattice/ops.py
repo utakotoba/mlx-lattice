@@ -278,8 +278,9 @@ def pool3d(
 
     if mapping.center >= 0:
         volume = len(kernel_offsets(kernel))
-        weight = mx.ones(
-            (volume, x.channels, x.channels), dtype=x.feats.dtype
+        weight = mx.broadcast_to(
+            mx.eye(x.channels, dtype=x.feats.dtype),
+            (volume, x.channels, x.channels),
         )
         return conv3d(x, weight, kernel_size=kernel, stride=op_stride)
 

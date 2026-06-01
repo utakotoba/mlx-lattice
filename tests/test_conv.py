@@ -102,6 +102,29 @@ def test_pool3d_k2s2():
     assert_allclose(out.feats, mx.array([[3.0], [3.0]]))
 
 
+def test_pool3d_center_kernel_does_not_mix_channels():
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
+        dtype=mx.int32,
+    )
+    feats = mx.array(
+        [[1.0, 10.0], [2.0, 20.0], [3.0, 30.0]],
+        dtype=mx.float32,
+    )
+    x = SparseTensor(coords, feats)
+
+    out = pool3d(x, kernel_size=3, stride=1)
+
+    assert out.coords.tolist() == coords.tolist()
+    assert_allclose(
+        out.feats,
+        mx.array(
+            [[3.0, 30.0], [6.0, 60.0], [5.0, 50.0]],
+            dtype=mx.float32,
+        ),
+    )
+
+
 def test_generative_conv_transpose3d_k2s2():
     coords = mx.array([[0, 1, 0, 0]], dtype=mx.int32)
     feats = mx.array([[2.0]], dtype=mx.float32)
