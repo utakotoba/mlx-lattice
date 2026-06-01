@@ -18,14 +18,18 @@ env:
 
 jobs:
   build-wheels:
-    name: Wheel (${{ matrix.os }}, Python ${{ matrix.python-version }})
-    runs-on: ${{ matrix.os }}
+    name: Wheel (${{ matrix.os.runner }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os.runner }}
 
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, macos-15]
         python-version: ["3.12", "3.13", "3.14"]
+        os:
+          - runner: macos-26
+            deployment_target: "26.0"
+          - runner: macos-15
+            deployment_target: "15.0"
 
     steps:
       - name: Checkout
@@ -49,13 +53,16 @@ jobs:
 
       - name: Build wheel
         run: uv build --wheel --python "${{ matrix.python-version }}" --out-dir dist
+        env:
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os.deployment_target }}
 
       - name: Upload wheel
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: wheel-${{ matrix.os }}-py${{ matrix.python-version }}
+          name: wheel-${{ matrix.os.runner }}-py${{ matrix.python-version }}
           path: dist/*.whl
           if-no-files-found: error
+          compression-level: 0
 
   build-sdist:
     name: Source distribution
@@ -85,11 +92,12 @@ jobs:
         run: uv build --sdist --out-dir dist
 
       - name: Upload sdist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sdist
           path: dist/*.tar.gz
           if-no-files-found: error
+          compression-level: 0
 
   publish:
     name: Publish to PyPI
@@ -108,13 +116,58 @@ jobs:
           version: "0.11.17"
 
       - name: Download distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
-          path: dist
-          merge-multiple: true
+          path: artifacts
+
+      - name: Prepare distributions
+        run: |
+          rm -rf dist
+          mkdir -p dist
+
+          shopt -s globstar nullglob
+          declare -A seen
+
+          for file in artifacts/**/*; do
+            if [[ ! -f "$file" ]]; then
+              continue
+            fi
+
+            case "$file" in
+              *.whl|*.tar.gz) ;;
+              *) continue ;;
+            esac
+
+            filename="$(basename "$file")"
+            if [[ -n "${seen[$filename]:-}" ]]; then
+              echo "::error::Duplicate distribution filename: $filename"
+              echo "::error::First: ${seen[$filename]}"
+              echo "::error::Second: $file"
+              exit 1
+            fi
+
+            seen[$filename]="$file"
+            cp "$file" "dist/$filename"
+          done
+
+          if [[ "${#seen[@]}" -ne 7 ]]; then
+            echo "::error::Expected 7 distributions, found ${#seen[@]}"
+            find artifacts -type f -print
+            exit 1
+          fi
 
       - name: List distributions
         run: ls -lh dist
+
+      - name: Check distribution archives
+        run: |
+          for wheel in dist/*.whl; do
+            unzip -t "$wheel"
+          done
+
+          for sdist in dist/*.tar.gz; do
+            tar -tzf "$sdist" >/dev/null
+          done
 
       - name: Publish distributions
         run: uv publish --trusted-publishing always dist/*
@@ -135,13 +188,48 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: lts/*
+          node-version: "24"
 
       - name: Download distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
-          path: dist
-          merge-multiple: true
+          path: artifacts
+
+      - name: Prepare distributions
+        run: |
+          rm -rf dist
+          mkdir -p dist
+
+          shopt -s globstar nullglob
+          declare -A seen
+
+          for file in artifacts/**/*; do
+            if [[ ! -f "$file" ]]; then
+              continue
+            fi
+
+            case "$file" in
+              *.whl|*.tar.gz) ;;
+              *) continue ;;
+            esac
+
+            filename="$(basename "$file")"
+            if [[ -n "${seen[$filename]:-}" ]]; then
+              echo "::error::Duplicate distribution filename: $filename"
+              echo "::error::First: ${seen[$filename]}"
+              echo "::error::Second: $file"
+              exit 1
+            fi
+
+            seen[$filename]="$file"
+            cp "$file" "dist/$filename"
+          done
+
+          if [[ "${#seen[@]}" -ne 7 ]]; then
+            echo "::error::Expected 7 distributions, found ${#seen[@]}"
+            find artifacts -type f -print
+            exit 1
+          fi
 
       - name: Create release notes
         run: npx --yes changelogithub@14 --contributors --emoji false
