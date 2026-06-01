@@ -12,10 +12,12 @@ from mlx_lattice import (  # noqa: E402
     build_generative_map,
     build_kernel_map,
     cat,
+    contains_coords,
     conv3d,
     downsample,
     generative_conv_transpose3d,
     intersection_coords,
+    lookup_coords,
     pool3d,
     prune,
     relu,
@@ -81,6 +83,7 @@ def _collect_surface(coord_dtype: mx.Dtype) -> dict[str, Any]:
         dtype=mx.float32,
     )
     x = SparseTensor(coords, feats, batch_counts=(4, 2))
+    queries = mx.take(coords, mx.array([1, 4], dtype=mx.int32), axis=0)
 
     weight = (
         mx.arange(27 * 2 * 4, dtype=mx.float32).reshape((27, 2, 4)) / 17.0
@@ -136,6 +139,8 @@ def _collect_surface(coord_dtype: mx.Dtype) -> dict[str, Any]:
         'downsample': downsample(coords, stride=2),
         'coord_union': union_coords(coords[:3], coords[2:5]),
         'coord_intersection': intersection_coords(coords[:4], coords[2:]),
+        'coord_lookup': lookup_coords(coords, queries),
+        'coord_contains': contains_coords(coords, queries),
         'subm_sizes': subm_map.sizes,
         'subm_valid': mx.sum(subm_map.kernels >= 0),
         'subm_coords': subm.coords,

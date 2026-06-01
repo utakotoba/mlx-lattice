@@ -50,6 +50,22 @@ def test_sparse_tensor_reuses_explicit_coordinate_map():
     assert reused.inverse_map(x).tolist() == [0, 1]
 
 
+def test_sparse_tensor_queries_coordinate_rows():
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 1, 0, 0], [1, 0, 0, 0]],
+        dtype=mx.int32,
+    )
+    feats = mx.ones((3, 1), dtype=mx.float32)
+    x = SparseTensor(coords, feats)
+    queries = mx.array(
+        [[0, 1, 0, 0], [0, 2, 0, 0], [1, 0, 0, 0]],
+        dtype=mx.int32,
+    )
+
+    assert x.lookup_coords(queries).tolist() == [1, -1, 2]
+    assert x.contains_coords(queries).tolist() == [True, False, True]
+
+
 def test_sparse_tensor_replace_and_astype():
     coords = mx.array([[0, 0, 0, 0]], dtype=mx.int32)
     feats = mx.array([[1.0]], dtype=mx.float32)

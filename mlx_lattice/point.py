@@ -99,6 +99,10 @@ def lookup_coords(coords: mx.array, queries: mx.array) -> mx.array:
     return _place_coord_array(coords, _lookup_coords(coords, queries))
 
 
+def contains_coords(coords: mx.array, queries: mx.array) -> mx.array:
+    return lookup_coords(coords, queries) >= 0
+
+
 def inverse_map(source: mx.array, target: mx.array) -> mx.array:
     return lookup_coords(source, target)
 

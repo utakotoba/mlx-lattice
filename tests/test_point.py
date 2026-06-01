@@ -8,8 +8,10 @@ from mlx_lattice import (  # noqa: E402
     build_generative_map,
     build_kernel_map,
     build_transposed_kernel_map,
+    contains_coords,
     downsample,
     intersection_coords,
+    inverse_map,
     lookup_coords,
     union_coords,
 )
@@ -76,6 +78,20 @@ def test_lookup_coords_returns_rows_or_negative_one():
     )
 
     assert lookup_coords(coords, queries).tolist() == [1, -1, 2]
+
+
+def test_contains_coords_and_inverse_map_query_rows():
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 1, 0, 0], [1, 0, 0, 0]],
+        dtype=mx.int32,
+    )
+    queries = mx.array(
+        [[0, 1, 0, 0], [0, 2, 0, 0], [1, 0, 0, 0]],
+        dtype=mx.int32,
+    )
+
+    assert contains_coords(coords, queries).tolist() == [True, False, True]
+    assert inverse_map(coords, queries).tolist() == [1, -1, 2]
 
 
 def test_build_kernel_map_submanifold_k3s1():

@@ -7,7 +7,8 @@ from typing import cast
 import mlx.core as mx
 
 from mlx_lattice.coords import CoordinateManager, CoordinateMapKey
-from mlx_lattice.point import KernelMap, inverse_map
+from mlx_lattice.point import KernelMap, contains_coords, inverse_map
+from mlx_lattice.point import lookup_coords as lookup_coord_rows
 from mlx_lattice.types import Triple, triple
 
 
@@ -194,6 +195,12 @@ class SparseTensor:
                 self.coord_key, other.coord_key
             )
         return inverse_map(self.coords, other.coords)
+
+    def lookup_coords(self, queries: mx.array) -> mx.array:
+        return lookup_coord_rows(self.coords, queries)
+
+    def contains_coords(self, queries: mx.array) -> mx.array:
+        return contains_coords(self.coords, queries)
 
     def __add__(self, other: SparseTensor) -> SparseTensor:
         if not self.same_coords(other):
