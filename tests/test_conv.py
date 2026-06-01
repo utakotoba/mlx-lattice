@@ -6,6 +6,7 @@ mx = pytest.importorskip('mlx.core')
 
 from mlx_lattice import (  # noqa: E402
     SparseTensor,
+    avg_pool3d,
     conv3d,
     conv_transpose3d,
     generative_conv_transpose3d,
@@ -169,6 +170,20 @@ def test_max_pool3d_k3s1():
 
     assert out.coords.tolist() == coords.tolist()
     assert_allclose(out.feats, mx.array([[3.0], [3.0], [3.0]]))
+
+
+def test_avg_pool3d_k3s1():
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
+        dtype=mx.int32,
+    )
+    feats = mx.array([[1.0], [3.0], [2.0]], dtype=mx.float32)
+    x = SparseTensor(coords, feats)
+
+    out = avg_pool3d(x, kernel_size=3, stride=1)
+
+    assert out.coords.tolist() == coords.tolist()
+    assert_allclose(out.feats, mx.array([[2.0], [2.0], [2.5]]))
 
 
 def test_generative_conv_transpose3d_k2s2():

@@ -1,6 +1,7 @@
 from mlx_lattice import nn as nn
 from mlx_lattice._native import capabilities, version
 from mlx_lattice.nn import (
+    AvgPool3d,
     BatchNorm,
     Conv3d,
     ConvTranspose3d,
@@ -17,6 +18,8 @@ from mlx_lattice.nn import (
     SumPool3d,
 )
 from mlx_lattice.ops import (
+    average_pool3d,
+    avg_pool3d,
     cat,
     conv3d,
     conv_transpose3d,
@@ -29,6 +32,7 @@ from mlx_lattice.ops import (
     prune,
     relu,
     sigmoid,
+    sparse_avg_pool3d,
     sparse_collate,
     sparse_conv3d,
     sparse_max_pool3d,
@@ -46,6 +50,7 @@ from mlx_lattice.point import (
 from mlx_lattice.tensor import SparseTensor
 
 __all__ = [
+    'AvgPool3d',
     'BatchNorm',
     'Conv3d',
     'ConvTranspose3d',
@@ -62,6 +67,8 @@ __all__ = [
     'SparseLinear',
     'SparseTensor',
     'SumPool3d',
+    'average_pool3d',
+    'avg_pool3d',
     'build_generative_map',
     'build_kernel_map',
     'build_transposed_kernel_map',
@@ -80,6 +87,7 @@ __all__ = [
     'prune',
     'relu',
     'sigmoid',
+    'sparse_avg_pool3d',
     'sparse_collate',
     'sparse_conv3d',
     'sparse_max_pool3d',

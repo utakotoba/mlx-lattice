@@ -7,6 +7,7 @@ import mlx.core as mx
 import mlx.nn as nn
 
 from mlx_lattice.ops import (
+    avg_pool3d,
     conv3d,
     conv_transpose3d,
     generative_conv_transpose3d,
@@ -233,6 +234,26 @@ class MaxPool3d(nn.Module):
 
     def __call__(self, x: SparseTensor) -> SparseTensor:
         return max_pool3d(
+            x, kernel_size=self.kernel_size, stride=self.stride
+        )
+
+
+class AvgPool3d(nn.Module):
+    def __init__(
+        self,
+        kernel_size: int | Sequence[int] = 2,
+        stride: int | Sequence[int] | None = None,
+    ) -> None:
+        super().__init__()
+        self.kernel_size = triple(kernel_size, name='kernel_size')
+        self.stride = (
+            self.kernel_size
+            if stride is None
+            else triple(stride, name='stride')
+        )
+
+    def __call__(self, x: SparseTensor) -> SparseTensor:
+        return avg_pool3d(
             x, kernel_size=self.kernel_size, stride=self.stride
         )
 

@@ -23,6 +23,15 @@ def pool3d(
     op_stride = triple(stride, name='stride')
     mapping = x.kernel_map(kernel_size=kernel, stride=op_stride)
 
+    if mode == 'avg':
+        summed = pool3d(x, kernel_size=kernel, stride=op_stride, mode='sum')
+        counts = pool3d(
+            x.replace(feats=mx.ones((x.n_points, 1), dtype=x.feats.dtype)),
+            kernel_size=kernel,
+            stride=op_stride,
+            mode='sum',
+        )
+        return summed.replace(feats=summed.feats / counts.feats)
     if mode == 'max':
         feats = _max_pool3d_feats(
             x.feats,
@@ -32,7 +41,7 @@ def pool3d(
         )
         return _pooled_tensor(x, mapping.out_coords, feats, op_stride)
     if mode != 'sum':
-        raise ValueError("pool mode must be 'sum' or 'max'.")
+        raise ValueError("pool mode must be 'sum', 'max', or 'avg'.")
 
     if mapping.center >= 0:
         volume = len(kernel_offsets(kernel))
@@ -59,6 +68,15 @@ def max_pool3d(
     stride: int | Sequence[int] = 2,
 ) -> SparseTensor:
     return pool3d(x, kernel_size=kernel_size, stride=stride, mode='max')
+
+
+def avg_pool3d(
+    x: SparseTensor,
+    *,
+    kernel_size: int | Sequence[int] = 2,
+    stride: int | Sequence[int] = 2,
+) -> SparseTensor:
+    return pool3d(x, kernel_size=kernel_size, stride=stride, mode='avg')
 
 
 def _pooled_tensor(
