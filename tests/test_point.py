@@ -100,6 +100,25 @@ def test_build_kernel_map_stride_two_pooling():
     assert len(mapping.offsets) == 8
 
 
+def test_build_kernel_map_supports_padding():
+    coords = mx.array(
+        [
+            [0, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 2, 0, 0],
+        ],
+        dtype=mx.int32,
+    )
+
+    mapping = build_kernel_map(
+        coords, kernel_size=1, stride=1, padding=(1, 0, 0)
+    )
+
+    assert mapping.out_coords.tolist() == coords.tolist()
+    assert mapping.maps.tolist() == [[0, 1], [1, 2]]
+    assert mapping.kernels.tolist() == [0, 0]
+
+
 def test_build_generative_map_k2s2():
     coords = mx.array([[0, 1, 2, 3]], dtype=mx.int32)
 

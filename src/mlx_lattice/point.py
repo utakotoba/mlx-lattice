@@ -74,6 +74,7 @@ def build_kernel_map(
     coords: mx.array,
     kernel_size: int | Sequence[int] = 3,
     stride: int | Sequence[int] = 1,
+    padding: int | Sequence[int] = 0,
 ) -> KernelMap:
     if coords.ndim != 2 or coords.shape[1] != 4:
         raise ValueError('coords must have shape (N, 4).')
@@ -82,8 +83,11 @@ def build_kernel_map(
 
     kernel = triple(kernel_size, name='kernel_size')
     step = triple(stride, name='stride')
+    pad = triple(padding, name='padding')
     if any(value <= 0 for value in step):
         raise ValueError('stride values must be positive.')
+    if any(value < 0 for value in pad):
+        raise ValueError('padding values must be non-negative.')
 
     (
         maps,
@@ -94,7 +98,7 @@ def build_kernel_map(
         residual_offsets,
         out_coords,
         offset_values,
-    ) = _build_kernel_map(coords, kernel, step)
+    ) = _build_kernel_map(coords, kernel, step, pad)
     offsets = _offsets_from_array(offset_values)
     (
         maps,

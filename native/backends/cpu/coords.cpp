@@ -193,15 +193,19 @@ mx::array downsample_coords(const mx::array& coords, Triple stride) {
     );
 }
 
-KernelMapData
-build_kernel_map(const mx::array& coords, Triple kernel_size, Triple stride) {
+KernelMapData build_kernel_map(
+    const mx::array& coords,
+    Triple kernel_size,
+    Triple stride,
+    Triple padding
+) {
     auto offsets = mlx_lattice::kernel_offsets(kernel_size);
     auto values = read_coords(coords);
     if (values.empty()) {
         return make_empty_map(coords, offsets);
     }
 
-    bool unit_stride = stride == Triple{1, 1, 1};
+    bool unit_stride = stride == Triple{1, 1, 1} && padding == Triple{0, 0, 0};
     auto out = unit_stride ? values : downsample_values(values, stride);
 
     Coord offset_min = {
@@ -222,15 +226,15 @@ build_kernel_map(const mx::array& coords, Triple kernel_size, Triple stride) {
     for (auto coord : out) {
         Coord low = {
             coord[0],
-            coord[1] * stride[0] + offset_min[1],
-            coord[2] * stride[1] + offset_min[2],
-            coord[3] * stride[2] + offset_min[3],
+            coord[1] * stride[0] + offset_min[1] - padding[0],
+            coord[2] * stride[1] + offset_min[2] - padding[1],
+            coord[3] * stride[2] + offset_min[3] - padding[2],
         };
         Coord high = {
             coord[0],
-            coord[1] * stride[0] + offset_max[1],
-            coord[2] * stride[1] + offset_max[2],
-            coord[3] * stride[2] + offset_max[3],
+            coord[1] * stride[0] + offset_max[1] - padding[0],
+            coord[2] * stride[1] + offset_max[2] - padding[1],
+            coord[3] * stride[2] + offset_max[3] - padding[2],
         };
         for (int axis = 0; axis < 4; ++axis) {
             mins[axis] = std::min(mins[axis], low[axis]);
@@ -289,9 +293,9 @@ build_kernel_map(const mx::array& coords, Triple kernel_size, Triple stride) {
             } else {
                 Coord candidate = {
                     out[out_row][0],
-                    out[out_row][1] * stride[0] + offset[0],
-                    out[out_row][2] * stride[1] + offset[1],
-                    out[out_row][3] * stride[2] + offset[2],
+                    out[out_row][1] * stride[0] + offset[0] - padding[0],
+                    out[out_row][2] * stride[1] + offset[1] - padding[1],
+                    out[out_row][3] * stride[2] + offset[2] - padding[2],
                 };
                 key = encode(candidate, mins, dims);
             }

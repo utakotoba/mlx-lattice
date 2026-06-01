@@ -51,6 +51,21 @@ def test_conv3d_k1s1_uses_pointwise_path():
     assert_allclose(out.feats, mx.array([[9.0], [19.0]], dtype=mx.float32))
 
 
+def test_conv3d_padding_shifts_sparse_window():
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
+        dtype=mx.int32,
+    )
+    feats = mx.array([[1.0], [2.0], [3.0]], dtype=mx.float32)
+    weight = mx.ones((1, 1, 1), dtype=mx.float32)
+    x = SparseTensor(coords, feats)
+
+    out = conv3d(x, weight, kernel_size=1, stride=1, padding=(1, 0, 0))
+
+    assert out.coords.tolist() == coords.tolist()
+    assert_allclose(out.feats, mx.array([[0.0], [1.0], [2.0]]))
+
+
 def test_conv3d_k3s1_neighbor_sum():
     coords = mx.array(
         [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],

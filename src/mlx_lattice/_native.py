@@ -33,6 +33,7 @@ def build_kernel_map(
     coords: mx.array,
     kernel_size: tuple[int, int, int],
     stride: tuple[int, int, int],
+    padding: tuple[int, int, int],
 ) -> tuple[
     mx.array,
     mx.array,
@@ -43,7 +44,7 @@ def build_kernel_map(
     mx.array,
     mx.array,
 ]:
-    return _ext().build_kernel_map(coords, *kernel_size, *stride)
+    return _ext().build_kernel_map(coords, *kernel_size, *stride, *padding)
 
 
 def build_generative_map(

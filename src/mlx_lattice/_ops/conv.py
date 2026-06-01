@@ -30,15 +30,14 @@ def conv3d(
         raise NotImplementedError(
             'transposed sparse conv is not implemented.'
         )
-    if triple(padding, name='padding') != (0, 0, 0):
-        raise NotImplementedError(
-            'sparse conv currently supports padding=0.'
-        )
     if triple(dilation, name='dilation') != (1, 1, 1):
         raise NotImplementedError(
             'sparse conv currently supports dilation=1.'
         )
     kernel = triple(kernel_size, name='kernel_size')
+    pad = triple(padding, name='padding')
+    if any(value < 0 for value in pad):
+        raise ValueError('padding values must be non-negative.')
     weight = _normalize_weight(weight, kernel, weight_layout)
     if weight.dtype != mx.float32 or x.feats.dtype != mx.float32:
         raise ValueError('conv3d currently supports float32 tensors.')
@@ -48,7 +47,7 @@ def conv3d(
         )
 
     op_stride = triple(stride, name='stride')
-    if op_stride == (1, 1, 1) and kernel == (1, 1, 1):
+    if op_stride == (1, 1, 1) and kernel == (1, 1, 1) and pad == (0, 0, 0):
         feats = x.feats @ weight[0]
         if bias is not None:
             if bias.ndim != 1 or bias.shape[0] != weight.shape[2]:
@@ -56,7 +55,9 @@ def conv3d(
             feats = feats + bias
         return x.replace(feats=feats)
 
-    mapping = x.kernel_map(kernel_size=kernel, stride=op_stride)
+    mapping = x.kernel_map(
+        kernel_size=kernel, stride=op_stride, padding=pad
+    )
     if weight.shape[0] != len(mapping.offsets):
         raise ValueError(
             'weight kernel dimension does not match kernel_size.'

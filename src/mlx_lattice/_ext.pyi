@@ -18,6 +18,9 @@ def build_kernel_map(
     sx: int,
     sy: int,
     sz: int,
+    px: int,
+    py: int,
+    pz: int,
 ) -> tuple[
     mx.array,
     mx.array,

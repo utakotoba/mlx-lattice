@@ -30,6 +30,16 @@ void validate_positive(Triple values, const char* name) {
     }
 }
 
+void validate_nonnegative(Triple values, const char* name) {
+    for (auto value : values) {
+        if (value < 0) {
+            throw std::invalid_argument(
+                std::string(name) + " values must be non-negative."
+            );
+        }
+    }
+}
+
 bool has_center_offset(Triple kernel_size) {
     for (auto size : kernel_size) {
         if (size % 2 == 0) {
@@ -81,15 +91,21 @@ mx::array downsample_coords(const mx::array& coords, Triple stride) {
     return cpu::downsample_coords(coords, stride);
 }
 
-KernelMapData
-build_kernel_map(const mx::array& coords, Triple kernel_size, Triple stride) {
+KernelMapData build_kernel_map(
+    const mx::array& coords,
+    Triple kernel_size,
+    Triple stride,
+    Triple padding
+) {
     validate_coords(coords);
     validate_positive(stride, "stride");
-    if (stride == Triple{1, 1, 1} && has_center_offset(kernel_size) &&
-        coords.dtype() == mx::int32 && has_gpu_coordinate_backend()) {
+    validate_nonnegative(padding, "padding");
+    if (stride == Triple{1, 1, 1} && padding == Triple{0, 0, 0} &&
+        has_center_offset(kernel_size) && coords.dtype() == mx::int32 &&
+        has_gpu_coordinate_backend()) {
         return build_gpu_subm_kernel_map(coords, kernel_size);
     }
-    return cpu::build_kernel_map(coords, kernel_size, stride);
+    return cpu::build_kernel_map(coords, kernel_size, stride, padding);
 }
 
 KernelMapData build_generative_map(

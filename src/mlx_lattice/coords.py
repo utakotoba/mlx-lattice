@@ -22,9 +22,9 @@ class CoordinateManager:
     _coord_keys: dict[tuple[int, Triple], CoordinateMapKey] = field(
         default_factory=dict
     )
-    _maps: dict[tuple[CoordinateMapKey, Triple, Triple], KernelMap] = field(
-        default_factory=dict
-    )
+    _maps: dict[
+        tuple[CoordinateMapKey, Triple, Triple, Triple], KernelMap
+    ] = field(default_factory=dict)
 
     def insert(
         self,
@@ -51,12 +51,17 @@ class CoordinateManager:
         *,
         kernel_size: int | Sequence[int] = 3,
         stride: int | Sequence[int] = 1,
+        padding: int | Sequence[int] = 0,
     ) -> KernelMap:
         kernel = triple(kernel_size, name='kernel_size')
         step = triple(stride, name='stride')
-        cache_key = (key, kernel, step)
+        pad = triple(padding, name='padding')
+        cache_key = (key, kernel, step, pad)
         if cache_key not in self._maps:
             self._maps[cache_key] = build_kernel_map(
-                self.coords(key), kernel_size=kernel, stride=step
+                self.coords(key),
+                kernel_size=kernel,
+                stride=step,
+                padding=pad,
             )
         return self._maps[cache_key]
