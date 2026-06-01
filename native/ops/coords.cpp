@@ -20,6 +20,16 @@ void validate_coords(const mx::array& coords) {
     }
 }
 
+void validate_coord_pair(const mx::array& lhs, const mx::array& rhs) {
+    validate_coords(lhs);
+    validate_coords(rhs);
+    if (lhs.dtype() != rhs.dtype()) {
+        throw std::invalid_argument(
+            "coordinate arrays must have matching dtype."
+        );
+    }
+}
+
 void validate_positive(Triple values, const char* name) {
     for (auto value : values) {
         if (value <= 0) {
@@ -96,6 +106,21 @@ mx::array downsample_coords(const mx::array& coords, Triple stride) {
     validate_coords(coords);
     validate_positive(stride, "stride");
     return cpu::downsample_coords(coords, stride);
+}
+
+mx::array union_coords(const mx::array& lhs, const mx::array& rhs) {
+    validate_coord_pair(lhs, rhs);
+    return cpu::union_coords(lhs, rhs);
+}
+
+mx::array intersection_coords(const mx::array& lhs, const mx::array& rhs) {
+    validate_coord_pair(lhs, rhs);
+    return cpu::intersection_coords(lhs, rhs);
+}
+
+mx::array lookup_coords(const mx::array& coords, const mx::array& queries) {
+    validate_coord_pair(coords, queries);
+    return cpu::lookup_coords(coords, queries);
 }
 
 KernelMapData build_kernel_map(

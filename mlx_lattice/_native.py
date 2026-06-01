@@ -44,6 +44,18 @@ def downsample_coords(
     return _ext().downsample_coords(coords, *stride)
 
 
+def union_coords(lhs: mx.array, rhs: mx.array) -> mx.array:
+    return _ext().union_coords(lhs, rhs)
+
+
+def intersection_coords(lhs: mx.array, rhs: mx.array) -> mx.array:
+    return _ext().intersection_coords(lhs, rhs)
+
+
+def lookup_coords(coords: mx.array, queries: mx.array) -> mx.array:
+    return _ext().lookup_coords(coords, queries)
+
+
 def build_kernel_map(
     coords: mx.array,
     kernel_size: tuple[int, int, int],

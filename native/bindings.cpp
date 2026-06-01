@@ -87,6 +87,16 @@ NB_MODULE(_ext, m) {
         "sy"_a,
         "sz"_a
     );
+    m.def("union_coords", &mlx_lattice::union_coords, "lhs"_a, "rhs"_a);
+    m.def(
+        "intersection_coords",
+        &mlx_lattice::intersection_coords,
+        "lhs"_a,
+        "rhs"_a
+    );
+    m.def(
+        "lookup_coords", &mlx_lattice::lookup_coords, "coords"_a, "queries"_a
+    );
     m.def(
         "build_kernel_map",
         [](const mlx_lattice::mx::array& coords,

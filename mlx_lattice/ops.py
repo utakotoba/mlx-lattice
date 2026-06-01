@@ -16,9 +16,11 @@ from mlx_lattice._ops.pool import (
     pool3d,
 )
 from mlx_lattice._ops.tensor import cat, prune, sparse_collate, topk_rows
-from mlx_lattice.point import downsample
+from mlx_lattice.point import downsample, intersection_coords, union_coords
 
 spdownsample = downsample
+sparse_coord_intersection = intersection_coords
+sparse_coord_union = union_coords
 sparse_conv3d = conv3d
 average_pool3d = avg_pool3d
 generic_sparse_conv_transpose3d = conv_transpose3d
@@ -41,6 +43,7 @@ __all__ = [
     'global_max_pool',
     'global_pool',
     'global_sum_pool',
+    'intersection_coords',
     'linear',
     'max_pool3d',
     'pool3d',
@@ -50,8 +53,11 @@ __all__ = [
     'sparse_avg_pool3d',
     'sparse_collate',
     'sparse_conv3d',
+    'sparse_coord_intersection',
+    'sparse_coord_union',
     'sparse_max_pool3d',
     'sparse_pool3d',
     'spdownsample',
     'topk_rows',
+    'union_coords',
 ]

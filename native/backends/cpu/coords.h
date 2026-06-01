@@ -6,6 +6,12 @@ namespace mlx_lattice::cpu {
 
 mx::array downsample_coords(const mx::array& coords, Triple stride);
 
+mx::array union_coords(const mx::array& lhs, const mx::array& rhs);
+
+mx::array intersection_coords(const mx::array& lhs, const mx::array& rhs);
+
+mx::array lookup_coords(const mx::array& coords, const mx::array& queries);
+
 KernelMapData build_kernel_map(
     const mx::array& coords,
     Triple kernel_size,

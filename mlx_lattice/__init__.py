@@ -54,6 +54,10 @@ from mlx_lattice.point import (
     build_kernel_map,
     build_transposed_kernel_map,
     downsample,
+    intersection_coords,
+    inverse_map,
+    lookup_coords,
+    union_coords,
 )
 from mlx_lattice.tensor import SparseTensor
 
@@ -96,7 +100,10 @@ __all__ = [
     'global_max_pool',
     'global_pool',
     'global_sum_pool',
+    'intersection_coords',
+    'inverse_map',
     'linear',
+    'lookup_coords',
     'max_pool3d',
     'nn',
     'pool3d',
@@ -110,5 +117,6 @@ __all__ = [
     'sparse_pool3d',
     'spdownsample',
     'topk_rows',
+    'union_coords',
     'version',
 ]

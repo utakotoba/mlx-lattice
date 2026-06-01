@@ -18,6 +18,11 @@ from mlx_lattice._native import (
 from mlx_lattice._native import (
     downsample_coords as _downsample_coords,
 )
+from mlx_lattice._native import (
+    intersection_coords as _intersection_coords,
+)
+from mlx_lattice._native import lookup_coords as _lookup_coords
+from mlx_lattice._native import union_coords as _union_coords
 from mlx_lattice.types import Triple, triple
 
 
@@ -77,6 +82,25 @@ def downsample(
     if any(value <= 0 for value in step):
         raise ValueError('stride values must be positive.')
     return _downsample_coords(coords, step)
+
+
+def union_coords(lhs: mx.array, rhs: mx.array) -> mx.array:
+    _validate_coord_pair(lhs, rhs)
+    return _place_coord_array(lhs, _union_coords(lhs, rhs))
+
+
+def intersection_coords(lhs: mx.array, rhs: mx.array) -> mx.array:
+    _validate_coord_pair(lhs, rhs)
+    return _place_coord_array(lhs, _intersection_coords(lhs, rhs))
+
+
+def lookup_coords(coords: mx.array, queries: mx.array) -> mx.array:
+    _validate_coord_pair(coords, queries)
+    return _place_coord_array(coords, _lookup_coords(coords, queries))
+
+
+def inverse_map(source: mx.array, target: mx.array) -> mx.array:
+    return lookup_coords(source, target)
 
 
 def build_kernel_map(
@@ -264,6 +288,24 @@ def build_transposed_kernel_map(
 def _offsets_from_array(values: mx.array) -> tuple[Triple, ...]:
     rows = cast(list[list[int]], values.tolist())
     return tuple((int(row[0]), int(row[1]), int(row[2])) for row in rows)
+
+
+def _validate_coords(coords: mx.array, *, name: str = 'coords') -> None:
+    if coords.ndim != 2 or coords.shape[1] != 4:
+        raise ValueError(f'{name} must have shape (N, 4).')
+    if coords.dtype not in (mx.int32, mx.int64):
+        raise ValueError(f'{name} must be int32 or int64.')
+
+
+def _validate_coord_pair(lhs: mx.array, rhs: mx.array) -> None:
+    _validate_coords(lhs, name='lhs')
+    _validate_coords(rhs, name='rhs')
+    if lhs.dtype != rhs.dtype:
+        raise ValueError('coordinate arrays must have matching dtype.')
+
+
+def _place_coord_array(coords: mx.array, values: mx.array) -> mx.array:
+    return _place_cached_map_arrays(coords, values)[0]
 
 
 def _place_cached_map_arrays(

@@ -9,6 +9,9 @@ from mlx_lattice import (  # noqa: E402
     build_kernel_map,
     build_transposed_kernel_map,
     downsample,
+    intersection_coords,
+    lookup_coords,
+    union_coords,
 )
 
 
@@ -39,6 +42,40 @@ def test_downsample_supports_anisotropic_stride():
 
     assert out.dtype == mx.int64
     assert out.tolist() == [[0, 2, 2, 2]]
+
+
+def test_union_and_intersection_coords_preserve_order():
+    lhs = mx.array(
+        [[0, 0, 0, 0], [0, 1, 0, 0], [0, 1, 0, 0]],
+        dtype=mx.int32,
+    )
+    rhs = mx.array(
+        [[0, 1, 0, 0], [0, 2, 0, 0], [0, 0, 0, 0]],
+        dtype=mx.int32,
+    )
+
+    union = union_coords(lhs, rhs)
+    intersection = intersection_coords(lhs, rhs)
+
+    assert union.tolist() == [
+        [0, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 2, 0, 0],
+    ]
+    assert intersection.tolist() == [[0, 0, 0, 0], [0, 1, 0, 0]]
+
+
+def test_lookup_coords_returns_rows_or_negative_one():
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 1, 0, 0], [1, 0, 0, 0]],
+        dtype=mx.int32,
+    )
+    queries = mx.array(
+        [[0, 1, 0, 0], [0, 2, 0, 0], [1, 0, 0, 0]],
+        dtype=mx.int32,
+    )
+
+    assert lookup_coords(coords, queries).tolist() == [1, -1, 2]
 
 
 def test_build_kernel_map_submanifold_k3s1():

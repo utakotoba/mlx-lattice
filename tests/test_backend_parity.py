@@ -15,11 +15,13 @@ from mlx_lattice import (  # noqa: E402
     conv3d,
     downsample,
     generative_conv_transpose3d,
+    intersection_coords,
     pool3d,
     prune,
     relu,
     sigmoid,
     topk_rows,
+    union_coords,
 )
 
 
@@ -132,6 +134,8 @@ def _collect_surface(coord_dtype: mx.Dtype) -> dict[str, Any]:
 
     values = {
         'downsample': downsample(coords, stride=2),
+        'coord_union': union_coords(coords[:3], coords[2:5]),
+        'coord_intersection': intersection_coords(coords[:4], coords[2:]),
         'subm_sizes': subm_map.sizes,
         'subm_valid': mx.sum(subm_map.kernels >= 0),
         'subm_coords': subm.coords,

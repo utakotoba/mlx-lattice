@@ -194,6 +194,67 @@ mx::array downsample_coords(const mx::array& coords, Triple stride) {
     );
 }
 
+mx::array union_coords(const mx::array& lhs, const mx::array& rhs) {
+    auto lhs_values = read_coords(lhs);
+    auto rhs_values = read_coords(rhs);
+    std::vector<Coord> out;
+    out.reserve(lhs_values.size() + rhs_values.size());
+    std::unordered_set<Coord, CoordHash> seen;
+    seen.reserve(lhs_values.size() + rhs_values.size());
+
+    for (auto coord : lhs_values) {
+        if (seen.insert(coord).second) {
+            out.push_back(coord);
+        }
+    }
+    for (auto coord : rhs_values) {
+        if (seen.insert(coord).second) {
+            out.push_back(coord);
+        }
+    }
+    return make_coords_array(out, lhs.dtype());
+}
+
+mx::array intersection_coords(const mx::array& lhs, const mx::array& rhs) {
+    auto lhs_values = read_coords(lhs);
+    auto rhs_values = read_coords(rhs);
+    std::unordered_set<Coord, CoordHash> rhs_seen;
+    rhs_seen.reserve(rhs_values.size());
+    for (auto coord : rhs_values) {
+        rhs_seen.insert(coord);
+    }
+
+    std::vector<Coord> out;
+    out.reserve(std::min(lhs_values.size(), rhs_values.size()));
+    std::unordered_set<Coord, CoordHash> emitted;
+    emitted.reserve(lhs_values.size());
+    for (auto coord : lhs_values) {
+        if (rhs_seen.find(coord) != rhs_seen.end() &&
+            emitted.insert(coord).second) {
+            out.push_back(coord);
+        }
+    }
+    return make_coords_array(out, lhs.dtype());
+}
+
+mx::array lookup_coords(const mx::array& coords, const mx::array& queries) {
+    auto coord_values = read_coords(coords);
+    auto query_values = read_coords(queries);
+    std::unordered_map<Coord, int32_t, CoordHash> rows;
+    rows.reserve(coord_values.size());
+    for (int row = 0; row < int(coord_values.size()); ++row) {
+        rows.emplace(coord_values[row], static_cast<int32_t>(row));
+    }
+
+    std::vector<int32_t> out;
+    out.reserve(query_values.size());
+    for (auto coord : query_values) {
+        auto match = rows.find(coord);
+        out.push_back(match == rows.end() ? -1 : match->second);
+    }
+    return make_i32_array(out, mx::Shape{int(out.size())});
+}
+
 KernelMapData build_kernel_map(
     const mx::array& coords,
     Triple kernel_size,
