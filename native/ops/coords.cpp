@@ -3,12 +3,7 @@
 #include <stdexcept>
 
 #include "backends/cpu/coords.h"
-#if MLX_LATTICE_HAS_CUDA
-#include "backends/cuda/coords.h"
-#include "mlx/backend/cuda/cuda.h"
-#endif
-#include "backends/metal/coords.h"
-#include "mlx/device.h"
+#include "ops/coords/dispatch.h"
 
 namespace mlx_lattice {
 
@@ -42,50 +37,6 @@ bool has_center_offset(Triple kernel_size) {
         }
     }
     return true;
-}
-
-bool has_gpu_backend() {
-#if MLX_LATTICE_HAS_CUDA
-    if (mx::cu::is_available()) {
-        return true;
-    }
-#endif
-#if MLX_LATTICE_HAS_METAL
-    return mx::is_available(mx::Device::gpu);
-#else
-    return false;
-#endif
-}
-
-KernelMapData
-build_gpu_subm_kernel_map(const mx::array& coords, Triple kernel_size) {
-#if MLX_LATTICE_HAS_CUDA
-    if (mx::cu::is_available()) {
-        return cuda::build_subm_kernel_map(coords, kernel_size);
-    }
-#endif
-#if MLX_LATTICE_HAS_METAL
-    return metal::build_subm_kernel_map(coords, kernel_size);
-#else
-    throw std::runtime_error("No GPU coordinate backend is available.");
-#endif
-}
-
-KernelMapData build_gpu_generative_map(
-    const mx::array& coords,
-    Triple kernel_size,
-    Triple stride
-) {
-#if MLX_LATTICE_HAS_CUDA
-    if (mx::cu::is_available()) {
-        return cuda::build_generative_map(coords, kernel_size, stride);
-    }
-#endif
-#if MLX_LATTICE_HAS_METAL
-    return metal::build_generative_map(coords, kernel_size, stride);
-#else
-    throw std::runtime_error("No GPU coordinate backend is available.");
-#endif
 }
 
 } // namespace
@@ -135,7 +86,7 @@ build_kernel_map(const mx::array& coords, Triple kernel_size, Triple stride) {
     validate_coords(coords);
     validate_positive(stride, "stride");
     if (stride == Triple{1, 1, 1} && has_center_offset(kernel_size) &&
-        coords.dtype() == mx::int32 && has_gpu_backend()) {
+        coords.dtype() == mx::int32 && has_gpu_coordinate_backend()) {
         return build_gpu_subm_kernel_map(coords, kernel_size);
     }
     return cpu::build_kernel_map(coords, kernel_size, stride);
@@ -150,7 +101,7 @@ KernelMapData build_generative_map(
     validate_positive(kernel_size, "kernel_size");
     validate_positive(stride, "stride");
     if (kernel_size == stride && coords.dtype() == mx::int32 &&
-        has_gpu_backend()) {
+        has_gpu_coordinate_backend()) {
         return build_gpu_generative_map(coords, kernel_size, stride);
     }
     return cpu::build_generative_map(coords, kernel_size, stride);

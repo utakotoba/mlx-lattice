@@ -69,7 +69,11 @@ target_sources(
     ${CMAKE_CURRENT_LIST_DIR}/native/backends/metal/conv3d.cpp
     ${CMAKE_CURRENT_LIST_DIR}/native/backends/metal/coords.cpp
     ${CMAKE_CURRENT_LIST_DIR}/native/ops/conv3d.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/native/ops/conv3d/dispatch.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/native/ops/conv3d/primitives.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/native/ops/conv3d/validation.cpp
     ${CMAKE_CURRENT_LIST_DIR}/native/ops/coords.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/native/ops/coords/dispatch.cpp
     ${CMAKE_CURRENT_LIST_DIR}/native/lattice/runtime.cpp)
 target_include_directories(
   mlx_lattice_native
