@@ -21,6 +21,9 @@ def build_kernel_map(
     px: int,
     py: int,
     pz: int,
+    dx: int,
+    dy: int,
+    dz: int,
 ) -> tuple[
     mx.array,
     mx.array,

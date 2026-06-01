@@ -37,8 +37,14 @@ class KernelMap:
             return -1
 
 
-def kernel_offsets(kernel_size: int | Sequence[int]) -> tuple[Triple, ...]:
+def kernel_offsets(
+    kernel_size: int | Sequence[int],
+    dilation: int | Sequence[int] = 1,
+) -> tuple[Triple, ...]:
     axes = []
+    rates = triple(dilation, name='dilation')
+    if any(value <= 0 for value in rates):
+        raise ValueError('dilation values must be positive.')
     for size in triple(kernel_size, name='kernel_size'):
         if size <= 0:
             raise ValueError('kernel_size values must be positive.')
@@ -48,7 +54,7 @@ def kernel_offsets(kernel_size: int | Sequence[int]) -> tuple[Triple, ...]:
         else:
             axes.append(range(size))
     return tuple(
-        (int(x), int(y), int(z))
+        (int(x * rates[0]), int(y * rates[1]), int(z * rates[2]))
         for x in axes[0]
         for y in axes[1]
         for z in axes[2]
@@ -75,6 +81,7 @@ def build_kernel_map(
     kernel_size: int | Sequence[int] = 3,
     stride: int | Sequence[int] = 1,
     padding: int | Sequence[int] = 0,
+    dilation: int | Sequence[int] = 1,
 ) -> KernelMap:
     if coords.ndim != 2 or coords.shape[1] != 4:
         raise ValueError('coords must have shape (N, 4).')
@@ -84,10 +91,13 @@ def build_kernel_map(
     kernel = triple(kernel_size, name='kernel_size')
     step = triple(stride, name='stride')
     pad = triple(padding, name='padding')
+    rate = triple(dilation, name='dilation')
     if any(value <= 0 for value in step):
         raise ValueError('stride values must be positive.')
     if any(value < 0 for value in pad):
         raise ValueError('padding values must be non-negative.')
+    if any(value <= 0 for value in rate):
+        raise ValueError('dilation values must be positive.')
 
     (
         maps,
@@ -98,7 +108,7 @@ def build_kernel_map(
         residual_offsets,
         out_coords,
         offset_values,
-    ) = _build_kernel_map(coords, kernel, step, pad)
+    ) = _build_kernel_map(coords, kernel, step, pad, rate)
     offsets = _offsets_from_array(offset_values)
     (
         maps,

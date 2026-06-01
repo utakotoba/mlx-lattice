@@ -66,6 +66,21 @@ def test_conv3d_padding_shifts_sparse_window():
     assert_allclose(out.feats, mx.array([[0.0], [1.0], [2.0]]))
 
 
+def test_conv3d_dilation_expands_sparse_window():
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 2, 0, 0], [0, 4, 0, 0]],
+        dtype=mx.int32,
+    )
+    feats = mx.array([[1.0], [2.0], [3.0]], dtype=mx.float32)
+    weight = mx.ones((27, 1, 1), dtype=mx.float32)
+    x = SparseTensor(coords, feats)
+
+    out = conv3d(x, weight, kernel_size=3, stride=1, dilation=(2, 1, 1))
+
+    assert out.coords.tolist() == coords.tolist()
+    assert_allclose(out.feats, mx.array([[3.0], [6.0], [5.0]]))
+
+
 def test_conv3d_k3s1_neighbor_sum():
     coords = mx.array(
         [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],

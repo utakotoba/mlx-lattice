@@ -10,7 +10,8 @@ KernelMapData build_kernel_map(
     const mx::array& coords,
     Triple kernel_size,
     Triple stride,
-    Triple padding
+    Triple padding,
+    Triple dilation
 );
 
 KernelMapData build_generative_map(

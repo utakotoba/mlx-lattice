@@ -54,7 +54,12 @@ bool has_center_offset(Triple kernel_size) {
 // MARK: - helpers
 
 std::vector<Triple> kernel_offsets(Triple kernel_size) {
+    return kernel_offsets(kernel_size, {1, 1, 1});
+}
+
+std::vector<Triple> kernel_offsets(Triple kernel_size, Triple dilation) {
     validate_positive(kernel_size, "kernel_size");
+    validate_positive(dilation, "dilation");
 
     std::array<std::vector<int>, 3> axes;
     for (int axis = 0; axis < 3; ++axis) {
@@ -76,7 +81,9 @@ std::vector<Triple> kernel_offsets(Triple kernel_size) {
     for (auto x : axes[0]) {
         for (auto y : axes[1]) {
             for (auto z : axes[2]) {
-                offsets.push_back({x, y, z});
+                offsets.push_back(
+                    {x * dilation[0], y * dilation[1], z * dilation[2]}
+                );
             }
         }
     }
@@ -95,17 +102,21 @@ KernelMapData build_kernel_map(
     const mx::array& coords,
     Triple kernel_size,
     Triple stride,
-    Triple padding
+    Triple padding,
+    Triple dilation
 ) {
     validate_coords(coords);
     validate_positive(stride, "stride");
     validate_nonnegative(padding, "padding");
+    validate_positive(dilation, "dilation");
     if (stride == Triple{1, 1, 1} && padding == Triple{0, 0, 0} &&
-        has_center_offset(kernel_size) && coords.dtype() == mx::int32 &&
-        has_gpu_coordinate_backend()) {
+        dilation == Triple{1, 1, 1} && has_center_offset(kernel_size) &&
+        coords.dtype() == mx::int32 && has_gpu_coordinate_backend()) {
         return build_gpu_subm_kernel_map(coords, kernel_size);
     }
-    return cpu::build_kernel_map(coords, kernel_size, stride, padding);
+    return cpu::build_kernel_map(
+        coords, kernel_size, stride, padding, dilation
+    );
 }
 
 KernelMapData build_generative_map(

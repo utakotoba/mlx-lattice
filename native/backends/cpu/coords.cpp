@@ -197,9 +197,10 @@ KernelMapData build_kernel_map(
     const mx::array& coords,
     Triple kernel_size,
     Triple stride,
-    Triple padding
+    Triple padding,
+    Triple dilation
 ) {
-    auto offsets = mlx_lattice::kernel_offsets(kernel_size);
+    auto offsets = mlx_lattice::kernel_offsets(kernel_size, dilation);
     auto values = read_coords(coords);
     if (values.empty()) {
         return make_empty_map(coords, offsets);

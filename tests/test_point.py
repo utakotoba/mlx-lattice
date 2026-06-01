@@ -119,6 +119,25 @@ def test_build_kernel_map_supports_padding():
     assert mapping.kernels.tolist() == [0, 0]
 
 
+def test_build_kernel_map_supports_dilation():
+    coords = mx.array(
+        [
+            [0, 0, 0, 0],
+            [0, 2, 0, 0],
+            [0, 4, 0, 0],
+        ],
+        dtype=mx.int32,
+    )
+
+    mapping = build_kernel_map(
+        coords, kernel_size=3, stride=1, dilation=(2, 1, 1)
+    )
+
+    assert mapping.out_coords.tolist() == coords.tolist()
+    assert mapping.offsets[13] == (0, 0, 0)
+    assert sum(int(v) for v in cast(list[int], mapping.sizes.tolist())) == 7
+
+
 def test_build_generative_map_k2s2():
     coords = mx.array([[0, 1, 2, 3]], dtype=mx.int32)
 

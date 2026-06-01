@@ -88,9 +88,12 @@ NB_MODULE(_ext, m) {
            int sz,
            int px,
            int py,
-           int pz) {
+           int pz,
+           int dx,
+           int dy,
+           int dz) {
             auto out = mlx_lattice::build_kernel_map(
-                coords, {kx, ky, kz}, {sx, sy, sz}, {px, py, pz}
+                coords, {kx, ky, kz}, {sx, sy, sz}, {px, py, pz}, {dx, dy, dz}
             );
             return nb::make_tuple(
                 out.maps,
@@ -112,7 +115,10 @@ NB_MODULE(_ext, m) {
         "sz"_a,
         "px"_a,
         "py"_a,
-        "pz"_a
+        "pz"_a,
+        "dx"_a,
+        "dy"_a,
+        "dz"_a
     );
     m.def(
         "build_generative_map",

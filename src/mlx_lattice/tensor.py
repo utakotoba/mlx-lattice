@@ -19,7 +19,7 @@ class SparseTensor:
     coord_key: CoordinateMapKey | None = None
     coord_manager: CoordinateManager | None = None
     batch_counts: tuple[int, ...] | None = None
-    _maps: dict[tuple[Triple, Triple, Triple], KernelMap] = field(
+    _maps: dict[tuple[Triple, Triple, Triple, Triple], KernelMap] = field(
         default_factory=dict,
         init=False,
         repr=False,
@@ -110,11 +110,13 @@ class SparseTensor:
         kernel_size: int | Sequence[int] = 3,
         stride: int | Sequence[int] = 1,
         padding: int | Sequence[int] = 0,
+        dilation: int | Sequence[int] = 1,
     ) -> KernelMap:
         key = (
             triple(kernel_size, name='kernel_size'),
             triple(stride, name='stride'),
             triple(padding, name='padding'),
+            triple(dilation, name='dilation'),
         )
         if key not in self._maps:
             if self.coord_key is None or self.coord_manager is None:
@@ -126,6 +128,7 @@ class SparseTensor:
                 kernel_size=key[0],
                 stride=key[1],
                 padding=key[2],
+                dilation=key[3],
             )
         return self._maps[key]
 
