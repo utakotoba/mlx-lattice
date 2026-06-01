@@ -9,7 +9,10 @@ from mlx_lattice._native import conv3d_feats as _conv3d_feats
 from mlx_lattice._native import (
     conv3d_residual_feats as _conv3d_residual_feats,
 )
-from mlx_lattice.point import build_generative_map
+from mlx_lattice.point import (
+    build_generative_map,
+    build_transposed_kernel_map,
+)
 from mlx_lattice.tensor import SparseTensor
 from mlx_lattice.types import triple
 
@@ -27,8 +30,15 @@ def conv3d(
     weight_layout: Literal['flat', 'mlx'] | None = None,
 ) -> SparseTensor:
     if transposed:
-        raise NotImplementedError(
-            'transposed sparse conv is not implemented.'
+        return conv_transpose3d(
+            x,
+            weight,
+            bias,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            weight_layout=weight_layout,
         )
     kernel = triple(kernel_size, name='kernel_size')
     pad = triple(padding, name='padding')
@@ -137,6 +147,68 @@ def generative_conv_transpose3d(
 
     mapping = build_generative_map(
         x.coords, kernel_size=kernel, stride=op_stride
+    )
+    feats = _conv3d_feats(
+        x.feats,
+        weight,
+        mapping.maps,
+        mapping.kernels,
+        int(mapping.out_coords.shape[0]),
+    )
+    if bias is not None:
+        if bias.ndim != 1 or bias.shape[0] != weight.shape[2]:
+            raise ValueError('bias must have shape (Cout,).')
+        feats = feats + bias
+
+    out_stride = tuple(
+        a // b for a, b in zip(x.stride, op_stride, strict=True)
+    )
+    return SparseTensor(
+        mapping.out_coords,
+        feats,
+        out_stride,
+        coord_manager=x.coord_manager,
+    )
+
+
+def conv_transpose3d(
+    x: SparseTensor,
+    weight: mx.array,
+    bias: mx.array | None = None,
+    *,
+    kernel_size: int | Sequence[int] = 2,
+    stride: int | Sequence[int] = 2,
+    padding: int | Sequence[int] = 0,
+    dilation: int | Sequence[int] = 1,
+    weight_layout: Literal['flat', 'mlx'] | None = None,
+) -> SparseTensor:
+    kernel = triple(kernel_size, name='kernel_size')
+    op_stride = triple(stride, name='stride')
+    pad = triple(padding, name='padding')
+    rate = triple(dilation, name='dilation')
+    if any(value < 0 for value in pad):
+        raise ValueError('padding values must be non-negative.')
+    if any(value <= 0 for value in rate):
+        raise ValueError('dilation values must be positive.')
+
+    weight = _normalize_weight(weight, kernel, weight_layout)
+    if weight.dtype != mx.float32 or x.feats.dtype != mx.float32:
+        raise ValueError(
+            'transpose conv currently supports float32 tensors.'
+        )
+    if weight.shape[1] != x.channels:
+        raise ValueError(
+            'weight input channels must match tensor features.'
+        )
+    if any(a % b != 0 for a, b in zip(x.stride, op_stride, strict=True)):
+        raise ValueError('input tensor stride must be divisible by stride.')
+
+    mapping = build_transposed_kernel_map(
+        x.coords,
+        kernel_size=kernel,
+        stride=op_stride,
+        padding=pad,
+        dilation=rate,
     )
     feats = _conv3d_feats(
         x.feats,

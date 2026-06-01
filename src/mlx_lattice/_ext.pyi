@@ -52,6 +52,30 @@ def build_generative_map(
     mx.array,
     mx.array,
 ]: ...
+def build_transposed_kernel_map(
+    coords: mx.array,
+    kx: int,
+    ky: int,
+    kz: int,
+    sx: int,
+    sy: int,
+    sz: int,
+    px: int,
+    py: int,
+    pz: int,
+    dx: int,
+    dy: int,
+    dz: int,
+) -> tuple[
+    mx.array,
+    mx.array,
+    mx.array,
+    mx.array,
+    mx.array,
+    mx.array,
+    mx.array,
+    mx.array,
+]: ...
 def conv3d_feats(
     feats: mx.array,
     weight: mx.array,

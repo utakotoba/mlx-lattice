@@ -134,4 +134,21 @@ KernelMapData build_generative_map(
     return cpu::build_generative_map(coords, kernel_size, stride);
 }
 
+KernelMapData build_transposed_kernel_map(
+    const mx::array& coords,
+    Triple kernel_size,
+    Triple stride,
+    Triple padding,
+    Triple dilation
+) {
+    validate_coords(coords);
+    validate_positive(kernel_size, "kernel_size");
+    validate_positive(stride, "stride");
+    validate_nonnegative(padding, "padding");
+    validate_positive(dilation, "dilation");
+    return cpu::build_transposed_kernel_map(
+        coords, kernel_size, stride, padding, dilation
+    );
+}
+
 } // namespace mlx_lattice

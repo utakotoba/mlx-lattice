@@ -7,6 +7,7 @@ mx = pytest.importorskip('mlx.core')
 from mlx_lattice import (  # noqa: E402
     SparseTensor,
     conv3d,
+    conv_transpose3d,
     generative_conv_transpose3d,
     pool3d,
 )
@@ -169,6 +170,37 @@ def test_generative_conv_transpose3d_k2s2():
     assert coords_out[0] == [0, 2, 0, 0]
     assert coords_out[-1] == [0, 3, 1, 1]
     assert_allclose(out.feats, mx.full((8, 1), 2.0, dtype=mx.float32))
+
+
+def test_conv_transpose3d_deduplicates_output_coords():
+    coords = mx.array([[0, 0, 0, 0], [0, 1, 0, 0]], dtype=mx.int32)
+    feats = mx.array([[2.0], [3.0]], dtype=mx.float32)
+    weight = mx.ones((2, 1, 1), dtype=mx.float32)
+    x = SparseTensor(coords, feats, stride=2)
+
+    out = conv_transpose3d(x, weight, kernel_size=(2, 1, 1), stride=1)
+
+    assert out.stride == (2, 2, 2)
+    assert out.coords.tolist() == [
+        [0, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 2, 0, 0],
+    ]
+    assert_allclose(out.feats, mx.array([[2.0], [5.0], [3.0]]))
+
+
+def test_conv3d_transposed_flag_uses_generic_transpose():
+    coords = mx.array([[0, 0, 0, 0]], dtype=mx.int32)
+    feats = mx.array([[2.0]], dtype=mx.float32)
+    weight = mx.ones((2, 1, 1), dtype=mx.float32)
+    x = SparseTensor(coords, feats, stride=2)
+
+    out = conv3d(
+        x, weight, kernel_size=(2, 1, 1), stride=1, transposed=True
+    )
+
+    assert out.coords.tolist() == [[0, 0, 0, 0], [0, 1, 0, 0]]
+    assert_allclose(out.feats, mx.array([[2.0], [2.0]]))
 
 
 def test_generative_conv_transpose3d_backward():

@@ -7,6 +7,7 @@ mx = pytest.importorskip('mlx.core')
 from mlx_lattice import (  # noqa: E402
     build_generative_map,
     build_kernel_map,
+    build_transposed_kernel_map,
     downsample,
 )
 
@@ -155,3 +156,19 @@ def test_build_generative_map_k2s2():
     ]
     assert mapping.maps.tolist() == [[0, i] for i in range(8)]
     assert mapping.kernels.tolist() == list(range(8))
+
+
+def test_build_transposed_kernel_map_deduplicates_outputs():
+    coords = mx.array([[0, 0, 0, 0], [0, 1, 0, 0]], dtype=mx.int32)
+
+    mapping = build_transposed_kernel_map(
+        coords, kernel_size=(2, 1, 1), stride=1
+    )
+
+    assert mapping.out_coords.tolist() == [
+        [0, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 2, 0, 0],
+    ]
+    assert mapping.maps.tolist() == [[0, 0], [0, 1], [1, 1], [1, 2]]
+    assert mapping.kernels.tolist() == [0, 1, 0, 1]

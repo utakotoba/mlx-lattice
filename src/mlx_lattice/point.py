@@ -13,6 +13,9 @@ from mlx_lattice._native import (
     build_kernel_map as _build_kernel_map,
 )
 from mlx_lattice._native import (
+    build_transposed_kernel_map as _build_transposed_kernel_map,
+)
+from mlx_lattice._native import (
     downsample_coords as _downsample_coords,
 )
 from mlx_lattice.types import Triple, triple
@@ -164,6 +167,69 @@ def build_generative_map(
         out_coords,
         offset_values,
     ) = _build_generative_map(coords, kernel, step)
+    offsets = _offsets_from_array(offset_values)
+    (
+        maps,
+        sizes,
+        kernels,
+        residual_maps,
+        residual_kernels,
+        residual_offsets,
+        out_coords,
+    ) = _place_cached_map_arrays(
+        coords,
+        maps,
+        sizes,
+        kernels,
+        residual_maps,
+        residual_kernels,
+        residual_offsets,
+        out_coords,
+    )
+    return KernelMap(
+        maps=maps,
+        sizes=sizes,
+        kernels=kernels,
+        residual_maps=residual_maps,
+        residual_kernels=residual_kernels,
+        residual_offsets=residual_offsets,
+        out_coords=out_coords,
+        offsets=offsets,
+    )
+
+
+def build_transposed_kernel_map(
+    coords: mx.array,
+    kernel_size: int | Sequence[int] = 2,
+    stride: int | Sequence[int] = 2,
+    padding: int | Sequence[int] = 0,
+    dilation: int | Sequence[int] = 1,
+) -> KernelMap:
+    if coords.ndim != 2 or coords.shape[1] != 4:
+        raise ValueError('coords must have shape (N, 4).')
+    if coords.dtype not in (mx.int32, mx.int64):
+        raise ValueError('coords must be int32 or int64.')
+
+    kernel = triple(kernel_size, name='kernel_size')
+    step = triple(stride, name='stride')
+    pad = triple(padding, name='padding')
+    rate = triple(dilation, name='dilation')
+    if any(value <= 0 for value in step):
+        raise ValueError('stride values must be positive.')
+    if any(value < 0 for value in pad):
+        raise ValueError('padding values must be non-negative.')
+    if any(value <= 0 for value in rate):
+        raise ValueError('dilation values must be positive.')
+    (
+        maps,
+        sizes,
+        kernels,
+        residual_maps,
+        residual_kernels,
+        residual_offsets,
+        out_coords,
+        offset_values,
+    ) = _build_transposed_kernel_map(coords, kernel, step, pad, rate)
     offsets = _offsets_from_array(offset_values)
     (
         maps,
