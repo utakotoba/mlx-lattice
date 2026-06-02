@@ -11,7 +11,7 @@ This project is heavily based on [MLX](https://github.com/ml-explore/mlx), an ar
 
 ### License
 
-Copyright © 2026 Z.Y. Lin; open sourced under [Apache-2.0 license](/LICENSE)
+Copyright © 2026 Z.Y. Lin; open sourced under [MIT license](/LICENSE)
 
 ### Citation
 
