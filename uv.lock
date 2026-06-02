@@ -129,7 +129,7 @@ wheels = [
 
 [[package]]
 name = "mlx-lattice"
-version = "0.1.10"
+version = "0.1.11"
 source = { editable = "." }
 dependencies = [
     { name = "mlx", version = "0.31.1", source = { registry = "https://pypi.org/simple" }, extra = ["cpu"], marker = "sys_platform == 'linux'" },
