@@ -9,5 +9,6 @@ target_compile_definitions(
 # MARK: - targets
 
 add_subdirectory(backends)
+add_subdirectory(ops)
 add_subdirectory(lattice)
 add_subdirectory(bindings)

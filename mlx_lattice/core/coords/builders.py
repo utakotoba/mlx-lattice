@@ -5,7 +5,7 @@ from typing import cast
 
 import mlx.core as mx
 
-import mlx_lattice._native as _native
+from mlx_lattice._native import ext
 from mlx_lattice.core.coords.validation import (
     make_i32_array,
     validate_coords,
@@ -18,6 +18,10 @@ from mlx_lattice.core.maps import (
     OutputCsrView,
 )
 from mlx_lattice.core.types import Triple, triple
+
+type NativeKernelMap = tuple[
+    mx.array, mx.array, mx.array, mx.array, mx.array
+]
 
 
 def kernel_offsets(
@@ -60,12 +64,12 @@ def build_kernel_map(
         dilation=dilation,
     )
     return _kernel_map_from_native(
-        _native.build_kernel_map(
+        ext.build_kernel_map(
             coords,
-            kernel_size=spec.size,
-            stride=spec.stride,
-            padding=spec.padding,
-            dilation=spec.dilation,
+            spec.size,
+            spec.stride,
+            spec.padding,
+            spec.dilation,
         ),
         n_in_rows=int(coords.shape[0]),
     )
@@ -83,10 +87,10 @@ def build_generative_map(
     _require_positive(step, 'stride')
 
     return _kernel_map_from_native(
-        _native.build_generative_map(
+        ext.build_generative_map(
             coords,
-            kernel_size=kernel,
-            stride=step,
+            kernel,
+            step,
         ),
         n_in_rows=int(coords.shape[0]),
     )
@@ -110,12 +114,12 @@ def build_transposed_kernel_map(
     _require_positive(rate, 'dilation')
 
     return _kernel_map_from_native(
-        _native.build_transposed_kernel_map(
+        ext.build_transposed_kernel_map(
             coords,
-            kernel_size=kernel,
-            stride=step,
-            padding=pad,
-            dilation=rate,
+            kernel,
+            step,
+            pad,
+            rate,
         ),
         n_in_rows=int(coords.shape[0]),
     )
@@ -125,7 +129,7 @@ def build_transposed_kernel_map(
 
 
 def _kernel_map_from_native(
-    native: _native.NativeKernelMap,
+    native: NativeKernelMap,
     *,
     n_in_rows: int,
 ) -> KernelMap:

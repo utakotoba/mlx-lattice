@@ -2,7 +2,6 @@
 
 nanobind_add_module(
   _ext
-  STABLE_ABI
   NB_STATIC
   NB_DOMAIN mlx
   module.cpp)
@@ -13,6 +12,7 @@ target_link_libraries(_ext PRIVATE mlx_lattice_core)
 
 set(MLX_LATTICE_STUB_DIR "${CMAKE_CURRENT_BINARY_DIR}/stubs")
 set(MLX_LATTICE_EXT_STUB "${MLX_LATTICE_STUB_DIR}/_ext.pyi")
+set(MLX_LATTICE_SOURCE_EXT_STUB "${PROJECT_SOURCE_DIR}/mlx_lattice/_ext.pyi")
 
 add_custom_command(
   OUTPUT ${MLX_LATTICE_EXT_STUB}
@@ -20,6 +20,9 @@ add_custom_command(
   COMMAND
     ${Python_EXECUTABLE} -m nanobind.stubgen --quiet --module _ext
     --import $<TARGET_FILE_DIR:_ext> --output-file ${MLX_LATTICE_EXT_STUB}
+  COMMAND
+    ${CMAKE_COMMAND} -E copy_if_different ${MLX_LATTICE_EXT_STUB}
+    ${MLX_LATTICE_SOURCE_EXT_STUB}
   DEPENDS _ext
   VERBATIM)
 

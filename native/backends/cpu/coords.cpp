@@ -1,6 +1,7 @@
 #include "backends/cpu/coords.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <unordered_map>
 #include <unordered_set>
@@ -41,11 +42,12 @@ std::vector<Coord> read_coords(const mx::array& coords) {
     if (cpu_coords.dtype() == mx::int32) {
         auto data = cpu_coords.data<int32_t>();
         for (int row = 0; row < cpu_coords.shape(0); ++row) {
+            auto base = static_cast<ptrdiff_t>(row) * 4;
             out.push_back({
-                data[row * 4],
-                data[row * 4 + 1],
-                data[row * 4 + 2],
-                data[row * 4 + 3],
+                data[base],
+                data[base + 1],
+                data[base + 2],
+                data[base + 3],
             });
         }
         return out;
@@ -53,11 +55,12 @@ std::vector<Coord> read_coords(const mx::array& coords) {
 
     auto data = cpu_coords.data<int64_t>();
     for (int row = 0; row < cpu_coords.shape(0); ++row) {
+        auto base = static_cast<ptrdiff_t>(row) * 4;
         out.push_back({
-            data[row * 4],
-            data[row * 4 + 1],
-            data[row * 4 + 2],
-            data[row * 4 + 3],
+            data[base],
+            data[base + 1],
+            data[base + 2],
+            data[base + 3],
         });
     }
     return out;
@@ -250,9 +253,9 @@ mx::array lookup_coords(const mx::array& coords, const mx::array& queries) {
 
 NativeKernelMap build_kernel_map(
     const mx::array& coords,
-    Triple kernel_size,
+    Triple kernel_size, // NOLINT(bugprone-easily-swappable-parameters)
     Triple stride,
-    Triple padding,
+    Triple padding, // NOLINT(bugprone-easily-swappable-parameters)
     Triple dilation
 ) {
     auto offsets = mlx_lattice::kernel_offsets(kernel_size, dilation);
@@ -285,7 +288,7 @@ NativeKernelMap build_kernel_map(
 
 NativeKernelMap build_generative_map(
     const mx::array& coords,
-    Triple kernel_size,
+    Triple kernel_size, // NOLINT(bugprone-easily-swappable-parameters)
     Triple stride
 ) {
     auto offsets = mlx_lattice::kernel_offsets(kernel_size);
@@ -319,9 +322,9 @@ NativeKernelMap build_generative_map(
 
 NativeKernelMap build_transposed_kernel_map(
     const mx::array& coords,
-    Triple kernel_size,
+    Triple kernel_size, // NOLINT(bugprone-easily-swappable-parameters)
     Triple stride,
-    Triple padding,
+    Triple padding, // NOLINT(bugprone-easily-swappable-parameters)
     Triple dilation
 ) {
     auto offsets = mlx_lattice::kernel_offsets(kernel_size, dilation);

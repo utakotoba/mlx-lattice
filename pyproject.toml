@@ -45,7 +45,6 @@ dev = [
 minimum-version = "0.12"
 build-dir = "build/{state}-{wheel_tag}"
 wheel.packages = ["mlx_lattice"]
-wheel.py-api = "cp312"
 sdist.include = [
   "CMakeLists.txt",
   "CMakePresets.json",

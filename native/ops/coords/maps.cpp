@@ -10,7 +10,10 @@ std::vector<Triple> kernel_offsets(Triple kernel_size) {
     return kernel_offsets(kernel_size, {1, 1, 1});
 }
 
-std::vector<Triple> kernel_offsets(Triple kernel_size, Triple dilation) {
+std::vector<Triple> kernel_offsets(
+    Triple kernel_size, // NOLINT(bugprone-easily-swappable-parameters)
+    Triple dilation
+) {
     validate_positive(kernel_size, "kernel_size");
     validate_positive(dilation, "dilation");
 

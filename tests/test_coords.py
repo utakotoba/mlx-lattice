@@ -121,7 +121,9 @@ def test_generative_and_transposed_maps_cover_output_policy() -> None:
     assert transposed.out_coords.tolist() == generated.out_coords.tolist()
 
 
-def test_generative_map_runs_with_gpu_default_when_metal_is_available() -> None:
+def test_generative_map_runs_with_gpu_default_when_metal_is_available() -> (
+    None
+):
     info = cast('dict[str, Any]', backend_info())
     capabilities = cast('dict[str, bool]', info['capabilities'])
     if not capabilities['metal']:

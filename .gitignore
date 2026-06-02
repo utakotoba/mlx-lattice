@@ -7,6 +7,11 @@ __pycache__
 *.py[cod]
 dist
 build
+**/_ext*.so
+**/_ext*.pyd
+**/_ext*.dll
+**/_ext*.dylib
+**/_ext.pyi
 
 # ly's choice
 references

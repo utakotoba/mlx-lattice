@@ -15,7 +15,6 @@
 
 #ifdef _METAL_
 #include "mlx/backend/metal/device.h"
-#include "mlx/backend/metal/utils.h"
 #endif
 
 namespace mlx_lattice::metal {
@@ -52,7 +51,7 @@ class GenerativeKernelMap : public mx::Primitive {
   public:
     GenerativeKernelMap(
         mx::Stream stream,
-        int rows,
+        int rows, // NOLINT(bugprone-easily-swappable-parameters)
         int kernel_count,
         Triple stride
     )
@@ -92,9 +91,8 @@ class GenerativeKernelMap : public mx::Primitive {
         auto& device = mx::metal::device(stream.device);
         auto library = device.get_library("mlx_lattice", binary_dir());
         auto& encoder = mx::metal::get_command_encoder(stream);
-        auto kernel = device.get_kernel(
-            "build_generative_kernel_map_i32", library
-        );
+        auto kernel =
+            device.get_kernel("build_generative_kernel_map_i32", library);
         auto group = std::min(
             static_cast<size_t>(pair_count),
             kernel->maxTotalThreadsPerThreadgroup()
@@ -179,7 +177,7 @@ NativeKernelMap build_kernel_map(
 
 NativeKernelMap build_generative_map(
     const mx::array& coords,
-    Triple kernel_size,
+    Triple kernel_size, // NOLINT(bugprone-easily-swappable-parameters)
     Triple stride
 ) {
     if (coords.dtype() != mx::int32) {

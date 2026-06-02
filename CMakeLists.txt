@@ -39,7 +39,7 @@ endif()
 find_package(
   Python 3.12
   REQUIRED
-  COMPONENTS Interpreter Development.Module ${SKBUILD_SABI_COMPONENT})
+  COMPONENTS Interpreter Development.Module)
 
 # MARK: - nanobind
 

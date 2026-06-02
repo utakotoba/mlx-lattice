@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 import mlx.core as mx
 
-import mlx_lattice._native as _native
+from mlx_lattice._native import ext
 from mlx_lattice.core.coords.validation import (
     Coord,
     coord_rows,
@@ -21,7 +21,7 @@ def downsample_coords(
     validate_coords(coords)
     step = triple(stride, name='stride')
     _require_positive(step, 'stride')
-    return _native.downsample_coords(coords, step)
+    return ext.downsample_coords(coords, step)
 
 
 def downsample_values(
@@ -45,17 +45,17 @@ def downsample_values(
 
 def union_coords(lhs: mx.array, rhs: mx.array) -> mx.array:
     validate_coord_pair(lhs, rhs)
-    return _native.union_coords(lhs, rhs)
+    return ext.union_coords(lhs, rhs)
 
 
 def intersection_coords(lhs: mx.array, rhs: mx.array) -> mx.array:
     validate_coord_pair(lhs, rhs)
-    return _native.intersection_coords(lhs, rhs)
+    return ext.intersection_coords(lhs, rhs)
 
 
 def lookup_coords(coords: mx.array, queries: mx.array) -> mx.array:
     validate_coord_pair(coords, queries, rhs_name='queries')
-    return _native.lookup_coords(coords, queries)
+    return ext.lookup_coords(coords, queries)
 
 
 def contains_coords(coords: mx.array, queries: mx.array) -> mx.array:
