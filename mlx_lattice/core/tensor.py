@@ -6,7 +6,7 @@ from typing import cast
 
 import mlx.core as mx
 
-from mlx_lattice.coords import (
+from mlx_lattice.core.coords import (
     CoordinateManager,
     CoordinateMapKey,
     contains_coords,
@@ -15,7 +15,7 @@ from mlx_lattice.coords import (
     same_coords,
     validate_coords,
 )
-from mlx_lattice.types import Triple, triple
+from mlx_lattice.core.types import Triple, triple
 
 
 @dataclass(frozen=True, slots=True, init=False)

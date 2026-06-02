@@ -44,9 +44,10 @@ wheel.py-api = "cp312"
 sdist.include = [
   "CMakeLists.txt",
   "CMakePresets.json",
-  "mlx_lattice/**",
+  "mlx_lattice/**/*.py",
+  "mlx_lattice/py.typed",
   "native/**",
-  "tests/**",
+  "tests/**/*.py",
 ]
 sdist.exclude = [
   ".DS_Store",
@@ -55,8 +56,12 @@ sdist.exclude = [
   "build/**",
   "dist/**",
   "**/.DS_Store",
-  "**/*.py[cod]",
+  "**/*.pyc",
+  "**/*.pyo",
+  "**/__pycache__",
   "**/__pycache__/**",
+  "mlx_lattice/**/__pycache__",
+  "mlx_lattice/**/__pycache__/**",
 ]
 
 [tool.scikit-build.editable]

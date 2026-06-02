@@ -6,7 +6,7 @@ from typing import cast
 
 import mlx.core as mx
 
-from mlx_lattice.types import Triple, triple
+from mlx_lattice.core.types import Triple, triple
 
 
 @dataclass(frozen=True, slots=True)

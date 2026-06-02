@@ -11,6 +11,7 @@ from mlx_lattice import (  # noqa: E402
     sparse_collate,
     topk_rows,
 )
+from mlx_lattice.core import SparseTensor as CoreSparseTensor  # noqa: E402
 
 
 def test_sparse_tensor_validates_shape() -> None:
@@ -19,6 +20,7 @@ def test_sparse_tensor_validates_shape() -> None:
 
     x = SparseTensor(coords, feats, stride=(1, 2, 3))
 
+    assert SparseTensor is CoreSparseTensor
     assert x.coords is coords
     assert x.feats is feats
     assert x.stride == (1, 2, 3)

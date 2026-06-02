@@ -4,8 +4,8 @@ from collections.abc import Sequence
 
 import mlx.core as mx
 
-from mlx_lattice.tensor import SparseTensor
-from mlx_lattice.types import triple
+from mlx_lattice.core.tensor import SparseTensor
+from mlx_lattice.core.types import triple
 
 
 def sparse_collate(
