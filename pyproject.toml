@@ -1,0 +1,15 @@
+[project]
+name = "mlx-lattice"
+version = "0.2.0"
+description = "Sparse point cloud convolution library for MLX"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "Z.Y. Lin", email = "i@letter.cafe" }]
+keywords = ["mlx", "ml", "sparse", "convolution", "point-cloud"]
+
+[project.urls]
+Homepage = "https://github.com/utakotoba/mlx-lattice"
+Repository = "https://github.com/utakotoba/mlx-lattice.git"
+Issues = "https://github.com/utakotoba/mlx-lattice/issues"
+Changelog = "https://github.com/utakotoba/mlx-lattice/releases"
