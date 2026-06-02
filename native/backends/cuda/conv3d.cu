@@ -218,6 +218,7 @@ void eval_max_pool3d_feats(
     const auto& feats = inputs[0];
     const auto& maps = inputs[1];
     const auto& kernels = inputs[2];
+    const auto& offsets = inputs[3];
     auto& out = outputs[0];
 
     out.set_data(mx::allocator::malloc(out.nbytes()));
@@ -225,6 +226,7 @@ void eval_max_pool3d_feats(
     encoder.set_input_array(feats);
     encoder.set_input_array(maps);
     encoder.set_input_array(kernels);
+    encoder.set_input_array(offsets);
     encoder.set_output_array(out);
 
     launch(
@@ -234,10 +236,10 @@ void eval_max_pool3d_feats(
         mx::gpu_ptr<float>(feats),
         mx::gpu_ptr<int32_t>(maps),
         mx::gpu_ptr<int32_t>(kernels),
+        mx::gpu_ptr<int32_t>(offsets),
         mx::gpu_ptr<float>(out),
         rows,
-        channels,
-        maps.shape(0)
+        channels
     );
 }
 

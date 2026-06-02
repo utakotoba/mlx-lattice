@@ -73,6 +73,7 @@ NB_MODULE(_ext, m) {
         "feats"_a,
         "maps"_a,
         "kernels"_a,
+        "offsets"_a,
         "out_rows"_a,
         nb::kw_only(),
         "stream"_a = nb::none()

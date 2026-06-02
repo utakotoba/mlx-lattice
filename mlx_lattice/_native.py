@@ -230,6 +230,7 @@ def max_pool3d_feats(
     feats: mx.array,
     maps: mx.array,
     kernels: mx.array,
+    offsets: mx.array,
     out_rows: int,
     *,
     stream: Any | None = None,
@@ -239,12 +240,14 @@ def max_pool3d_feats(
             feats,
             maps,
             kernels,
+            offsets,
             out_rows,
         )
     return _ext().max_pool3d_feats(
         feats,
         maps,
         kernels,
+        offsets,
         out_rows,
         stream=stream,
     )

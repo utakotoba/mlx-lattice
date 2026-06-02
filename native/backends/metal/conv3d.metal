@@ -240,10 +240,10 @@ using namespace metal;
     device const float* feats [[buffer(0)]],
     device const int* maps [[buffer(1)]],
     device const int* kernels [[buffer(2)]],
-    device float* out [[buffer(3)]],
-    constant const int& rows [[buffer(4)]],
-    constant const int& channels [[buffer(5)]],
-    constant const int& pair_count [[buffer(6)]],
+    device const int* offsets [[buffer(3)]],
+    device float* out [[buffer(4)]],
+    constant const int& rows [[buffer(5)]],
+    constant const int& channels [[buffer(6)]],
     uint elem [[thread_position_in_grid]]
 ) {
     uint total = uint(rows * channels);
@@ -254,8 +254,8 @@ using namespace metal;
     int row = int(elem / uint(channels));
     int channel = int(elem - uint(row * channels));
     float acc = -INFINITY;
-    for (int pair = 0; pair < pair_count; ++pair) {
-        if (kernels[pair] < 0 || maps[pair * 2 + 1] != row) {
+    for (int pair = offsets[row]; pair < offsets[row + 1]; ++pair) {
+        if (kernels[pair] < 0) {
             continue;
         }
         int in_row = maps[pair * 2];

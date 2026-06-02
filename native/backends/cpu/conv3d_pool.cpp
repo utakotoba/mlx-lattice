@@ -62,6 +62,7 @@ void eval_max_pool3d_feats(
     const auto& feats = inputs[0];
     const auto& maps = inputs[1];
     const auto& kernels = inputs[2];
+    const auto& offsets = inputs[3];
     auto& out = outputs[0];
 
     out.set_data(mx::allocator::malloc(out.nbytes()));
@@ -69,21 +70,22 @@ void eval_max_pool3d_feats(
     encoder.set_input_array(feats);
     encoder.set_input_array(maps);
     encoder.set_input_array(kernels);
+    encoder.set_input_array(offsets);
     encoder.set_output_array(out);
 
     encoder.dispatch([feats_ptr = feats.data<float>(),
                       maps_ptr = maps.data<int32_t>(),
                       kernels_ptr = kernels.data<int32_t>(),
+                      offsets_ptr = offsets.data<int32_t>(),
                       out_ptr = out.data<float>(),
-                      pairs = maps.shape(0),
                       rows,
                       channels]() {
         for (int row = 0; row < rows; ++row) {
             for (int channel = 0; channel < channels; ++channel) {
                 float acc = -std::numeric_limits<float>::infinity();
-                for (int pair = 0; pair < pairs; ++pair) {
-                    if (kernels_ptr[pair] < 0 ||
-                        maps_ptr[pair * 2 + 1] != row) {
+                for (int pair = offsets_ptr[row]; pair < offsets_ptr[row + 1];
+                     ++pair) {
+                    if (kernels_ptr[pair] < 0) {
                         continue;
                     }
                     int in_row = maps_ptr[pair * 2];

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import cast
 
 import mlx.core as mx
 
@@ -43,11 +44,36 @@ def pool3d(
         )
         return summed.replace(feats=summed.feats / counts.feats)
     if mode == 'max':
+        out_rows = int(mapping.out_coords.shape[0])
+        if (
+            mapping.center >= 0
+            and op_stride == (1, 1, 1)
+            and out_rows == x.n_points
+        ):
+            feats = _max_pool3d_feats(
+                x.feats,
+                mapping.residual_maps,
+                mapping.residual_kernels,
+                mapping.residual_offsets,
+                out_rows,
+            )
+            return _pooled_tensor(
+                x, mapping.out_coords, mx.maximum(feats, x.feats), op_stride
+            )
+        if mapping.center >= 0:
+            maps, kernels, offsets = _row_view_from_maps(
+                mapping.maps, mapping.kernels, out_rows
+            )
+        else:
+            maps = mapping.residual_maps
+            kernels = mapping.residual_kernels
+            offsets = mapping.residual_offsets
         feats = _max_pool3d_feats(
             x.feats,
-            mapping.maps,
-            mapping.kernels,
-            int(mapping.out_coords.shape[0]),
+            maps,
+            kernels,
+            offsets,
+            out_rows,
         )
         return _pooled_tensor(x, mapping.out_coords, feats, op_stride)
     if mode != 'sum':
@@ -192,4 +218,30 @@ def _pooled_tensor(
         feats,
         out_stride,
         coord_manager=x.coord_manager,
+    )
+
+
+def _row_view_from_maps(
+    maps: mx.array,
+    kernels: mx.array,
+    rows: int,
+) -> tuple[mx.array, mx.array, mx.array]:
+    map_rows = cast(list[list[int]], maps.tolist())
+    kernel_rows = cast(list[int], kernels.tolist())
+    grouped: list[list[tuple[int, int]]] = [[] for _ in range(rows)]
+    for pair, row in zip(map_rows, kernel_rows, strict=True):
+        grouped[int(pair[1])].append((int(pair[0]), int(row)))
+
+    out_maps = []
+    out_kernels = []
+    offsets = [0]
+    for out_row, pairs in enumerate(grouped):
+        for in_row, kernel in pairs:
+            out_maps.append([in_row, out_row])
+            out_kernels.append(kernel)
+        offsets.append(len(out_kernels))
+    return (
+        mx.array(out_maps, dtype=mx.int32).reshape((-1, 2)),
+        mx.array(out_kernels, dtype=mx.int32),
+        mx.array(offsets, dtype=mx.int32),
     )

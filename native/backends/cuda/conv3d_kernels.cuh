@@ -225,10 +225,10 @@ __global__ void max_pool3d_feats_float32(
     const float* __restrict__ feats,
     const int* __restrict__ maps,
     const int* __restrict__ kernels,
+    const int* __restrict__ offsets,
     float* __restrict__ out,
     int rows,
-    int channels,
-    int pair_count
+    int channels
 ) {
     int elem = blockIdx.x * blockDim.x + threadIdx.x;
     int total = rows * channels;
@@ -239,8 +239,8 @@ __global__ void max_pool3d_feats_float32(
     int row = elem / channels;
     int channel = elem - row * channels;
     float acc = -INFINITY;
-    for (int pair = 0; pair < pair_count; ++pair) {
-        if (kernels[pair] < 0 || maps[pair * 2 + 1] != row) {
+    for (int pair = offsets[row]; pair < offsets[row + 1]; ++pair) {
+        if (kernels[pair] < 0) {
             continue;
         }
         int in_row = maps[pair * 2];

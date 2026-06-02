@@ -18,6 +18,7 @@ from mlx_lattice import (
     conv3d,
     downsample,
     generative_conv_transpose3d,
+    max_pool3d,
     pool3d,
     prune,
     relu,
@@ -150,6 +151,25 @@ def bench_pool_hot(n: int, backend: str) -> Callable[[], object]:
     return lambda: pool3d(x, kernel_size=2, stride=2)
 
 
+def bench_max_pool_cold(n: int, backend: str) -> Callable[[], object]:
+    coords = make_coords(n, backend=backend)
+    feats = make_feats(n, 8)
+
+    def run() -> object:
+        return max_pool3d(
+            SparseTensor(coords, feats), kernel_size=2, stride=2
+        )
+
+    return run
+
+
+def bench_max_pool_hot(n: int, backend: str) -> Callable[[], object]:
+    x = make_tensor(n, backend)
+    x.kernel_map(kernel_size=2, stride=2)
+    eval_output(x.kernel_map(kernel_size=2, stride=2))
+    return lambda: max_pool3d(x, kernel_size=2, stride=2)
+
+
 def bench_conv_cold(n: int, backend: str) -> Callable[[], object]:
     coords = make_coords(n, backend=backend)
     feats = make_feats(n, 8)
@@ -273,6 +293,8 @@ def cases() -> tuple[Case, ...]:
         Case('spdownsample', 'k2', bench_downsample),
         Case('FOG.forward', 'pool-hot', bench_pool_hot),
         Case('FOG.forward', 'pool-cold', bench_pool_cold),
+        Case('max_pool3d', 'hot', bench_max_pool_hot),
+        Case('max_pool3d', 'cold', bench_max_pool_cold),
         Case('conv3d_k3s1', 'hot', bench_conv_hot),
         Case('conv3d_k3s1', 'cold', bench_conv_cold),
         Case('conv3d_k1s1', 'pointwise', bench_pointwise),

@@ -97,6 +97,7 @@ void validate_max_pool3d_feats(
     const mx::array& feats,
     const mx::array& maps,
     const mx::array& kernels,
+    const mx::array& offsets,
     int out_rows
 ) {
     if (out_rows < 0) {
@@ -106,6 +107,12 @@ void validate_max_pool3d_feats(
         throw std::invalid_argument("feats must be a float32 matrix.");
     }
     validate_maps_and_kernels(maps, kernels);
+    if (offsets.ndim() != 1 || offsets.shape(0) != out_rows + 1) {
+        throw std::invalid_argument("offsets must have shape (rows + 1,).");
+    }
+    if (offsets.dtype() != mx::int32) {
+        throw std::invalid_argument("offsets must be int32.");
+    }
 }
 
 void validate_pool3d_feats_grad(

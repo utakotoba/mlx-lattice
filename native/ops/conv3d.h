@@ -49,6 +49,7 @@ mx::array max_pool3d_feats(
     const mx::array& feats,
     const mx::array& maps,
     const mx::array& kernels,
+    const mx::array& offsets,
     int out_rows,
     mx::StreamOrDevice stream = {}
 );

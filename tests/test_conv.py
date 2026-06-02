@@ -211,6 +211,20 @@ def test_max_pool3d_k3s1():
     assert_allclose(out.feats, mx.array([[3.0], [3.0], [3.0]]))
 
 
+def test_max_pool3d_centered_strided_fallback():
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 2, 0, 0], [0, 4, 0, 0]],
+        dtype=mx.int32,
+    )
+    feats = mx.array([[1.0], [3.0], [2.0]], dtype=mx.float32)
+    x = SparseTensor(coords, feats)
+
+    out = max_pool3d(x, kernel_size=3, stride=2)
+
+    assert out.coords.tolist() == [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]]
+    assert_allclose(out.feats, mx.array([[1.0], [3.0], [2.0]]))
+
+
 def test_avg_pool3d_k3s1():
     coords = mx.array(
         [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],

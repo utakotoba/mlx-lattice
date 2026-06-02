@@ -63,6 +63,7 @@ void eval_max_pool3d_feats(
     const auto& feats = inputs[0];
     const auto& maps = inputs[1];
     const auto& kernels = inputs[2];
+    const auto& offsets = inputs[3];
     auto& out = outputs[0];
 
     out.set_data(mx::allocator::malloc(out.nbytes()));
@@ -80,11 +81,10 @@ void eval_max_pool3d_feats(
     encoder.set_input_array(feats, 0);
     encoder.set_input_array(maps, 1);
     encoder.set_input_array(kernels, 2);
-    encoder.set_output_array(out, 3);
-    encoder.set_bytes(rows, 4);
-    encoder.set_bytes(channels, 5);
-    int pair_count = maps.shape(0);
-    encoder.set_bytes(pair_count, 6);
+    encoder.set_input_array(offsets, 3);
+    encoder.set_output_array(out, 4);
+    encoder.set_bytes(rows, 5);
+    encoder.set_bytes(channels, 6);
     auto group = std::min(elements, pool->maxTotalThreadsPerThreadgroup());
     encoder.dispatch_threads(MTL::Size(elements, 1, 1), MTL::Size(group, 1, 1));
 #else
