@@ -7,14 +7,34 @@ from mlx_lattice.core.coords import (
     inverse_map,
     lookup_coords,
 )
-from mlx_lattice.core.maps import KernelMap
+from mlx_lattice.core.maps import (
+    ConvSpec,
+    EdgeIndex,
+    InputCsrView,
+    KernelBucketView,
+    KernelMap,
+    KernelSpec,
+    MapAlgorithm,
+    OutputCsrView,
+    PoolMode,
+    PoolSpec,
+)
 from mlx_lattice.core.tensor import SparseTensor
 from mlx_lattice.core.types import Triple, triple
 
 __all__ = [
+    'ConvSpec',
     'CoordinateManager',
     'CoordinateMapKey',
+    'EdgeIndex',
+    'InputCsrView',
+    'KernelBucketView',
     'KernelMap',
+    'KernelSpec',
+    'MapAlgorithm',
+    'OutputCsrView',
+    'PoolMode',
+    'PoolSpec',
     'SparseTensor',
     'Triple',
     'contains_coords',
