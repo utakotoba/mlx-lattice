@@ -2,6 +2,296 @@
 
 using namespace metal;
 
+// MARK: - helpers
+
+inline bool coord_equal(
+    device const int* lhs,
+    int lhs_row,
+    device const int* rhs,
+    int rhs_row
+) {
+    int lhs_base = lhs_row * 4;
+    int rhs_base = rhs_row * 4;
+    return lhs[lhs_base] == rhs[rhs_base] &&
+           lhs[lhs_base + 1] == rhs[rhs_base + 1] &&
+           lhs[lhs_base + 2] == rhs[rhs_base + 2] &&
+           lhs[lhs_base + 3] == rhs[rhs_base + 3];
+}
+
+inline bool
+coord4_equal(thread const int* lhs, device const int* rhs, int rhs_row) {
+    int rhs_base = rhs_row * 4;
+    return lhs[0] == rhs[rhs_base] && lhs[1] == rhs[rhs_base + 1] &&
+           lhs[2] == rhs[rhs_base + 2] && lhs[3] == rhs[rhs_base + 3];
+}
+
+inline bool coord4_equal(
+    thread const int* lhs,
+    device const int* rhs,
+    int rhs_row,
+    int width
+) {
+    int rhs_base = rhs_row * width;
+    return lhs[0] == rhs[rhs_base] && lhs[1] == rhs[rhs_base + 1] &&
+           lhs[2] == rhs[rhs_base + 2] && lhs[3] == rhs[rhs_base + 3];
+}
+
+inline int floor_div_int(int value, int divisor) {
+    int quotient = value / divisor;
+    int remainder = value % divisor;
+    if (remainder != 0 && ((remainder < 0) != (divisor < 0))) {
+        quotient -= 1;
+    }
+    return quotient;
+}
+
+inline void write_coord(device int* out, int row, thread const int* coord) {
+    int base = row * 4;
+    out[base] = coord[0];
+    out[base + 1] = coord[1];
+    out[base + 2] = coord[2];
+    out[base + 3] = coord[3];
+}
+
+inline void write_edge(
+    device int* in_rows,
+    device int* out_rows,
+    device int* kernel_ids,
+    int row,
+    int in_row,
+    int out_row,
+    int kernel_id
+) {
+    in_rows[row] = in_row;
+    out_rows[row] = out_row;
+    kernel_ids[row] = kernel_id;
+}
+
+inline void build_views(
+    device const int* in_rows,
+    device const int* out_rows,
+    device const int* kernel_ids,
+    int edge_count,
+    int out_count,
+    int kernel_count,
+    int input_count,
+    device int* output_csr_offsets,
+    device int* output_csr_in_rows,
+    device int* output_csr_kernel_ids,
+    device int* kernel_bucket_offsets,
+    device int* kernel_bucket_in_rows,
+    device int* kernel_bucket_out_rows,
+    device int* input_csr_offsets,
+    device int* input_csr_out_rows,
+    device int* input_csr_kernel_ids
+) {
+    for (int row = 0; row <= out_count; ++row) {
+        output_csr_offsets[row] = 0;
+    }
+    for (int row = 0; row <= kernel_count; ++row) {
+        kernel_bucket_offsets[row] = 0;
+    }
+    for (int row = 0; row <= input_count; ++row) {
+        input_csr_offsets[row] = 0;
+    }
+
+    for (int edge = 0; edge < edge_count; ++edge) {
+        output_csr_offsets[out_rows[edge] + 1] += 1;
+        kernel_bucket_offsets[kernel_ids[edge] + 1] += 1;
+        input_csr_offsets[in_rows[edge] + 1] += 1;
+    }
+    for (int row = 0; row < out_count; ++row) {
+        output_csr_offsets[row + 1] += output_csr_offsets[row];
+    }
+    for (int row = 0; row < kernel_count; ++row) {
+        kernel_bucket_offsets[row + 1] += kernel_bucket_offsets[row];
+    }
+    for (int row = 0; row < input_count; ++row) {
+        input_csr_offsets[row + 1] += input_csr_offsets[row];
+    }
+
+    for (int out_row = 0; out_row < out_count; ++out_row) {
+        int cursor = output_csr_offsets[out_row];
+        for (int edge = 0; edge < edge_count; ++edge) {
+            if (out_rows[edge] == out_row) {
+                output_csr_in_rows[cursor] = in_rows[edge];
+                output_csr_kernel_ids[cursor] = kernel_ids[edge];
+                cursor += 1;
+            }
+        }
+    }
+    for (int kernel_id = 0; kernel_id < kernel_count; ++kernel_id) {
+        int cursor = kernel_bucket_offsets[kernel_id];
+        for (int edge = 0; edge < edge_count; ++edge) {
+            if (kernel_ids[edge] == kernel_id) {
+                kernel_bucket_in_rows[cursor] = in_rows[edge];
+                kernel_bucket_out_rows[cursor] = out_rows[edge];
+                cursor += 1;
+            }
+        }
+    }
+    for (int in_row = 0; in_row < input_count; ++in_row) {
+        int cursor = input_csr_offsets[in_row];
+        for (int edge = 0; edge < edge_count; ++edge) {
+            if (in_rows[edge] == in_row) {
+                input_csr_out_rows[cursor] = out_rows[edge];
+                input_csr_kernel_ids[cursor] = kernel_ids[edge];
+                cursor += 1;
+            }
+        }
+    }
+}
+
+// MARK: - set ops
+
+[[kernel]] void downsample_coords_i32(
+    device const int* coords [[buffer(0)]],
+    device int* out_coords [[buffer(1)]],
+    device int* count [[buffer(2)]],
+    constant const int& rows [[buffer(3)]],
+    constant const int& stride_x [[buffer(4)]],
+    constant const int& stride_y [[buffer(5)]],
+    constant const int& stride_z [[buffer(6)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+
+    int out_count = 0;
+    for (int row = 0; row < rows; ++row) {
+        int base = row * 4;
+        int candidate[4] = {
+            coords[base],
+            floor_div_int(coords[base + 1], stride_x),
+            floor_div_int(coords[base + 2], stride_y),
+            floor_div_int(coords[base + 3], stride_z),
+        };
+        bool seen = false;
+        for (int prev = 0; prev < out_count; ++prev) {
+            if (coord4_equal(candidate, out_coords, prev)) {
+                seen = true;
+                break;
+            }
+        }
+        if (!seen) {
+            write_coord(out_coords, out_count, candidate);
+            out_count += 1;
+        }
+    }
+    count[0] = out_count;
+}
+
+[[kernel]] void union_coords_i32(
+    device const int* lhs [[buffer(0)]],
+    device const int* rhs [[buffer(1)]],
+    device int* out_coords [[buffer(2)]],
+    device int* count [[buffer(3)]],
+    constant const int& lhs_rows [[buffer(4)]],
+    constant const int& rhs_rows [[buffer(5)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+
+    int out_count = 0;
+    for (int row = 0; row < lhs_rows + rhs_rows; ++row) {
+        device const int* source = row < lhs_rows ? lhs : rhs;
+        int source_row = row < lhs_rows ? row : row - lhs_rows;
+        int base = source_row * 4;
+        int candidate[4] = {
+            source[base],
+            source[base + 1],
+            source[base + 2],
+            source[base + 3],
+        };
+        bool seen = false;
+        for (int prev = 0; prev < out_count; ++prev) {
+            if (coord4_equal(candidate, out_coords, prev)) {
+                seen = true;
+                break;
+            }
+        }
+        if (!seen) {
+            write_coord(out_coords, out_count, candidate);
+            out_count += 1;
+        }
+    }
+    count[0] = out_count;
+}
+
+[[kernel]] void intersection_coords_i32(
+    device const int* lhs [[buffer(0)]],
+    device const int* rhs [[buffer(1)]],
+    device int* out_coords [[buffer(2)]],
+    device int* count [[buffer(3)]],
+    constant const int& lhs_rows [[buffer(4)]],
+    constant const int& rhs_rows [[buffer(5)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+
+    int out_count = 0;
+    for (int row = 0; row < lhs_rows; ++row) {
+        int base = row * 4;
+        int candidate[4] = {
+            lhs[base],
+            lhs[base + 1],
+            lhs[base + 2],
+            lhs[base + 3],
+        };
+        bool in_rhs = false;
+        for (int rhs_row = 0; rhs_row < rhs_rows; ++rhs_row) {
+            if (coord4_equal(candidate, rhs, rhs_row)) {
+                in_rhs = true;
+                break;
+            }
+        }
+        if (!in_rhs) {
+            continue;
+        }
+
+        bool emitted = false;
+        for (int prev = 0; prev < out_count; ++prev) {
+            if (coord4_equal(candidate, out_coords, prev)) {
+                emitted = true;
+                break;
+            }
+        }
+        if (!emitted) {
+            write_coord(out_coords, out_count, candidate);
+            out_count += 1;
+        }
+    }
+    count[0] = out_count;
+}
+
+[[kernel]] void lookup_coords_i32(
+    device const int* coords [[buffer(0)]],
+    device const int* queries [[buffer(1)]],
+    device int* out_rows [[buffer(2)]],
+    constant const int& rows [[buffer(3)]],
+    constant const int& query_rows [[buffer(4)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem >= uint(query_rows)) {
+        return;
+    }
+
+    int query_row = int(elem);
+    int out = -1;
+    for (int row = 0; row < rows; ++row) {
+        if (coord_equal(queries, query_row, coords, row)) {
+            out = row;
+            break;
+        }
+    }
+    out_rows[query_row] = out;
+}
+
 // MARK: - generative maps
 
 [[kernel]] void build_generative_kernel_map_i32(
@@ -65,4 +355,214 @@ using namespace metal;
         coords[in_base + 2] * stride_y + offsets[offset_base + 1];
     out_coords[out_base + 3] =
         coords[in_base + 3] * stride_z + offsets[offset_base + 2];
+}
+
+// MARK: - generic maps
+
+[[kernel]] void build_forward_kernel_map_i32(
+    device const int* coords [[buffer(0)]],
+    device const int* kernel_offsets [[buffer(1)]],
+    device int* in_rows [[buffer(2)]],
+    device int* out_rows [[buffer(3)]],
+    device int* kernel_ids [[buffer(4)]],
+    device int* out_coords [[buffer(5)]],
+    device int* counts [[buffer(6)]],
+    device int* output_csr_offsets [[buffer(7)]],
+    device int* output_csr_in_rows [[buffer(8)]],
+    device int* output_csr_kernel_ids [[buffer(9)]],
+    device int* kernel_bucket_offsets [[buffer(10)]],
+    device int* kernel_bucket_in_rows [[buffer(11)]],
+    device int* kernel_bucket_out_rows [[buffer(12)]],
+    device int* input_csr_offsets [[buffer(13)]],
+    device int* input_csr_out_rows [[buffer(14)]],
+    device int* input_csr_kernel_ids [[buffer(15)]],
+    constant const int& rows [[buffer(16)]],
+    constant const int& kernel_count [[buffer(17)]],
+    constant const int& stride_x [[buffer(18)]],
+    constant const int& stride_y [[buffer(19)]],
+    constant const int& stride_z [[buffer(20)]],
+    constant const int& pad_x [[buffer(21)]],
+    constant const int& pad_y [[buffer(22)]],
+    constant const int& pad_z [[buffer(23)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+
+    int out_count = 0;
+    bool identity_out = stride_x == 1 && stride_y == 1 && stride_z == 1 &&
+                        pad_x == 0 && pad_y == 0 && pad_z == 0;
+
+    for (int row = 0; row < rows; ++row) {
+        int base = row * 4;
+        int candidate[4] = {
+            coords[base],
+            identity_out ? coords[base + 1]
+                         : floor_div_int(coords[base + 1], stride_x),
+            identity_out ? coords[base + 2]
+                         : floor_div_int(coords[base + 2], stride_y),
+            identity_out ? coords[base + 3]
+                         : floor_div_int(coords[base + 3], stride_z),
+        };
+        bool seen = false;
+        for (int prev = 0; prev < out_count; ++prev) {
+            if (coord4_equal(candidate, out_coords, prev)) {
+                seen = true;
+                break;
+            }
+        }
+        if (!seen) {
+            write_coord(out_coords, out_count, candidate);
+            out_count += 1;
+        }
+    }
+
+    int edge_count = 0;
+    for (int kernel_id = 0; kernel_id < kernel_count; ++kernel_id) {
+        int offset_base = kernel_id * 3;
+        for (int out_row = 0; out_row < out_count; ++out_row) {
+            int out_base = out_row * 4;
+            int candidate[4] = {
+                out_coords[out_base],
+                out_coords[out_base + 1] * stride_x +
+                    kernel_offsets[offset_base] - pad_x,
+                out_coords[out_base + 2] * stride_y +
+                    kernel_offsets[offset_base + 1] - pad_y,
+                out_coords[out_base + 3] * stride_z +
+                    kernel_offsets[offset_base + 2] - pad_z,
+            };
+            for (int in_row = 0; in_row < rows; ++in_row) {
+                if (coord4_equal(candidate, coords, in_row)) {
+                    write_edge(
+                        in_rows,
+                        out_rows,
+                        kernel_ids,
+                        edge_count,
+                        in_row,
+                        out_row,
+                        kernel_id
+                    );
+                    edge_count += 1;
+                    break;
+                }
+            }
+        }
+    }
+
+    counts[0] = edge_count;
+    counts[1] = out_count;
+    build_views(
+        in_rows,
+        out_rows,
+        kernel_ids,
+        edge_count,
+        out_count,
+        kernel_count,
+        rows,
+        output_csr_offsets,
+        output_csr_in_rows,
+        output_csr_kernel_ids,
+        kernel_bucket_offsets,
+        kernel_bucket_in_rows,
+        kernel_bucket_out_rows,
+        input_csr_offsets,
+        input_csr_out_rows,
+        input_csr_kernel_ids
+    );
+}
+
+[[kernel]] void build_transposed_kernel_map_i32(
+    device const int* coords [[buffer(0)]],
+    device const int* kernel_offsets [[buffer(1)]],
+    device int* in_rows [[buffer(2)]],
+    device int* out_rows [[buffer(3)]],
+    device int* kernel_ids [[buffer(4)]],
+    device int* out_coords [[buffer(5)]],
+    device int* counts [[buffer(6)]],
+    device int* output_csr_offsets [[buffer(7)]],
+    device int* output_csr_in_rows [[buffer(8)]],
+    device int* output_csr_kernel_ids [[buffer(9)]],
+    device int* kernel_bucket_offsets [[buffer(10)]],
+    device int* kernel_bucket_in_rows [[buffer(11)]],
+    device int* kernel_bucket_out_rows [[buffer(12)]],
+    device int* input_csr_offsets [[buffer(13)]],
+    device int* input_csr_out_rows [[buffer(14)]],
+    device int* input_csr_kernel_ids [[buffer(15)]],
+    constant const int& rows [[buffer(16)]],
+    constant const int& kernel_count [[buffer(17)]],
+    constant const int& stride_x [[buffer(18)]],
+    constant const int& stride_y [[buffer(19)]],
+    constant const int& stride_z [[buffer(20)]],
+    constant const int& pad_x [[buffer(21)]],
+    constant const int& pad_y [[buffer(22)]],
+    constant const int& pad_z [[buffer(23)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+
+    int edge_count = 0;
+    int out_count = 0;
+    for (int in_row = 0; in_row < rows; ++in_row) {
+        int in_base = in_row * 4;
+        for (int kernel_id = 0; kernel_id < kernel_count; ++kernel_id) {
+            int offset_base = kernel_id * 3;
+            int candidate[4] = {
+                coords[in_base],
+                coords[in_base + 1] * stride_x + kernel_offsets[offset_base] -
+                    pad_x,
+                coords[in_base + 2] * stride_y +
+                    kernel_offsets[offset_base + 1] - pad_y,
+                coords[in_base + 3] * stride_z +
+                    kernel_offsets[offset_base + 2] - pad_z,
+            };
+
+            int out_row = -1;
+            for (int prev = 0; prev < out_count; ++prev) {
+                if (coord4_equal(candidate, out_coords, prev)) {
+                    out_row = prev;
+                    break;
+                }
+            }
+            if (out_row < 0) {
+                out_row = out_count;
+                write_coord(out_coords, out_row, candidate);
+                out_count += 1;
+            }
+
+            write_edge(
+                in_rows,
+                out_rows,
+                kernel_ids,
+                edge_count,
+                in_row,
+                out_row,
+                kernel_id
+            );
+            edge_count += 1;
+        }
+    }
+
+    counts[0] = edge_count;
+    counts[1] = out_count;
+    build_views(
+        in_rows,
+        out_rows,
+        kernel_ids,
+        edge_count,
+        out_count,
+        kernel_count,
+        rows,
+        output_csr_offsets,
+        output_csr_in_rows,
+        output_csr_kernel_ids,
+        kernel_bucket_offsets,
+        kernel_bucket_in_rows,
+        kernel_bucket_out_rows,
+        input_csr_offsets,
+        input_csr_out_rows,
+        input_csr_kernel_ids
+    );
 }

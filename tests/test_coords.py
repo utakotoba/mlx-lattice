@@ -191,6 +191,81 @@ def test_generative_map_runs_with_gpu_default_when_metal_is_available() -> (
     assert input_csr.kernel_ids.tolist() == [0, 1, 0, 1]
 
 
+def test_coordinate_primitives_run_with_gpu_default_when_metal_is_available() -> (
+    None
+):
+    info = cast('dict[str, Any]', backend_info())
+    capabilities = cast('dict[str, bool]', info['capabilities'])
+    if not capabilities['metal']:
+        pytest.skip('Metal backend was not built')
+    if not hasattr(mx, 'metal') or not mx.metal.is_available():
+        pytest.skip('Metal device is not available')
+
+    previous_device = mx.default_device()
+    try:
+        mx.set_default_device(mx.gpu)
+        lhs = mx.array(
+            [[0, 0, 0, 0], [0, 1, 0, 0], [0, 1, 0, 0]],
+            dtype=mx.int32,
+        )
+        rhs = mx.array(
+            [[0, 1, 0, 0], [0, 2, 0, 0]],
+            dtype=mx.int32,
+        )
+        downsampled = downsample_coords(rhs, stride=2)
+        unioned = union_coords(lhs, rhs)
+        intersected = intersection_coords(lhs, rhs)
+        looked_up = lookup_coords(lhs, rhs)
+
+        coords = mx.array(
+            [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
+            dtype=mx.int32,
+        )
+        forward = build_kernel_map(coords, kernel_size=(3, 1, 1))
+        transposed = build_transposed_kernel_map(
+            mx.array([[0, 1, 0, 0]], dtype=mx.int32),
+            kernel_size=(2, 1, 1),
+            stride=(2, 1, 1),
+        )
+        mx.eval(
+            downsampled,
+            unioned,
+            intersected,
+            looked_up,
+            forward.in_rows,
+            forward.out_rows,
+            forward.kernel_ids,
+            forward.require_output_csr().offsets,
+            transposed.out_coords,
+            transposed.in_rows,
+            transposed.out_rows,
+            transposed.kernel_ids,
+        )
+    finally:
+        mx.set_default_device(previous_device)
+
+    assert downsampled.tolist() == [[0, 0, 0, 0], [0, 1, 0, 0]]
+    assert unioned.tolist() == [
+        [0, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 2, 0, 0],
+    ]
+    assert intersected.tolist() == [[0, 1, 0, 0]]
+    assert looked_up.tolist() == [1, -1]
+    assert forward.in_rows.tolist() == [0, 1, 0, 1, 2, 1, 2]
+    assert forward.out_rows.tolist() == [1, 2, 0, 1, 2, 0, 1]
+    assert forward.kernel_ids.tolist() == [0, 0, 1, 1, 1, 2, 2]
+    assert forward.require_output_csr().offsets.tolist() == [0, 2, 5, 7]
+    assert transposed.out_coords is not None
+    assert transposed.out_coords.tolist() == [
+        [0, 2, 0, 0],
+        [0, 3, 0, 0],
+    ]
+    assert transposed.in_rows.tolist() == [0, 0]
+    assert transposed.out_rows.tolist() == [0, 1]
+    assert transposed.kernel_ids.tolist() == [0, 1]
+
+
 def test_coordinate_manager_caches_kernel_maps() -> None:
     coords = mx.array([[0, 0, 0, 0], [0, 1, 0, 0]], dtype=mx.int32)
     manager = CoordinateManager()

@@ -23,20 +23,32 @@ bool should_use_metal_coords(const mx::array& coords) {
 // MARK: - set ops
 
 mx::array dispatch_downsample_coords(const mx::array& coords, Triple stride) {
+    if (should_use_metal_coords(coords)) {
+        return metal::downsample_coords(coords, stride);
+    }
     return cpu::downsample_coords(coords, stride);
 }
 
 mx::array dispatch_union_coords(const mx::array& lhs, const mx::array& rhs) {
+    if (should_use_metal_coords(lhs)) {
+        return metal::union_coords(lhs, rhs);
+    }
     return cpu::union_coords(lhs, rhs);
 }
 
 mx::array
 dispatch_intersection_coords(const mx::array& lhs, const mx::array& rhs) {
+    if (should_use_metal_coords(lhs)) {
+        return metal::intersection_coords(lhs, rhs);
+    }
     return cpu::intersection_coords(lhs, rhs);
 }
 
 mx::array
 dispatch_lookup_coords(const mx::array& coords, const mx::array& queries) {
+    if (should_use_metal_coords(coords)) {
+        return metal::lookup_coords(coords, queries);
+    }
     return cpu::lookup_coords(coords, queries);
 }
 
