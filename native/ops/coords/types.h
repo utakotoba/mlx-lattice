@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 #include "mlx/array.h"
@@ -21,6 +22,28 @@ enum class CoordMapOp : std::uint8_t {
     Forward,
     Transposed,
 };
+
+enum CoordMapOutputSlot : std::size_t {
+    MapInRows = 0,
+    MapOutRows,
+    MapKernelIds,
+    MapOutCoords,
+    MapCounts,
+    MapOutputCsrOffsets,
+    MapOutputCsrInRows,
+    MapOutputCsrKernelIds,
+    MapKernelBucketOffsets,
+    MapKernelBucketInRows,
+    MapKernelBucketOutRows,
+    MapInputCsrOffsets,
+    MapInputCsrOutRows,
+    MapInputCsrKernelIds,
+    MapOutputCount,
+};
+
+constexpr std::size_t MapViewOutputBase = MapOutputCsrOffsets;
+constexpr std::size_t GenerativeMapViewOutputBase = MapCounts;
+constexpr std::size_t GenerativeMapOutputCount = MapOutputCount - 1;
 
 struct NativeOutputCsrView {
     mx::array offsets;

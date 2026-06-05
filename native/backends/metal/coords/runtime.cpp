@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
+#include <initializer_list>
 #include <stdexcept>
 #include <string>
 
@@ -55,11 +56,28 @@ const char* map_kernel_name(CoordMapOp op) {
 
 // MARK: - guards
 
-void require_i32(const mx::array& value, const char* name) {
-    if (value.dtype() != mx::int32) {
-        throw std::invalid_argument(
-            std::string("Metal coordinate kernels require int32 ") + name + "."
-        );
+void require_i32_inputs(
+    const std::vector<mx::array>& inputs,
+    std::initializer_list<const char*> names
+) {
+    int index = 0;
+    for (auto name : names) {
+        if (inputs[index++].dtype() != mx::int32) {
+            throw std::invalid_argument(
+                std::string("Metal coordinate kernels require int32 ") + name +
+                "."
+            );
+        }
+    }
+}
+
+void allocate(mx::array& output) {
+    output.set_data(mx::allocator::malloc(output.nbytes()));
+}
+
+void allocate_all(std::vector<mx::array>& outputs) {
+    for (auto& output : outputs) {
+        allocate(output);
     }
 }
 
@@ -87,16 +105,16 @@ void eval_set_coords(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    require_i32(inputs[0], "coords");
+    require_i32_inputs(inputs, {"coords"});
     if (op != CoordSetOp::Downsample) {
-        require_i32(inputs[1], "rhs coords");
+        require_i32_inputs(inputs, {"coords", "rhs coords"});
     }
 
 #ifdef _METAL_
     auto& out_coords = outputs[0];
     auto& count = outputs[1];
-    out_coords.set_data(mx::allocator::malloc(out_coords.nbytes()));
-    count.set_data(mx::allocator::malloc(count.nbytes()));
+    allocate(out_coords);
+    allocate(count);
 
     auto& device = mx::metal::device(stream.device);
     auto library = device.get_library("mlx_lattice", binary_dir());
@@ -137,12 +155,11 @@ void eval_lookup_coords(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    require_i32(inputs[0], "coords");
-    require_i32(inputs[1], "queries");
+    require_i32_inputs(inputs, {"coords", "queries"});
 
 #ifdef _METAL_
     auto& out = outputs[0];
-    out.set_data(mx::allocator::malloc(out.nbytes()));
+    allocate(out);
 
     auto& device = mx::metal::device(stream.device);
     auto library = device.get_library("mlx_lattice", binary_dir());
@@ -184,13 +201,10 @@ void eval_generic_kernel_map(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    require_i32(inputs[0], "coords");
-    require_i32(inputs[1], "kernel offsets");
+    require_i32_inputs(inputs, {"coords", "kernel offsets"});
 
 #ifdef _METAL_
-    for (auto& output : outputs) {
-        output.set_data(mx::allocator::malloc(output.nbytes()));
-    }
+    allocate_all(outputs);
 
     auto& device = mx::metal::device(stream.device);
     auto library = device.get_library("mlx_lattice", binary_dir());
@@ -233,13 +247,10 @@ void eval_generative_kernel_map(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    require_i32(inputs[0], "coords");
-    require_i32(inputs[1], "kernel offsets");
+    require_i32_inputs(inputs, {"coords", "kernel offsets"});
 
 #ifdef _METAL_
-    for (auto& output : outputs) {
-        output.set_data(mx::allocator::malloc(output.nbytes()));
-    }
+    allocate_all(outputs);
 
     auto pair_count = rows * kernel_count;
     auto thread_count = std::max({pair_count + 1, rows + 1, kernel_count + 1});

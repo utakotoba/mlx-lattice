@@ -20,24 +20,7 @@ namespace {
 
 using Coord = std::array<int64_t, 4>;
 using Edge = std::array<int32_t, 3>;
-
-struct OutputCsrData {
-    std::vector<int32_t> offsets;
-    std::vector<int32_t> in_rows;
-    std::vector<int32_t> kernel_ids;
-};
-
-struct KernelBucketData {
-    std::vector<int32_t> offsets;
-    std::vector<int32_t> in_rows;
-    std::vector<int32_t> out_rows;
-};
-
-struct InputCsrData {
-    std::vector<int32_t> offsets;
-    std::vector<int32_t> out_rows;
-    std::vector<int32_t> kernel_ids;
-};
+using ViewData = std::array<std::vector<int32_t>, 3>;
 
 struct CoordHash {
     size_t operator()(const Coord& coord) const {
@@ -148,12 +131,14 @@ void write_coords(
 
 // MARK: - views
 
-template <typename Key>
-std::vector<int32_t>
-view_offsets(const std::vector<Edge>& edges, int rows, Key key) {
+std::vector<int32_t> view_offsets(
+    const std::vector<Edge>& edges,
+    int rows, // NOLINT(bugprone-easily-swappable-parameters)
+    int key
+) {
     std::vector<int32_t> offsets(static_cast<size_t>(rows) + 1, 0);
     for (auto edge : edges) {
-        offsets[static_cast<size_t>(key(edge)) + 1] += 1;
+        offsets[static_cast<size_t>(edge[key]) + 1] += 1;
     }
     for (int row = 0; row < rows; ++row) {
         offsets[static_cast<size_t>(row) + 1] += offsets[row];
@@ -161,47 +146,23 @@ view_offsets(const std::vector<Edge>& edges, int rows, Key key) {
     return offsets;
 }
 
-OutputCsrData output_csr_view(const std::vector<Edge>& edges, int n_out_rows) {
-    auto offsets =
-        view_offsets(edges, n_out_rows, [](Edge edge) { return edge[1]; });
+ViewData view_data(
+    const std::vector<Edge>& edges,
+    int rows,
+    int key,
+    int first,
+    int second
+) {
+    auto offsets = view_offsets(edges, rows, key);
     auto cursor = offsets;
-    std::vector<int32_t> in_rows(edges.size());
-    std::vector<int32_t> kernel_ids(edges.size());
+    std::vector<int32_t> first_values(edges.size());
+    std::vector<int32_t> second_values(edges.size());
     for (auto edge : edges) {
-        auto index = cursor[static_cast<size_t>(edge[1])]++;
-        in_rows[static_cast<size_t>(index)] = edge[0];
-        kernel_ids[static_cast<size_t>(index)] = edge[2];
+        auto index = cursor[static_cast<size_t>(edge[key])]++;
+        first_values[static_cast<size_t>(index)] = edge[first];
+        second_values[static_cast<size_t>(index)] = edge[second];
     }
-    return {offsets, in_rows, kernel_ids};
-}
-
-KernelBucketData
-kernel_bucket_view(const std::vector<Edge>& edges, int n_kernels) {
-    auto offsets =
-        view_offsets(edges, n_kernels, [](Edge edge) { return edge[2]; });
-    auto cursor = offsets;
-    std::vector<int32_t> in_rows(edges.size());
-    std::vector<int32_t> out_rows(edges.size());
-    for (auto edge : edges) {
-        auto index = cursor[static_cast<size_t>(edge[2])]++;
-        in_rows[static_cast<size_t>(index)] = edge[0];
-        out_rows[static_cast<size_t>(index)] = edge[1];
-    }
-    return {offsets, in_rows, out_rows};
-}
-
-InputCsrData input_csr_view(const std::vector<Edge>& edges, int n_in_rows) {
-    auto offsets =
-        view_offsets(edges, n_in_rows, [](Edge edge) { return edge[0]; });
-    auto cursor = offsets;
-    std::vector<int32_t> out_rows(edges.size());
-    std::vector<int32_t> kernel_ids(edges.size());
-    for (auto edge : edges) {
-        auto index = cursor[static_cast<size_t>(edge[0])]++;
-        out_rows[static_cast<size_t>(index)] = edge[1];
-        kernel_ids[static_cast<size_t>(index)] = edge[2];
-    }
-    return {offsets, out_rows, kernel_ids};
+    return {offsets, first_values, second_values};
 }
 
 // MARK: - coords
@@ -260,13 +221,9 @@ Coord kernel_input_coord(
     };
 }
 
-void write_compact_map(
+void write_map_rows(
     std::vector<mx::array>& outputs,
-    const std::vector<Edge>& edges,
-    const std::vector<Coord>& out_coords,
-    const std::vector<Triple>& offsets,
-    int n_in_rows,
-    mx::Dtype coord_dtype
+    const std::vector<Edge>& edges
 ) {
     std::vector<int32_t> in_rows;
     std::vector<int32_t> out_rows;
@@ -280,24 +237,47 @@ void write_compact_map(
         kernel_ids.push_back(edge[2]);
     }
 
-    auto output_csr = output_csr_view(edges, int(out_coords.size()));
-    auto kernel_buckets = kernel_bucket_view(edges, int(offsets.size()));
-    auto input_csr = input_csr_view(edges, n_in_rows);
+    write_i32(outputs[MapInRows], in_rows);
+    write_i32(outputs[MapOutRows], out_rows);
+    write_i32(outputs[MapKernelIds], kernel_ids);
+}
 
-    write_i32(outputs[0], in_rows);
-    write_i32(outputs[1], out_rows);
-    write_i32(outputs[2], kernel_ids);
-    write_coords(outputs[3], out_coords, coord_dtype);
-    write_count(outputs[4], int(edges.size()), int(out_coords.size()));
-    write_i32(outputs[5], output_csr.offsets);
-    write_i32(outputs[6], output_csr.in_rows);
-    write_i32(outputs[7], output_csr.kernel_ids);
-    write_i32(outputs[8], kernel_buckets.offsets);
-    write_i32(outputs[9], kernel_buckets.in_rows);
-    write_i32(outputs[10], kernel_buckets.out_rows);
-    write_i32(outputs[11], input_csr.offsets);
-    write_i32(outputs[12], input_csr.out_rows);
-    write_i32(outputs[13], input_csr.kernel_ids);
+void write_map_views(
+    std::vector<mx::array>& outputs,
+    std::size_t base,
+    const ViewData& output_csr,
+    const ViewData& kernel_buckets,
+    const ViewData& input_csr
+) {
+    for (auto view : std::array{&output_csr, &kernel_buckets, &input_csr}) {
+        for (const auto& values : *view) {
+            write_i32(outputs[base++], values);
+        }
+    }
+}
+
+void write_map(
+    std::vector<mx::array>& outputs,
+    const std::vector<Edge>& edges,
+    const std::vector<Coord>& out_coords,
+    const std::vector<Triple>& offsets,
+    int n_in_rows,
+    mx::Dtype coord_dtype,
+    bool compact
+) {
+    auto output_csr = view_data(edges, int(out_coords.size()), 1, 0, 2);
+    auto kernel_buckets = view_data(edges, int(offsets.size()), 2, 0, 1);
+    auto input_csr = view_data(edges, n_in_rows, 0, 1, 2);
+    auto view_base = compact ? MapViewOutputBase : GenerativeMapViewOutputBase;
+
+    write_map_rows(outputs, edges);
+    write_coords(outputs[MapOutCoords], out_coords, coord_dtype);
+    if (compact) {
+        write_count(
+            outputs[MapCounts], int(edges.size()), int(out_coords.size())
+        );
+    }
+    write_map_views(outputs, view_base, output_csr, kernel_buckets, input_csr);
 }
 
 // MARK: - set ops
@@ -392,8 +372,14 @@ void write_kernel_map(
         }
     }
 
-    write_compact_map(
-        outputs, edges, out_values, offsets, int(values.size()), coords.dtype()
+    write_map(
+        outputs,
+        edges,
+        out_values,
+        offsets,
+        int(values.size()),
+        coords.dtype(),
+        true
     );
 }
 
@@ -428,35 +414,15 @@ void write_generative_map(
         }
     }
 
-    std::vector<int32_t> in_rows;
-    std::vector<int32_t> out_rows;
-    std::vector<int32_t> kernel_ids;
-    in_rows.reserve(edges.size());
-    out_rows.reserve(edges.size());
-    kernel_ids.reserve(edges.size());
-    for (auto edge : edges) {
-        in_rows.push_back(edge[0]);
-        out_rows.push_back(edge[1]);
-        kernel_ids.push_back(edge[2]);
-    }
-
-    auto output_csr = output_csr_view(edges, int(out_values.size()));
-    auto kernel_buckets = kernel_bucket_view(edges, int(offsets.size()));
-    auto input_csr = input_csr_view(edges, int(values.size()));
-
-    write_i32(outputs[0], in_rows);
-    write_i32(outputs[1], out_rows);
-    write_i32(outputs[2], kernel_ids);
-    write_coords(outputs[3], out_values, coords.dtype());
-    write_i32(outputs[4], output_csr.offsets);
-    write_i32(outputs[5], output_csr.in_rows);
-    write_i32(outputs[6], output_csr.kernel_ids);
-    write_i32(outputs[7], kernel_buckets.offsets);
-    write_i32(outputs[8], kernel_buckets.in_rows);
-    write_i32(outputs[9], kernel_buckets.out_rows);
-    write_i32(outputs[10], input_csr.offsets);
-    write_i32(outputs[11], input_csr.out_rows);
-    write_i32(outputs[12], input_csr.kernel_ids);
+    write_map(
+        outputs,
+        edges,
+        out_values,
+        offsets,
+        int(values.size()),
+        coords.dtype(),
+        false
+    );
 }
 
 void write_transposed_kernel_map(
@@ -498,8 +464,14 @@ void write_transposed_kernel_map(
         }
     }
 
-    write_compact_map(
-        outputs, edges, out_values, offsets, int(values.size()), coords.dtype()
+    write_map(
+        outputs,
+        edges,
+        out_values,
+        offsets,
+        int(values.size()),
+        coords.dtype(),
+        true
     );
 }
 

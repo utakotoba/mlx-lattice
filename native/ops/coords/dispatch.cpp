@@ -1,6 +1,7 @@
 #include "ops/coords/dispatch.h"
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "backends/cpu/coords/algorithms.h"
@@ -12,6 +13,11 @@
 namespace mlx_lattice {
 
 namespace {
+
+struct MapOutputSpec {
+    std::vector<mx::Shape> shapes;
+    std::vector<mx::Dtype> dtypes;
+};
 
 // MARK: - arrays
 
@@ -57,7 +63,8 @@ NativeKernelMap compact_map(
     const std::vector<mx::array>& outputs,
     const mx::array& kernel_offsets
 ) {
-    auto count_values = mx::contiguous(outputs[4], false, mx::Device::cpu);
+    auto count_values =
+        mx::contiguous(outputs[MapCounts], false, mx::Device::cpu);
     count_values.eval();
     count_values.wait();
     auto counts = count_values.data<int32_t>();
@@ -65,21 +72,80 @@ NativeKernelMap compact_map(
     auto out_count = counts[1];
     auto kernel_count = kernel_offsets.shape(0);
     return {
-        compact_rows(outputs[0], edge_count),
-        compact_rows(outputs[1], edge_count),
-        compact_rows(outputs[2], edge_count),
-        mx::slice(outputs[3], {0, 0}, {out_count, 4}),
+        compact_rows(outputs[MapInRows], edge_count),
+        compact_rows(outputs[MapOutRows], edge_count),
+        compact_rows(outputs[MapKernelIds], edge_count),
+        mx::slice(outputs[MapOutCoords], {0, 0}, {out_count, 4}),
         kernel_offsets,
-        {compact_offsets(outputs[5], out_count),
-         compact_rows(outputs[6], edge_count),
-         compact_rows(outputs[7], edge_count)},
-        {compact_offsets(outputs[8], kernel_count),
-         compact_rows(outputs[9], edge_count),
-         compact_rows(outputs[10], edge_count)},
-        {compact_offsets(outputs[11], outputs[11].shape(0) - 1),
-         compact_rows(outputs[12], edge_count),
-         compact_rows(outputs[13], edge_count)},
+        {compact_offsets(outputs[MapOutputCsrOffsets], out_count),
+         compact_rows(outputs[MapOutputCsrInRows], edge_count),
+         compact_rows(outputs[MapOutputCsrKernelIds], edge_count)},
+        {compact_offsets(outputs[MapKernelBucketOffsets], kernel_count),
+         compact_rows(outputs[MapKernelBucketInRows], edge_count),
+         compact_rows(outputs[MapKernelBucketOutRows], edge_count)},
+        {compact_offsets(
+             outputs[MapInputCsrOffsets],
+             outputs[MapInputCsrOffsets].shape(0) - 1
+         ),
+         compact_rows(outputs[MapInputCsrOutRows], edge_count),
+         compact_rows(outputs[MapInputCsrKernelIds], edge_count)},
     };
+}
+
+NativeKernelMap direct_map(
+    const std::vector<mx::array>& outputs,
+    const mx::array& kernel_offsets
+) {
+    auto base = GenerativeMapViewOutputBase;
+    return {
+        outputs[MapInRows],
+        outputs[MapOutRows],
+        outputs[MapKernelIds],
+        outputs[MapOutCoords],
+        kernel_offsets,
+        {outputs[base], outputs[base + 1], outputs[base + 2]},
+        {outputs[base + 3], outputs[base + 4], outputs[base + 5]},
+        {outputs[base + 6], outputs[base + 7], outputs[base + 8]},
+    };
+}
+
+MapOutputSpec map_output_spec(
+    int edges,    // NOLINT(bugprone-easily-swappable-parameters)
+    int out_rows, // NOLINT(bugprone-easily-swappable-parameters)
+    int in_rows,
+    int kernels,
+    mx::Dtype coord_dtype,
+    bool compact
+) {
+    auto count = compact ? MapOutputCount : GenerativeMapOutputCount;
+    auto base = compact ? MapViewOutputBase : GenerativeMapViewOutputBase;
+    std::vector<mx::Shape> shapes(count, mx::Shape{edges});
+    std::vector<mx::Dtype> dtypes(count, mx::int32);
+    shapes[MapOutCoords] = mx::Shape{out_rows, 4};
+    shapes[base] = mx::Shape{out_rows + 1};
+    shapes[base + 3] = mx::Shape{kernels + 1};
+    shapes[base + 6] = mx::Shape{in_rows + 1};
+    if (compact) {
+        shapes[MapCounts] = mx::Shape{2};
+    }
+    dtypes[MapOutCoords] = coord_dtype;
+    return {shapes, dtypes};
+}
+
+std::vector<mx::array> make_map_outputs(
+    const MapOutputSpec& spec,
+    const std::shared_ptr<mx::Primitive>& primitive,
+    const mx::array& coords,
+    const mx::array& offsets,
+    mx::Device device
+) {
+    return mx::array::make_arrays(
+        spec.shapes,
+        spec.dtypes,
+        primitive,
+        {mx::contiguous(coords, false, device),
+         mx::contiguous(offsets, false, device)}
+    );
 }
 
 // MARK: - primitives
@@ -342,35 +408,10 @@ NativeKernelMap dispatch_build_kernel_map(
     auto max_out_rows = rows;
     auto max_edges = max_out_rows * kernel_count;
     auto device = device_for(coords);
-    auto outputs = mx::array::make_arrays(
-        {mx::Shape{max_edges},
-         mx::Shape{max_edges},
-         mx::Shape{max_edges},
-         mx::Shape{max_out_rows, 4},
-         mx::Shape{2},
-         mx::Shape{max_out_rows + 1},
-         mx::Shape{max_edges},
-         mx::Shape{max_edges},
-         mx::Shape{kernel_count + 1},
-         mx::Shape{max_edges},
-         mx::Shape{max_edges},
-         mx::Shape{rows + 1},
-         mx::Shape{max_edges},
-         mx::Shape{max_edges}},
-        {mx::int32,
-         mx::int32,
-         mx::int32,
-         coords.dtype(),
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32},
+    auto outputs = make_map_outputs(
+        map_output_spec(
+            max_edges, max_out_rows, rows, kernel_count, coords.dtype(), true
+        ),
         std::make_shared<GenericKernelMap>(
             mx::default_stream(device),
             CoordMapOp::Forward,
@@ -379,8 +420,9 @@ NativeKernelMap dispatch_build_kernel_map(
             stride,
             padding
         ),
-        {mx::contiguous(coords, false, device),
-         mx::contiguous(offset_values, false, device)}
+        coords,
+        offset_values,
+        device
     );
     return compact_map(outputs, offset_values);
 }
@@ -396,50 +438,18 @@ NativeKernelMap dispatch_build_generative_map(
     auto kernel_count = int(offsets.size());
     auto pair_count = rows * kernel_count;
     auto device = device_for(coords);
-    auto outputs = mx::array::make_arrays(
-        {mx::Shape{pair_count},
-         mx::Shape{pair_count},
-         mx::Shape{pair_count},
-         mx::Shape{pair_count, 4},
-         mx::Shape{pair_count + 1},
-         mx::Shape{pair_count},
-         mx::Shape{pair_count},
-         mx::Shape{kernel_count + 1},
-         mx::Shape{pair_count},
-         mx::Shape{pair_count},
-         mx::Shape{rows + 1},
-         mx::Shape{pair_count},
-         mx::Shape{pair_count}},
-        {mx::int32,
-         mx::int32,
-         mx::int32,
-         coords.dtype(),
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32},
+    auto outputs = make_map_outputs(
+        map_output_spec(
+            pair_count, pair_count, rows, kernel_count, coords.dtype(), false
+        ),
         std::make_shared<GenerativeKernelMap>(
             mx::default_stream(device), rows, kernel_count, stride
         ),
-        {mx::contiguous(coords, false, device),
-         mx::contiguous(offset_values, false, device)}
-    );
-
-    return {
-        outputs[0],
-        outputs[1],
-        outputs[2],
-        outputs[3],
+        coords,
         offset_values,
-        {outputs[4], outputs[5], outputs[6]},
-        {outputs[7], outputs[8], outputs[9]},
-        {outputs[10], outputs[11], outputs[12]},
-    };
+        device
+    );
+    return direct_map(outputs, offset_values);
 }
 
 NativeKernelMap dispatch_build_transposed_kernel_map(
@@ -455,35 +465,10 @@ NativeKernelMap dispatch_build_transposed_kernel_map(
     auto kernel_count = int(offsets.size());
     auto max_edges = rows * kernel_count;
     auto device = device_for(coords);
-    auto outputs = mx::array::make_arrays(
-        {mx::Shape{max_edges},
-         mx::Shape{max_edges},
-         mx::Shape{max_edges},
-         mx::Shape{max_edges, 4},
-         mx::Shape{2},
-         mx::Shape{max_edges + 1},
-         mx::Shape{max_edges},
-         mx::Shape{max_edges},
-         mx::Shape{kernel_count + 1},
-         mx::Shape{max_edges},
-         mx::Shape{max_edges},
-         mx::Shape{rows + 1},
-         mx::Shape{max_edges},
-         mx::Shape{max_edges}},
-        {mx::int32,
-         mx::int32,
-         mx::int32,
-         coords.dtype(),
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32,
-         mx::int32},
+    auto outputs = make_map_outputs(
+        map_output_spec(
+            max_edges, max_edges, rows, kernel_count, coords.dtype(), true
+        ),
         std::make_shared<GenericKernelMap>(
             mx::default_stream(device),
             CoordMapOp::Transposed,
@@ -492,8 +477,9 @@ NativeKernelMap dispatch_build_transposed_kernel_map(
             stride,
             padding
         ),
-        {mx::contiguous(coords, false, device),
-         mx::contiguous(offset_values, false, device)}
+        coords,
+        offset_values,
+        device
     );
     return compact_map(outputs, offset_values);
 }
