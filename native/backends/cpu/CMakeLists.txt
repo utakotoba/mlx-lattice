@@ -4,7 +4,7 @@ add_library(mlx_lattice_backend_cpu STATIC)
 
 target_sources(
   mlx_lattice_backend_cpu
-  PRIVATE coords.cpp)
+  PRIVATE coords/algorithms.cpp)
 
 target_include_directories(
   mlx_lattice_backend_cpu

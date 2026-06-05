@@ -1,5 +1,6 @@
-#include "backends/cpu/coords.h"
+#include "backends/cpu/coords/algorithms.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -9,8 +10,9 @@
 
 #include "mlx/device.h"
 #include "mlx/ops.h"
+#include "ops/coords.h"
 
-namespace mlx_lattice::cpu {
+namespace mlx_lattice::coords::cpu {
 
 namespace {
 
@@ -18,6 +20,24 @@ namespace {
 
 using Coord = std::array<int64_t, 4>;
 using Edge = std::array<int32_t, 3>;
+
+struct OutputCsrData {
+    std::vector<int32_t> offsets;
+    std::vector<int32_t> in_rows;
+    std::vector<int32_t> kernel_ids;
+};
+
+struct KernelBucketData {
+    std::vector<int32_t> offsets;
+    std::vector<int32_t> in_rows;
+    std::vector<int32_t> out_rows;
+};
+
+struct InputCsrData {
+    std::vector<int32_t> offsets;
+    std::vector<int32_t> out_rows;
+    std::vector<int32_t> kernel_ids;
+};
 
 struct CoordHash {
     size_t operator()(const Coord& coord) const {
@@ -66,39 +86,64 @@ std::vector<Coord> read_coords(const mx::array& coords) {
     return out;
 }
 
-mx::array make_coords_array(const std::vector<Coord>& coords, mx::Dtype dtype) {
+std::vector<Triple> read_offsets(const mx::array& offsets) {
+    auto cpu_offsets = mx::contiguous(offsets, false, mx::Device::cpu);
+    cpu_offsets.eval();
+    cpu_offsets.wait();
+
+    std::vector<Triple> out;
+    out.reserve(cpu_offsets.shape(0));
+    auto data = cpu_offsets.data<int32_t>();
+    for (int row = 0; row < cpu_offsets.shape(0); ++row) {
+        auto base = static_cast<ptrdiff_t>(row) * 3;
+        out.push_back({data[base], data[base + 1], data[base + 2]});
+    }
+    return out;
+}
+
+void write_i32(mx::array& out, const std::vector<int32_t>& values) {
+    out.set_data(mx::allocator::malloc(out.nbytes()));
+    auto data = out.data<int32_t>();
+    std::fill(data, data + out.size(), 0);
+    std::copy(values.begin(), values.end(), data);
+}
+
+void write_count(mx::array& out, int first, int second = 0) {
+    out.set_data(mx::allocator::malloc(out.nbytes()));
+    auto data = out.data<int32_t>();
+    std::fill(data, data + out.size(), 0);
+    data[0] = first;
+    if (out.size() > 1) {
+        data[1] = second;
+    }
+}
+
+void write_coords(
+    mx::array& out,
+    const std::vector<Coord>& coords,
+    mx::Dtype dtype
+) {
+    out.set_data(mx::allocator::malloc(out.nbytes()));
     if (dtype == mx::int32) {
-        std::vector<int32_t> data;
-        data.reserve(coords.size() * 4);
-        for (auto coord : coords) {
-            for (auto value : coord) {
-                data.push_back(static_cast<int32_t>(value));
+        auto data = out.data<int32_t>();
+        std::fill(data, data + out.size(), 0);
+        for (int row = 0; row < int(coords.size()); ++row) {
+            auto base = static_cast<ptrdiff_t>(row) * 4;
+            for (int axis = 0; axis < 4; ++axis) {
+                data[base + axis] = static_cast<int32_t>(coords[row][axis]);
             }
         }
-        return mx::array(data.begin(), mx::Shape{int(coords.size()), 4}, dtype);
+        return;
     }
 
-    std::vector<int64_t> data;
-    data.reserve(coords.size() * 4);
-    for (auto coord : coords) {
-        data.insert(data.end(), coord.begin(), coord.end());
+    auto data = out.data<int64_t>();
+    std::fill(data, data + out.size(), 0);
+    for (int row = 0; row < int(coords.size()); ++row) {
+        auto base = static_cast<ptrdiff_t>(row) * 4;
+        for (int axis = 0; axis < 4; ++axis) {
+            data[base + axis] = coords[row][axis];
+        }
     }
-    return mx::array(data.begin(), mx::Shape{int(coords.size()), 4}, dtype);
-}
-
-mx::array make_i32_array(const std::vector<int32_t>& data) {
-    return mx::array(data.begin(), mx::Shape{int(data.size())}, mx::int32);
-}
-
-mx::array make_offset_array(const std::vector<Triple>& offsets) {
-    std::vector<int32_t> data;
-    data.reserve(offsets.size() * 3);
-    for (auto offset : offsets) {
-        data.insert(data.end(), offset.begin(), offset.end());
-    }
-    return mx::array(
-        data.begin(), mx::Shape{int(offsets.size()), 3}, mx::int32
-    );
 }
 
 // MARK: - views
@@ -116,8 +161,7 @@ view_offsets(const std::vector<Edge>& edges, int rows, Key key) {
     return offsets;
 }
 
-NativeOutputCsrView
-output_csr_view(const std::vector<Edge>& edges, int n_out_rows) {
+OutputCsrData output_csr_view(const std::vector<Edge>& edges, int n_out_rows) {
     auto offsets =
         view_offsets(edges, n_out_rows, [](Edge edge) { return edge[1]; });
     auto cursor = offsets;
@@ -128,14 +172,10 @@ output_csr_view(const std::vector<Edge>& edges, int n_out_rows) {
         in_rows[static_cast<size_t>(index)] = edge[0];
         kernel_ids[static_cast<size_t>(index)] = edge[2];
     }
-    return {
-        make_i32_array(offsets),
-        make_i32_array(in_rows),
-        make_i32_array(kernel_ids),
-    };
+    return {offsets, in_rows, kernel_ids};
 }
 
-NativeKernelBucketView
+KernelBucketData
 kernel_bucket_view(const std::vector<Edge>& edges, int n_kernels) {
     auto offsets =
         view_offsets(edges, n_kernels, [](Edge edge) { return edge[2]; });
@@ -147,15 +187,10 @@ kernel_bucket_view(const std::vector<Edge>& edges, int n_kernels) {
         in_rows[static_cast<size_t>(index)] = edge[0];
         out_rows[static_cast<size_t>(index)] = edge[1];
     }
-    return {
-        make_i32_array(offsets),
-        make_i32_array(in_rows),
-        make_i32_array(out_rows),
-    };
+    return {offsets, in_rows, out_rows};
 }
 
-NativeInputCsrView
-input_csr_view(const std::vector<Edge>& edges, int n_in_rows) {
+InputCsrData input_csr_view(const std::vector<Edge>& edges, int n_in_rows) {
     auto offsets =
         view_offsets(edges, n_in_rows, [](Edge edge) { return edge[0]; });
     auto cursor = offsets;
@@ -166,11 +201,7 @@ input_csr_view(const std::vector<Edge>& edges, int n_in_rows) {
         out_rows[static_cast<size_t>(index)] = edge[1];
         kernel_ids[static_cast<size_t>(index)] = edge[2];
     }
-    return {
-        make_i32_array(offsets),
-        make_i32_array(out_rows),
-        make_i32_array(kernel_ids),
-    };
+    return {offsets, out_rows, kernel_ids};
 }
 
 // MARK: - coords
@@ -229,7 +260,8 @@ Coord kernel_input_coord(
     };
 }
 
-NativeKernelMap make_map(
+void write_compact_map(
+    std::vector<mx::array>& outputs,
     const std::vector<Edge>& edges,
     const std::vector<Coord>& out_coords,
     const std::vector<Triple>& offsets,
@@ -248,29 +280,29 @@ NativeKernelMap make_map(
         kernel_ids.push_back(edge[2]);
     }
 
-    return {
-        make_i32_array(in_rows),
-        make_i32_array(out_rows),
-        make_i32_array(kernel_ids),
-        make_coords_array(out_coords, coord_dtype),
-        make_offset_array(offsets),
-        output_csr_view(edges, int(out_coords.size())),
-        kernel_bucket_view(edges, int(offsets.size())),
-        input_csr_view(edges, n_in_rows),
-    };
-}
+    auto output_csr = output_csr_view(edges, int(out_coords.size()));
+    auto kernel_buckets = kernel_bucket_view(edges, int(offsets.size()));
+    auto input_csr = input_csr_view(edges, n_in_rows);
 
-} // namespace
+    write_i32(outputs[0], in_rows);
+    write_i32(outputs[1], out_rows);
+    write_i32(outputs[2], kernel_ids);
+    write_coords(outputs[3], out_coords, coord_dtype);
+    write_count(outputs[4], int(edges.size()), int(out_coords.size()));
+    write_i32(outputs[5], output_csr.offsets);
+    write_i32(outputs[6], output_csr.in_rows);
+    write_i32(outputs[7], output_csr.kernel_ids);
+    write_i32(outputs[8], kernel_buckets.offsets);
+    write_i32(outputs[9], kernel_buckets.in_rows);
+    write_i32(outputs[10], kernel_buckets.out_rows);
+    write_i32(outputs[11], input_csr.offsets);
+    write_i32(outputs[12], input_csr.out_rows);
+    write_i32(outputs[13], input_csr.kernel_ids);
+}
 
 // MARK: - set ops
 
-mx::array downsample_coords(const mx::array& coords, Triple stride) {
-    return make_coords_array(
-        downsample_values(read_coords(coords), stride), coords.dtype()
-    );
-}
-
-mx::array union_coords(const mx::array& lhs, const mx::array& rhs) {
+std::vector<Coord> union_values(const mx::array& lhs, const mx::array& rhs) {
     auto lhs_values = read_coords(lhs);
     auto rhs_values = read_coords(rhs);
     std::vector<Coord> out;
@@ -288,10 +320,11 @@ mx::array union_coords(const mx::array& lhs, const mx::array& rhs) {
             out.push_back(coord);
         }
     }
-    return make_coords_array(out, lhs.dtype());
+    return out;
 }
 
-mx::array intersection_coords(const mx::array& lhs, const mx::array& rhs) {
+std::vector<Coord>
+intersection_values(const mx::array& lhs, const mx::array& rhs) {
     auto lhs_values = read_coords(lhs);
     auto rhs_values = read_coords(rhs);
     std::unordered_set<Coord, CoordHash> rhs_seen;
@@ -310,10 +343,11 @@ mx::array intersection_coords(const mx::array& lhs, const mx::array& rhs) {
             out.push_back(coord);
         }
     }
-    return make_coords_array(out, lhs.dtype());
+    return out;
 }
 
-mx::array lookup_coords(const mx::array& coords, const mx::array& queries) {
+std::vector<int32_t>
+lookup_values(const mx::array& coords, const mx::array& queries) {
     auto rows = first_row_map(read_coords(coords));
     auto query_values = read_coords(queries);
     std::vector<int32_t> out;
@@ -322,19 +356,18 @@ mx::array lookup_coords(const mx::array& coords, const mx::array& queries) {
         auto match = rows.find(coord);
         out.push_back(match == rows.end() ? -1 : match->second);
     }
-    return make_i32_array(out);
+    return out;
 }
 
 // MARK: - maps
 
-NativeKernelMap build_kernel_map(
+void write_kernel_map(
+    std::vector<mx::array>& outputs,
     const mx::array& coords,
-    Triple kernel_size, // NOLINT(bugprone-easily-swappable-parameters)
+    const std::vector<Triple>& offsets,
     Triple stride,
-    Triple padding, // NOLINT(bugprone-easily-swappable-parameters)
-    Triple dilation
+    Triple padding
 ) {
-    auto offsets = mlx_lattice::kernel_offsets(kernel_size, dilation);
     auto values = read_coords(coords);
     auto rows = first_row_map(values);
     bool identity_out = stride == Triple{1, 1, 1} && padding == Triple{0, 0, 0};
@@ -359,17 +392,17 @@ NativeKernelMap build_kernel_map(
         }
     }
 
-    return make_map(
-        edges, out_values, offsets, int(values.size()), coords.dtype()
+    write_compact_map(
+        outputs, edges, out_values, offsets, int(values.size()), coords.dtype()
     );
 }
 
-NativeKernelMap build_generative_map(
+void write_generative_map(
+    std::vector<mx::array>& outputs,
     const mx::array& coords,
-    Triple kernel_size, // NOLINT(bugprone-easily-swappable-parameters)
+    const std::vector<Triple>& offsets,
     Triple stride
 ) {
-    auto offsets = mlx_lattice::kernel_offsets(kernel_size);
     auto values = read_coords(coords);
     std::vector<Edge> edges;
     std::vector<Coord> out_values;
@@ -395,19 +428,44 @@ NativeKernelMap build_generative_map(
         }
     }
 
-    return make_map(
-        edges, out_values, offsets, int(values.size()), coords.dtype()
-    );
+    std::vector<int32_t> in_rows;
+    std::vector<int32_t> out_rows;
+    std::vector<int32_t> kernel_ids;
+    in_rows.reserve(edges.size());
+    out_rows.reserve(edges.size());
+    kernel_ids.reserve(edges.size());
+    for (auto edge : edges) {
+        in_rows.push_back(edge[0]);
+        out_rows.push_back(edge[1]);
+        kernel_ids.push_back(edge[2]);
+    }
+
+    auto output_csr = output_csr_view(edges, int(out_values.size()));
+    auto kernel_buckets = kernel_bucket_view(edges, int(offsets.size()));
+    auto input_csr = input_csr_view(edges, int(values.size()));
+
+    write_i32(outputs[0], in_rows);
+    write_i32(outputs[1], out_rows);
+    write_i32(outputs[2], kernel_ids);
+    write_coords(outputs[3], out_values, coords.dtype());
+    write_i32(outputs[4], output_csr.offsets);
+    write_i32(outputs[5], output_csr.in_rows);
+    write_i32(outputs[6], output_csr.kernel_ids);
+    write_i32(outputs[7], kernel_buckets.offsets);
+    write_i32(outputs[8], kernel_buckets.in_rows);
+    write_i32(outputs[9], kernel_buckets.out_rows);
+    write_i32(outputs[10], input_csr.offsets);
+    write_i32(outputs[11], input_csr.out_rows);
+    write_i32(outputs[12], input_csr.kernel_ids);
 }
 
-NativeKernelMap build_transposed_kernel_map(
+void write_transposed_kernel_map(
+    std::vector<mx::array>& outputs,
     const mx::array& coords,
-    Triple kernel_size, // NOLINT(bugprone-easily-swappable-parameters)
+    const std::vector<Triple>& offsets,
     Triple stride,
-    Triple padding, // NOLINT(bugprone-easily-swappable-parameters)
-    Triple dilation
+    Triple padding
 ) {
-    auto offsets = mlx_lattice::kernel_offsets(kernel_size, dilation);
     auto values = read_coords(coords);
     std::vector<Edge> edges;
     std::vector<Coord> out_values;
@@ -440,9 +498,72 @@ NativeKernelMap build_transposed_kernel_map(
         }
     }
 
-    return make_map(
-        edges, out_values, offsets, int(values.size()), coords.dtype()
+    write_compact_map(
+        outputs, edges, out_values, offsets, int(values.size()), coords.dtype()
     );
 }
 
-} // namespace mlx_lattice::cpu
+} // namespace
+
+// MARK: - primitive eval
+
+void eval_set_coords(
+    CoordSetOp op,
+    Triple stride,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    std::vector<Coord> values;
+    switch (op) {
+    case CoordSetOp::Downsample:
+        values = downsample_values(read_coords(inputs[0]), stride);
+        break;
+    case CoordSetOp::Union:
+        values = union_values(inputs[0], inputs[1]);
+        break;
+    case CoordSetOp::Intersection:
+        values = intersection_values(inputs[0], inputs[1]);
+        break;
+    }
+
+    write_coords(outputs[0], values, inputs[0].dtype());
+    write_count(outputs[1], int(values.size()));
+}
+
+void eval_lookup_coords(
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    write_i32(outputs[0], lookup_values(inputs[0], inputs[1]));
+}
+
+void eval_generic_kernel_map(
+    CoordMapOp op,
+    Triple stride,
+    Triple padding,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    auto offsets = read_offsets(inputs[1]);
+
+    switch (op) {
+    case CoordMapOp::Forward:
+        write_kernel_map(outputs, inputs[0], offsets, stride, padding);
+        break;
+    case CoordMapOp::Transposed:
+        write_transposed_kernel_map(
+            outputs, inputs[0], offsets, stride, padding
+        );
+        break;
+    }
+}
+
+void eval_generative_kernel_map(
+    Triple stride,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    write_generative_map(outputs, inputs[0], read_offsets(inputs[1]), stride);
+}
+
+} // namespace mlx_lattice::coords::cpu

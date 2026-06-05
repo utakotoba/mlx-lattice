@@ -4,7 +4,7 @@ add_library(mlx_lattice_backend_metal STATIC)
 
 target_sources(
   mlx_lattice_backend_metal
-  PRIVATE coords.cpp)
+  PRIVATE coords/runtime.cpp)
 
 target_include_directories(
   mlx_lattice_backend_metal
@@ -12,7 +12,7 @@ target_include_directories(
 
 target_link_libraries(
   mlx_lattice_backend_metal
-  PUBLIC mlx_lattice_backend_cpu mlx)
+  PUBLIC mlx)
 
 # MARK: - shaders
 
@@ -20,7 +20,7 @@ if(MLX_LATTICE_HAS_METAL)
   mlx_build_metallib(
     TARGET mlx_lattice_metallib
     TITLE mlx_lattice
-    SOURCES ${CMAKE_CURRENT_LIST_DIR}/coords.metal
+    SOURCES ${CMAKE_CURRENT_LIST_DIR}/coords/kernels.metal
     INCLUDE_DIRS ${PROJECT_SOURCE_DIR} ${MLX_INCLUDE_DIRS}
     OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
 
