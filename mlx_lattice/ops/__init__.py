@@ -8,6 +8,7 @@ from mlx_lattice.ops.coords import (
     lookup_coords,
     union_coords,
 )
+from mlx_lattice.ops.exec import spmm_edges
 from mlx_lattice.ops.maps import (
     build_generative_map,
     build_kernel_map,
@@ -34,6 +35,7 @@ __all__ = [
     'lookup_coords',
     'prune',
     'sparse_collate',
+    'spmm_edges',
     'topk_rows',
     'transposed_kernel_map',
     'union_coords',

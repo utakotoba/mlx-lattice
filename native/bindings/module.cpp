@@ -8,6 +8,7 @@
 
 #include "lattice/runtime.h"
 #include "ops/coords.h"
+#include "ops/exec.h"
 
 namespace nb = nanobind;
 using namespace nb::literals;
@@ -204,5 +205,22 @@ NB_MODULE(_ext, m) {
             "mlx.core.array]"
         ),
         "Build a transposed sparse kernel map."
+    );
+    m.def(
+        "spmm_edges",
+        &mlx_lattice::spmm_edges,
+        "feats"_a,
+        "weights"_a,
+        "in_rows"_a,
+        "out_rows"_a,
+        "kernel_ids"_a,
+        "n_out_rows"_a,
+        nb::sig(
+            "def spmm_edges(feats: mlx.core.array, "
+            "weights: mlx.core.array, in_rows: mlx.core.array, "
+            "out_rows: mlx.core.array, kernel_ids: mlx.core.array, "
+            "n_out_rows: int) -> mlx.core.array"
+        ),
+        "Accumulate sparse edge feature products."
     );
 }
