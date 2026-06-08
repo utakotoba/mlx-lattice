@@ -228,7 +228,7 @@ def test_coordinate_primitives_run_with_gpu_default_when_metal_is_available() ->
 def test_coordinate_manager_caches_kernel_maps() -> None:
     coords = mx.array([[0, 0, 0, 0], [0, 1, 0, 0]], dtype=mx.int32)
     manager = CoordinateManager()
-    key = manager.insert(coords)
+    key = manager.insert_coords(coords)
 
     first = manager.kernel_map(key, kernel_size=(3, 1, 1))
     second = manager.kernel_map(key, kernel_size=(3, 1, 1))

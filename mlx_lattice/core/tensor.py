@@ -9,9 +9,6 @@ import mlx.core as mx
 from mlx_lattice.core.coords import (
     CoordinateManager,
     CoordinateMapKey,
-    build_generative_map,
-    build_kernel_map,
-    build_transposed_kernel_map,
     contains_coords,
     inverse_map,
     lookup_coords,
@@ -27,8 +24,8 @@ class SparseTensor:
     coords: mx.array
     feats: mx.array
     stride: Triple
-    coord_key: CoordinateMapKey | None
-    coord_manager: CoordinateManager | None
+    coord_key: CoordinateMapKey
+    coord_manager: CoordinateManager
     batch_counts: tuple[int, ...] | None
 
     def __init__(
@@ -41,28 +38,25 @@ class SparseTensor:
         coord_manager: CoordinateManager | None = None,
         batch_counts: Sequence[int] | None = None,
     ) -> None:
-        validate_coords(coords)
+        normalized_stride = triple(stride, name='stride')
+        manager, key, owned_coords = _resolve_coordinate_identity(
+            coords,
+            normalized_stride,
+            coord_key=coord_key,
+            coord_manager=coord_manager,
+        )
         if feats.ndim != 2:
             raise ValueError('feats must have shape (N, C).')
-        if coords.shape[0] != feats.shape[0]:
+        if owned_coords.shape[0] != feats.shape[0]:
             raise ValueError(
                 'coords and feats must have the same row count.'
             )
 
-        normalized_stride = triple(stride, name='stride')
         normalized_counts = _batch_counts(
-            batch_counts, rows=coords.shape[0]
-        )
-        manager = (
-            CoordinateManager() if coord_manager is None else coord_manager
-        )
-        key = (
-            manager.insert(coords, normalized_stride)
-            if coord_key is None
-            else coord_key
+            batch_counts, rows=owned_coords.shape[0]
         )
 
-        object.__setattr__(self, 'coords', coords)
+        object.__setattr__(self, 'coords', owned_coords)
         object.__setattr__(self, 'feats', feats)
         object.__setattr__(self, 'stride', normalized_stride)
         object.__setattr__(self, 'coord_key', key)
@@ -143,7 +137,7 @@ class SparseTensor:
             self.feats if feats is None else feats,
             next_stride,
             coord_key=self.coord_key if reuse_key else None,
-            coord_manager=self.coord_manager if same_identity else None,
+            coord_manager=self.coord_manager,
             batch_counts=self.batch_counts if reuse_key else None,
         )
 
@@ -161,9 +155,7 @@ class SparseTensor:
 
     def same_coords(self, other: SparseTensor) -> bool:
         if (
-            self.coord_key is not None
-            and other.coord_key is not None
-            and self.coord_manager is other.coord_manager
+            self.coord_manager is other.coord_manager
             and self.coord_key == other.coord_key
         ):
             return True
@@ -178,12 +170,7 @@ class SparseTensor:
         return contains_coords(self.coords, queries)
 
     def inverse_map(self, other: SparseTensor) -> mx.array:
-        if (
-            self.coord_key is not None
-            and other.coord_key is not None
-            and self.coord_manager is not None
-            and self.coord_manager is other.coord_manager
-        ):
+        if self.coord_manager is other.coord_manager:
             return self.coord_manager.inverse_map(
                 self.coord_key, other.coord_key
             )
@@ -197,16 +184,8 @@ class SparseTensor:
         padding: int | Sequence[int] = 0,
         dilation: int | Sequence[int] = 1,
     ) -> KernelMap:
-        if self.coord_key is not None and self.coord_manager is not None:
-            return self.coord_manager.kernel_map(
-                self.coord_key,
-                kernel_size=kernel_size,
-                stride=stride,
-                padding=padding,
-                dilation=dilation,
-            )
-        return build_kernel_map(
-            self.coords,
+        return self.coord_manager.kernel_map(
+            self.coord_key,
             kernel_size=kernel_size,
             stride=stride,
             padding=padding,
@@ -219,14 +198,8 @@ class SparseTensor:
         kernel_size: int | Sequence[int] = 2,
         stride: int | Sequence[int] = 2,
     ) -> KernelMap:
-        if self.coord_key is not None and self.coord_manager is not None:
-            return self.coord_manager.generative_map(
-                self.coord_key,
-                kernel_size=kernel_size,
-                stride=stride,
-            )
-        return build_generative_map(
-            self.coords,
+        return self.coord_manager.generative_map(
+            self.coord_key,
             kernel_size=kernel_size,
             stride=stride,
         )
@@ -239,16 +212,8 @@ class SparseTensor:
         padding: int | Sequence[int] = 0,
         dilation: int | Sequence[int] = 1,
     ) -> KernelMap:
-        if self.coord_key is not None and self.coord_manager is not None:
-            return self.coord_manager.transposed_kernel_map(
-                self.coord_key,
-                kernel_size=kernel_size,
-                stride=stride,
-                padding=padding,
-                dilation=dilation,
-            )
-        return build_transposed_kernel_map(
-            self.coords,
+        return self.coord_manager.transposed_kernel_map(
+            self.coord_key,
             kernel_size=kernel_size,
             stride=stride,
             padding=padding,
@@ -259,6 +224,35 @@ class SparseTensor:
         if not self.same_coords(other):
             raise ValueError('sparse tensor coordinates must match.')
         return self.replace(feats=self.feats + other.feats)
+
+
+def _resolve_coordinate_identity(
+    coords: mx.array,
+    stride: Triple,
+    *,
+    coord_key: CoordinateMapKey | None,
+    coord_manager: CoordinateManager | None,
+) -> tuple[CoordinateManager, CoordinateMapKey, mx.array]:
+    validate_coords(coords)
+    if coord_key is None:
+        manager = (
+            CoordinateManager() if coord_manager is None else coord_manager
+        )
+        return manager, manager.insert_coords(coords, stride), coords
+
+    if coord_manager is None:
+        raise ValueError('coord_manager is required when coord_key is set.')
+    if not coord_manager.owns(coord_key):
+        raise ValueError('coord_key does not belong to coord_manager.')
+    if coord_key.stride != stride:
+        raise ValueError('stride must match coord_key stride.')
+
+    owned_coords = coord_manager.coords(coord_key)
+    if coords is not owned_coords:
+        raise ValueError(
+            'coords must be the manager-owned array for coord_key.'
+        )
+    return coord_manager, coord_key, owned_coords
 
 
 def _batch_counts(

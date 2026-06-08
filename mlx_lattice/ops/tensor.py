@@ -75,6 +75,7 @@ def prune(x: SparseTensor, rows: mx.array) -> SparseTensor:
         mx.take(x.coords, rows, axis=0),
         mx.take(x.feats, rows, axis=0),
         x.stride,
+        coord_manager=x.coord_manager,
     )
 
 

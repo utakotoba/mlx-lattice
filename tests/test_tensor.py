@@ -1,17 +1,22 @@
 from __future__ import annotations
 
+# ruff: noqa: E402, I001
+
 import pytest
 
 mx = pytest.importorskip('mlx.core')
 
-from mlx_lattice import (  # noqa: E402
+from mlx_lattice.core import (
+    CoordinateManager,
+    SparseTensor as CoreSparseTensor,
+)
+from mlx_lattice import (
     SparseTensor,
     cat,
     prune,
     sparse_collate,
     topk_rows,
 )
-from mlx_lattice.core import SparseTensor as CoreSparseTensor  # noqa: E402
 
 
 def test_sparse_tensor_validates_shape() -> None:
@@ -40,7 +45,44 @@ def test_sparse_tensor_reuses_explicit_coordinates() -> None:
 
     assert reused.coord_key == x.coord_key
     assert reused.coord_manager is x.coord_manager
+    assert reused.coords is x.coords
     assert reused.inverse_map(x).tolist() == [0, 1]
+
+
+def test_sparse_tensor_rejects_invalid_coordinate_key_ownership() -> None:
+    coords = mx.array([[0, 0, 0, 0]], dtype=mx.int32)
+    feats = mx.ones((1, 1), dtype=mx.float32)
+    manager = CoordinateManager()
+    key = manager.insert_coords(coords)
+
+    with pytest.raises(ValueError, match='coord_manager is required'):
+        SparseTensor(coords, feats, coord_key=key)
+
+    with pytest.raises(ValueError, match='coord_key'):
+        SparseTensor(
+            coords,
+            feats,
+            coord_key=key,
+            coord_manager=CoordinateManager(),
+        )
+
+    with pytest.raises(ValueError, match='stride'):
+        SparseTensor(
+            coords,
+            feats,
+            stride=2,
+            coord_key=key,
+            coord_manager=manager,
+        )
+
+    copied = mx.array(coords.tolist(), dtype=mx.int32)
+    with pytest.raises(ValueError, match='manager-owned array'):
+        SparseTensor(
+            copied,
+            feats,
+            coord_key=key,
+            coord_manager=manager,
+        )
 
 
 def test_sparse_tensor_queries_coordinate_rows() -> None:
@@ -84,6 +126,21 @@ def test_sparse_tensor_preserves_row_order() -> None:
 
     assert out.coords.tolist() == [[0, 2, 0, 0], [0, 3, 0, 0]]
     assert out.feats.tolist() == [[2.0], [3.0]]
+
+
+def test_coordinate_changing_ops_preserve_manager_context() -> None:
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
+        dtype=mx.int32,
+    )
+    feats = mx.array([[1.0], [2.0], [3.0]], dtype=mx.float32)
+    x = SparseTensor(coords, feats)
+
+    out = prune(x, mx.array([0, 2], dtype=mx.int32))
+
+    assert out.coord_manager is x.coord_manager
+    assert out.coord_key != x.coord_key
+    assert out.coord_manager.owns(out.coord_key)
 
 
 def test_sparse_tensor_add_and_cat_reuse_coordinates() -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from itertools import count
 
 import mlx.core as mx
 
@@ -15,42 +16,58 @@ from mlx_lattice.core.coords.validation import validate_coords
 from mlx_lattice.core.maps import KernelMap, KernelSpec
 from mlx_lattice.core.types import Triple, triple
 
+_manager_ids = count()
+
+
+def _next_manager_id() -> int:
+    return next(_manager_ids)
+
 
 @dataclass(frozen=True, slots=True)
 class CoordinateMapKey:
     id: int
     stride: Triple
+    manager_id: int
 
 
 @dataclass(slots=True)
 class CoordinateManager:
+    _manager_id: int = field(default_factory=_next_manager_id, init=False)
     _next_id: int = 0
     _coords: dict[CoordinateMapKey, mx.array] = field(default_factory=dict)
-    _coord_keys: dict[tuple[int, Triple], CoordinateMapKey] = field(
+    _identity_keys: dict[tuple[int, Triple], CoordinateMapKey] = field(
         default_factory=dict
     )
     _kernel_maps: dict[
         tuple[CoordinateMapKey, KernelSpec, str], KernelMap
     ] = field(default_factory=dict)
 
-    def insert(
+    def insert_coords(
         self,
         coords: mx.array,
         stride: int | Sequence[int] = 1,
     ) -> CoordinateMapKey:
+        """Register a coordinate array by object identity and stride."""
         validate_coords(coords)
         normalized = triple(stride, name='stride')
         cache_key = (id(coords), normalized)
-        if cache_key in self._coord_keys:
-            return self._coord_keys[cache_key]
+        if cache_key in self._identity_keys:
+            return self._identity_keys[cache_key]
 
-        key = CoordinateMapKey(self._next_id, normalized)
+        key = CoordinateMapKey(self._next_id, normalized, self._manager_id)
         self._next_id += 1
         self._coords[key] = coords
-        self._coord_keys[cache_key] = key
+        self._identity_keys[cache_key] = key
         return key
 
+    def owns(self, key: CoordinateMapKey) -> bool:
+        return key.manager_id == self._manager_id and key in self._coords
+
     def coords(self, key: CoordinateMapKey) -> mx.array:
+        if not self.owns(key):
+            raise ValueError(
+                'coordinate key does not belong to this manager.'
+            )
         return self._coords[key]
 
     def inverse_map(
