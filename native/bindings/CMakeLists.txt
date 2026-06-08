@@ -4,6 +4,9 @@ nanobind_add_module(
   _ext
   NB_STATIC
   NB_DOMAIN mlx
+  coords.cpp
+  exec.cpp
+  runtime.cpp
   module.cpp)
 
 target_link_libraries(_ext PRIVATE mlx_lattice_core)

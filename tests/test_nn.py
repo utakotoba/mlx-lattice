@@ -62,7 +62,8 @@ def test_convolution_modules_wrap_public_sparse_ops() -> None:
         mx.array([[1.0], [2.0], [3.0]], dtype=mx.float32),
     )
     conv = lnn.Conv3d(1, 1, kernel_size=(3, 1, 1), bias=False)
-    conv.weight = mx.ones((3, 1, 1), dtype=mx.float32)
+    assert conv.weight.shape == (1, 3, 1, 1, 1)
+    conv.weight = mx.ones((1, 3, 1, 1, 1), dtype=mx.float32)
     subm = lnn.SubmConv3d(1, 1, kernel_size=(3, 1, 1), bias=False)
     subm.weight = conv.weight
 
@@ -88,7 +89,10 @@ def test_transpose_and_pool_modules_wrap_sparse_policies() -> None:
         stride=(2, 1, 1),
         bias=False,
     )
-    transposed.weight = mx.array([[[2.0]], [[3.0]]], dtype=mx.float32)
+    assert transposed.weight.shape == (1, 2, 1, 1, 1)
+    transposed.weight = mx.array([2.0, 3.0], dtype=mx.float32).reshape(
+        1, 2, 1, 1, 1
+    )
 
     out = transposed(x)
     pooled = lnn.SumPool3d(kernel_size=1, stride=1)(out)

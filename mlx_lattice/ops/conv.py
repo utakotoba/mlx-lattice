@@ -173,14 +173,14 @@ def _spmm_features(
     mapping: KernelMap,
 ) -> mx.array:
     _validate_feature_dtype(x.feats, weight)
-    _validate_mapped_weight(x, weight, mapping)
-    return _with_bias(spmm_edges(x.feats, weight, mapping), bias)
+    mapped_weight = _mapped_weight(x, weight, mapping)
+    return _with_bias(spmm_edges(x.feats, mapped_weight, mapping), bias)
 
 
 def _pointwise_features(x: SparseTensor, weight: mx.array) -> mx.array:
     _validate_feature_dtype(x.feats, weight)
     matrix = _pointwise_weight_matrix(x, weight)
-    return x.feats @ matrix
+    return x.feats @ matrix.T
 
 
 # MARK: - validation
@@ -193,35 +193,59 @@ def _validate_feature_dtype(feats: mx.array, weight: mx.array) -> None:
 
 def _pointwise_weight_matrix(x: SparseTensor, weight: mx.array) -> mx.array:
     if weight.ndim == 2:
-        if weight.shape[0] != x.channels:
+        if weight.shape[1] != x.channels:
             raise ValueError('weight input channels must match x.channels.')
         return weight
+    if (
+        weight.ndim == 5
+        and weight.shape[1] == 1
+        and weight.shape[2] == 1
+        and weight.shape[3] == 1
+    ):
+        if weight.shape[4] != x.channels:
+            raise ValueError('weight input channels must match x.channels.')
+        return weight[:, 0, 0, 0, :]
     if weight.ndim == 3 and weight.shape[0] == 1:
         if weight.shape[1] != x.channels:
             raise ValueError('weight input channels must match x.channels.')
-        return weight[0]
+        return weight[0].T
     raise ValueError(
-        'pointwise weight must have shape (C_in, C_out) or '
-        '(1, C_in, C_out).'
+        'pointwise weight must have shape (C_out, C_in), '
+        '(C_out, 1, 1, 1, C_in), or (1, C_in, C_out).'
     )
 
 
-def _validate_mapped_weight(
+def _mapped_weight(
     x: SparseTensor,
     weight: mx.array,
     mapping: KernelMap,
-) -> None:
-    if weight.ndim != 3:
+) -> mx.array:
+    if weight.ndim == 3:
+        if weight.shape[1] != x.channels:
+            raise ValueError('weight input channels must match x.channels.')
+        if (
+            mapping.n_kernels is not None
+            and weight.shape[0] != mapping.n_kernels
+        ):
+            raise ValueError(
+                'weight kernel rows must match the kernel map.'
+            )
+        return weight
+
+    if weight.ndim != 5:
         raise ValueError(
-            'mapped convolution weight must have shape (K, C_in, C_out).'
+            'mapped convolution weight must have shape (K, C_in, C_out) '
+            'or (C_out, Kx, Ky, Kz, C_in).'
         )
-    if weight.shape[1] != x.channels:
+    if weight.shape[4] != x.channels:
         raise ValueError('weight input channels must match x.channels.')
-    if (
-        mapping.n_kernels is not None
-        and weight.shape[0] != mapping.n_kernels
-    ):
+    kernel_rows = int(weight.shape[1] * weight.shape[2] * weight.shape[3])
+    if mapping.n_kernels is not None and kernel_rows != mapping.n_kernels:
         raise ValueError('weight kernel rows must match the kernel map.')
+    out_channels = int(weight.shape[0])
+    return weight.reshape(out_channels, kernel_rows, x.channels).transpose(
+        1, 2, 0
+    )
 
 
 def _with_bias(feats: mx.array, bias: mx.array | None) -> mx.array:

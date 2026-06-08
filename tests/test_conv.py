@@ -24,7 +24,7 @@ def test_conv3d_pointwise_reuses_coordinate_identity() -> None:
 
     out = conv3d(x, weight, bias, kernel_size=1)
 
-    assert out.feats.tolist() == [[13.0, 16.0], [27.0, 36.0]]
+    assert out.feats.tolist() == [[9.0, 18.0], [19.0, 42.0]]
     assert out.coord_key == x.coord_key
     assert out.coord_manager is x.coord_manager
     assert out.coords is x.coords
@@ -37,7 +37,7 @@ def test_conv3d_generic_uses_kernel_map_edges() -> None:
     )
     feats = mx.array([[1.0], [2.0], [3.0]], dtype=mx.float32)
     x = SparseTensor(coords, feats)
-    weight = mx.ones((3, 1, 1), dtype=mx.float32)
+    weight = mx.ones((1, 3, 1, 1, 1), dtype=mx.float32)
 
     out = conv3d(x, weight, kernel_size=(3, 1, 1))
 
@@ -56,7 +56,7 @@ def test_conv3d_strided_updates_output_stride_and_coords() -> None:
     )
     feats = mx.array([[1.0], [2.0], [3.0], [4.0]], dtype=mx.float32)
     x = SparseTensor(coords, feats)
-    weight = mx.ones((1, 1, 1), dtype=mx.float32)
+    weight = mx.ones((1, 1, 1, 1, 1), dtype=mx.float32)
 
     out = conv3d(x, weight, kernel_size=1, stride=2)
 
@@ -72,7 +72,7 @@ def test_subm_conv3d_reuses_input_coordinates() -> None:
     )
     feats = mx.array([[1.0], [2.0], [3.0]], dtype=mx.float32)
     x = SparseTensor(coords, feats)
-    weight = mx.ones((3, 1, 1), dtype=mx.float32)
+    weight = mx.ones((1, 3, 1, 1, 1), dtype=mx.float32)
 
     out = subm_conv3d(x, weight, kernel_size=(3, 1, 1))
 
@@ -87,7 +87,7 @@ def test_transpose_convs_use_generated_output_coords() -> None:
         mx.array([[4.0]], dtype=mx.float32),
         stride=(2, 1, 1),
     )
-    weight = mx.array([[[2.0]], [[3.0]]], dtype=mx.float32)
+    weight = mx.array([2.0, 3.0], dtype=mx.float32).reshape(1, 2, 1, 1, 1)
 
     out = conv_transpose3d(
         x,
