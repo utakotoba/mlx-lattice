@@ -137,12 +137,12 @@ def _fused_conv(
     reuse_input_coords: bool = False,
 ) -> SparseTensor:
     _validate_feature_dtype(x.feats, weight)
-    mapped_weight = _mapped_weight_for_kernel(x, weight, spec.volume)
+    _validate_weight_for_kernel(x, weight, spec.volume)
     out_coords, feats, counts = ext.sparse_conv(
         x.coords,
         x.active_rows,
         x.feats,
-        mapped_weight,
+        weight,
         map_kind,
         list(spec.size),
         list(spec.stride),
@@ -198,11 +198,11 @@ def _pointwise_weight_matrix(x: SparseTensor, weight: mx.array) -> mx.array:
     )
 
 
-def _mapped_weight_for_kernel(
+def _validate_weight_for_kernel(
     x: SparseTensor,
     weight: mx.array,
     kernel_rows: int,
-) -> mx.array:
+) -> None:
     if weight.ndim == 3:
         if weight.shape[1] != x.channels:
             raise ValueError('weight input channels must match x.channels.')
@@ -210,7 +210,7 @@ def _mapped_weight_for_kernel(
             raise ValueError(
                 'weight kernel rows must match the convolution kernel.'
             )
-        return weight
+        return
 
     if weight.ndim != 5:
         raise ValueError(
@@ -226,10 +226,6 @@ def _mapped_weight_for_kernel(
         raise ValueError(
             'weight kernel rows must match the convolution kernel.'
         )
-    out_channels = int(weight.shape[0])
-    return weight.reshape(out_channels, kernel_rows, x.channels).transpose(
-        1, 2, 0
-    )
 
 
 def _with_bias(feats: mx.array, bias: mx.array | None) -> mx.array:

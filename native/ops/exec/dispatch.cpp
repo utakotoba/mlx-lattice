@@ -72,6 +72,7 @@ mx::array dispatch_sparse_conv_weight_grad(
     const mx::array& coords,
     const mx::array& active_rows,
     const mx::array& offsets,
+    const mx::Shape& weight_shape,
     Triple stride,
     Triple padding,
     SparseConvShape shape
@@ -611,7 +612,6 @@ class SparseConv final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        mx::eval(inputs);
         exec::cpu::eval_sparse_conv(
             op_, shape_, stride_, padding_, inputs, outputs
         );
@@ -621,7 +621,6 @@ class SparseConv final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        mx::eval(inputs);
         exec::metal::eval_sparse_conv(
             op_, shape_, stride_, padding_, stream(), inputs, outputs
         );
@@ -710,6 +709,7 @@ class SparseConv final : public mx::Primitive {
                     primals[0],
                     primals[1],
                     primals[4],
+                    primals[3].shape(),
                     stride_,
                     padding_,
                     shape_
@@ -729,7 +729,11 @@ class SparseConv final : public mx::Primitive {
                shape_.n_out_rows == op.shape_.n_out_rows &&
                shape_.n_kernels == op.shape_.n_kernels &&
                shape_.in_channels == op.shape_.in_channels &&
-               shape_.out_channels == op.shape_.out_channels;
+               shape_.out_channels == op.shape_.out_channels &&
+               shape_.weight_layout == op.shape_.weight_layout &&
+               shape_.kernel_x == op.shape_.kernel_x &&
+               shape_.kernel_y == op.shape_.kernel_y &&
+               shape_.kernel_z == op.shape_.kernel_z;
     }
 
   private:
@@ -755,7 +759,6 @@ class SparseConvInputGrad : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        mx::eval(inputs);
         exec::cpu::eval_sparse_conv_input_grad(
             op_, shape_, stride_, padding_, inputs, outputs
         );
@@ -765,7 +768,6 @@ class SparseConvInputGrad : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        mx::eval(inputs);
         exec::metal::eval_sparse_conv_input_grad(
             op_, shape_, stride_, padding_, stream(), inputs, outputs
         );
@@ -781,7 +783,11 @@ class SparseConvInputGrad : public mx::Primitive {
                shape_.n_out_rows == op.shape_.n_out_rows &&
                shape_.n_kernels == op.shape_.n_kernels &&
                shape_.in_channels == op.shape_.in_channels &&
-               shape_.out_channels == op.shape_.out_channels;
+               shape_.out_channels == op.shape_.out_channels &&
+               shape_.weight_layout == op.shape_.weight_layout &&
+               shape_.kernel_x == op.shape_.kernel_x &&
+               shape_.kernel_y == op.shape_.kernel_y &&
+               shape_.kernel_z == op.shape_.kernel_z;
     }
 
   protected:
@@ -799,7 +805,6 @@ class SparseConvWeightGrad final : public SparseConvInputGrad {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        mx::eval(inputs);
         exec::cpu::eval_sparse_conv_weight_grad(
             op_, shape_, stride_, padding_, inputs, outputs
         );
@@ -809,7 +814,6 @@ class SparseConvWeightGrad final : public SparseConvInputGrad {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        mx::eval(inputs);
         exec::metal::eval_sparse_conv_weight_grad(
             op_, shape_, stride_, padding_, stream(), inputs, outputs
         );
@@ -836,7 +840,6 @@ class SparsePool final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        mx::eval(inputs);
         exec::cpu::eval_sparse_pool(
             reduce_, shape_, stride_, padding_, inputs, outputs
         );
@@ -846,7 +849,6 @@ class SparsePool final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        mx::eval(inputs);
         exec::metal::eval_sparse_pool(
             reduce_, shape_, stride_, padding_, stream(), inputs, outputs
         );
@@ -966,7 +968,6 @@ class SparsePoolGrad : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        mx::eval(inputs);
         exec::cpu::eval_sparse_pool_grad(
             reduce_, shape_, stride_, padding_, inputs, outputs
         );
@@ -976,7 +977,6 @@ class SparsePoolGrad : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        mx::eval(inputs);
         exec::metal::eval_sparse_pool_grad(
             reduce_, shape_, stride_, padding_, stream(), inputs, outputs
         );
@@ -1009,7 +1009,6 @@ class SparsePoolJvp final : public SparsePoolGrad {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        mx::eval(inputs);
         exec::cpu::eval_sparse_pool_jvp(
             reduce_, shape_, stride_, padding_, inputs, outputs
         );
@@ -1019,7 +1018,6 @@ class SparsePoolJvp final : public SparsePoolGrad {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        mx::eval(inputs);
         exec::metal::eval_sparse_pool_jvp(
             reduce_, shape_, stride_, padding_, stream(), inputs, outputs
         );
@@ -1238,12 +1236,17 @@ NativeSparseTensorOutput dispatch_sparse_conv(
     auto n_out_rows = op == SparseMapOp::Forward
                           ? coords.shape(0)
                           : coords.shape(0) * offsets.shape(0);
+    auto mapped_weight = weights.ndim() == 3;
     auto shape = SparseConvShape{
         coords.shape(0),
         n_out_rows,
         offsets.shape(0),
         feats.shape(1),
-        weights.shape(2),
+        mapped_weight ? weights.shape(2) : weights.shape(0),
+        mapped_weight ? 0 : 1,
+        mapped_weight ? offsets.shape(0) : weights.shape(1),
+        mapped_weight ? 1 : weights.shape(2),
+        mapped_weight ? 1 : weights.shape(3),
     };
     auto device =
         device_for_sparse_conv(coords, active_rows, feats, weights, offsets);
@@ -1251,11 +1254,11 @@ NativeSparseTensorOutput dispatch_sparse_conv(
     auto primitive =
         std::make_shared<SparseConv>(stream, op, shape, stride, padding);
     auto inputs = std::vector<mx::array>{
-        mx::contiguous(coords, false, device),
-        mx::contiguous(active_rows, false, device),
-        mx::contiguous(feats, false, device),
-        mx::contiguous(weights, false, device),
-        mx::contiguous(offsets, false, device),
+        coords,
+        active_rows,
+        feats,
+        weights,
+        offsets,
     };
     mx::eval(inputs);
     auto outputs = mx::array::make_arrays(
@@ -1294,10 +1297,10 @@ NativeSparseTensorOutput dispatch_sparse_pool(
     auto primitive =
         std::make_shared<SparsePool>(stream, reduce, shape, stride, padding);
     auto inputs = std::vector<mx::array>{
-        mx::contiguous(coords, false, device),
-        mx::contiguous(active_rows, false, device),
-        mx::contiguous(feats, false, device),
-        mx::contiguous(offsets, false, device),
+        coords,
+        active_rows,
+        feats,
+        offsets,
     };
     mx::eval(inputs);
     auto outputs = mx::array::make_arrays(
@@ -1334,11 +1337,11 @@ mx::array dispatch_sparse_conv_input_grad(
         stream, op, shape, stride, padding
     );
     auto inputs = std::vector<mx::array>{
-        mx::contiguous(cotangent, false, device),
-        mx::contiguous(coords, false, device),
-        mx::contiguous(active_rows, false, device),
-        mx::contiguous(weights, false, device),
-        mx::contiguous(offsets, false, device),
+        cotangent,
+        coords,
+        active_rows,
+        weights,
+        offsets,
     };
     mx::eval(inputs);
     return mx::array::make_arrays(
@@ -1356,6 +1359,7 @@ mx::array dispatch_sparse_conv_weight_grad(
     const mx::array& coords,
     const mx::array& active_rows,
     const mx::array& offsets,
+    const mx::Shape& weight_shape,
     Triple stride,
     Triple padding,
     SparseConvShape shape
@@ -1367,18 +1371,15 @@ mx::array dispatch_sparse_conv_weight_grad(
         stream, op, shape, stride, padding
     );
     auto inputs = std::vector<mx::array>{
-        mx::contiguous(feats, false, device),
-        mx::contiguous(cotangent, false, device),
-        mx::contiguous(coords, false, device),
-        mx::contiguous(active_rows, false, device),
-        mx::contiguous(offsets, false, device),
+        feats,
+        cotangent,
+        coords,
+        active_rows,
+        offsets,
     };
     mx::eval(inputs);
     return mx::array::make_arrays(
-        {mx::Shape{shape.n_kernels, shape.in_channels, shape.out_channels}},
-        {cotangent.dtype()},
-        primitive,
-        inputs
+        {weight_shape}, {cotangent.dtype()}, primitive, inputs
     )[0];
 }
 
@@ -1401,12 +1402,12 @@ mx::array dispatch_sparse_pool_grad(
         stream, reduce, shape, stride, padding
     );
     auto inputs = std::vector<mx::array>{
-        mx::contiguous(cotangent, false, device),
-        mx::contiguous(feats, false, device),
-        mx::contiguous(pooled, false, device),
-        mx::contiguous(coords, false, device),
-        mx::contiguous(active_rows, false, device),
-        mx::contiguous(offsets, false, device),
+        cotangent,
+        feats,
+        pooled,
+        coords,
+        active_rows,
+        offsets,
     };
     mx::eval(inputs);
     return mx::array::make_arrays(
@@ -1434,12 +1435,12 @@ mx::array dispatch_sparse_pool_jvp(
     auto primitive =
         std::make_shared<SparsePoolJvp>(stream, reduce, shape, stride, padding);
     auto inputs = std::vector<mx::array>{
-        mx::contiguous(tangent, false, device),
-        mx::contiguous(feats, false, device),
-        mx::contiguous(pooled, false, device),
-        mx::contiguous(coords, false, device),
-        mx::contiguous(active_rows, false, device),
-        mx::contiguous(offsets, false, device),
+        tangent,
+        feats,
+        pooled,
+        coords,
+        active_rows,
+        offsets,
     };
     mx::eval(inputs);
     return mx::array::make_arrays(

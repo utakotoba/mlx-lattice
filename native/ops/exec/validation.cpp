@@ -34,9 +34,10 @@ void validate_spmm_edges(
     if (feats.ndim() != 2) {
         throw std::invalid_argument("feats must have shape (N_in, C_in).");
     }
-    if (weights.ndim() != 3) {
+    if (weights.ndim() != 3 && weights.ndim() != 5) {
         throw std::invalid_argument(
-            "weights must have shape (K, C_in, C_out)."
+            "weights must have shape (K, C_in, C_out) or "
+            "(C_out, Kx, Ky, Kz, C_in)."
         );
     }
     if (feats.dtype() != mx::float32 || weights.dtype() != mx::float32) {
@@ -44,7 +45,9 @@ void validate_spmm_edges(
             "spmm_edges currently supports float32 feats and weights."
         );
     }
-    if (feats.shape(1) != weights.shape(1)) {
+    auto weight_in_channels =
+        weights.ndim() == 3 ? weights.shape(1) : weights.shape(4);
+    if (feats.shape(1) != weight_in_channels) {
         throw std::invalid_argument(
             "feats channels must match weights input channels."
         );
@@ -121,9 +124,10 @@ void validate_sparse_conv(
     if (feats.ndim() != 2) {
         throw std::invalid_argument("feats must have shape (N, C_in).");
     }
-    if (weights.ndim() != 3) {
+    if (weights.ndim() != 3 && weights.ndim() != 5) {
         throw std::invalid_argument(
-            "weights must have shape (K, C_in, C_out)."
+            "weights must have shape (K, C_in, C_out) or "
+            "(C_out, Kx, Ky, Kz, C_in)."
         );
     }
     if (coords.shape(0) != feats.shape(0)) {
@@ -136,7 +140,9 @@ void validate_sparse_conv(
             "sparse_conv currently supports float32 feats and weights."
         );
     }
-    if (feats.shape(1) != weights.shape(1)) {
+    auto weight_in_channels =
+        weights.ndim() == 3 ? weights.shape(1) : weights.shape(4);
+    if (feats.shape(1) != weight_in_channels) {
         throw std::invalid_argument(
             "feats channels must match weights input channels."
         );

@@ -54,6 +54,10 @@ struct SparseConvShape {
     int n_kernels;
     int in_channels;
     int out_channels;
+    int weight_layout;
+    int kernel_x;
+    int kernel_y;
+    int kernel_z;
 };
 
 struct SparsePoolShape {

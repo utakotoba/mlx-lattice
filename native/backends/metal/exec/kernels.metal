@@ -2,257 +2,7 @@
 
 using namespace metal;
 
-#include "native/backends/metal/coords/common.metal"
-
-inline void read_coord(device const int* coords, int row, thread int* out) {
-    int base = row * 4;
-    out[0] = coords[base];
-    out[1] = coords[base + 1];
-    out[2] = coords[base + 2];
-    out[3] = coords[base + 3];
-}
-
-inline bool coord_equal4(thread const int* lhs, thread const int* rhs) {
-    return lhs[0] == rhs[0] && lhs[1] == rhs[1] && lhs[2] == rhs[2] &&
-           lhs[3] == rhs[3];
-}
-
-inline void downsample_coord(
-    device const int* coords,
-    int row,
-    int stride_x,
-    int stride_y,
-    int stride_z,
-    thread int* out
-) {
-    int base = row * 4;
-    out[0] = coords[base];
-    out[1] = floor_div_int(coords[base + 1], stride_x);
-    out[2] = floor_div_int(coords[base + 2], stride_y);
-    out[3] = floor_div_int(coords[base + 3], stride_z);
-}
-
-inline bool seen_forward_coord(
-    device const int* coords,
-    int row,
-    int stride_x,
-    int stride_y,
-    int stride_z,
-    thread const int* candidate
-) {
-    for (int prev = 0; prev < row; ++prev) {
-        int previous[4];
-        downsample_coord(coords, prev, stride_x, stride_y, stride_z, previous);
-        if (coord_equal4(previous, candidate)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-inline int forward_out_row_for_coord(
-    device const int* coords,
-    int rows,
-    int stride_x,
-    int stride_y,
-    int stride_z,
-    thread const int* target
-) {
-    int out_row = 0;
-    for (int row = 0; row < rows; ++row) {
-        int candidate[4];
-        downsample_coord(coords, row, stride_x, stride_y, stride_z, candidate);
-        if (seen_forward_coord(
-                coords, row, stride_x, stride_y, stride_z, candidate
-            )) {
-            continue;
-        }
-        if (coord_equal4(candidate, target)) {
-            return out_row;
-        }
-        out_row += 1;
-    }
-    return -1;
-}
-
-inline bool find_input_row(
-    device const int* coords,
-    int rows,
-    thread const int* target,
-    thread int& out_row
-) {
-    for (int row = 0; row < rows; ++row) {
-        if (coord4_equal(target, coords, row)) {
-            out_row = row;
-            return true;
-        }
-    }
-    return false;
-}
-
-inline bool valid_forward_edge_coord(
-    device const int* coords,
-    int rows,
-    int kernel_id,
-    device const int* offsets,
-    int stride_x,
-    int stride_y,
-    int stride_z,
-    int pad_x,
-    int pad_y,
-    int pad_z,
-    int in_row,
-    thread int* out_coord,
-    thread int& out_row
-) {
-    int in_base = in_row * 4;
-    int offset_base = kernel_id * 3;
-    int vx = coords[in_base + 1] - offsets[offset_base] + pad_x;
-    int vy = coords[in_base + 2] - offsets[offset_base + 1] + pad_y;
-    int vz = coords[in_base + 3] - offsets[offset_base + 2] + pad_z;
-    if (vx % stride_x != 0 || vy % stride_y != 0 || vz % stride_z != 0) {
-        return false;
-    }
-    out_coord[0] = coords[in_base];
-    out_coord[1] = vx / stride_x;
-    out_coord[2] = vy / stride_y;
-    out_coord[3] = vz / stride_z;
-    out_row = forward_out_row_for_coord(
-        coords, rows, stride_x, stride_y, stride_z, out_coord
-    );
-    return out_row >= 0;
-}
-
-inline void transposed_candidate(
-    device const int* coords,
-    device const int* offsets,
-    int in_row,
-    int kernel_id,
-    int stride_x,
-    int stride_y,
-    int stride_z,
-    int pad_x,
-    int pad_y,
-    int pad_z,
-    thread int* out
-) {
-    int in_base = in_row * 4;
-    int offset_base = kernel_id * 3;
-    out[0] = coords[in_base];
-    out[1] = coords[in_base + 1] * stride_x + offsets[offset_base] - pad_x;
-    out[2] = coords[in_base + 2] * stride_y + offsets[offset_base + 1] - pad_y;
-    out[3] = coords[in_base + 3] * stride_z + offsets[offset_base + 2] - pad_z;
-}
-
-inline int transposed_out_row_for_coord(
-    device const int* coords,
-    device const int* offsets,
-    int rows,
-    int kernels,
-    int stride_x,
-    int stride_y,
-    int stride_z,
-    int pad_x,
-    int pad_y,
-    int pad_z,
-    thread const int* target
-) {
-    int out_row = 0;
-    for (int in_row = 0; in_row < rows; ++in_row) {
-        for (int kernel_id = 0; kernel_id < kernels; ++kernel_id) {
-            int candidate[4];
-            transposed_candidate(
-                coords,
-                offsets,
-                in_row,
-                kernel_id,
-                stride_x,
-                stride_y,
-                stride_z,
-                pad_x,
-                pad_y,
-                pad_z,
-                candidate
-            );
-            bool seen = false;
-            for (int prev_in = 0; prev_in <= in_row; ++prev_in) {
-                int limit = prev_in == in_row ? kernel_id : kernels;
-                for (int prev_kernel = 0; prev_kernel < limit; ++prev_kernel) {
-                    int previous[4];
-                    transposed_candidate(
-                        coords,
-                        offsets,
-                        prev_in,
-                        prev_kernel,
-                        stride_x,
-                        stride_y,
-                        stride_z,
-                        pad_x,
-                        pad_y,
-                        pad_z,
-                        previous
-                    );
-                    if (coord_equal4(previous, candidate)) {
-                        seen = true;
-                        break;
-                    }
-                }
-                if (seen) {
-                    break;
-                }
-            }
-            if (seen) {
-                continue;
-            }
-            if (coord_equal4(candidate, target)) {
-                return out_row;
-            }
-            out_row += 1;
-        }
-    }
-    return -1;
-}
-
-inline int degree_for_forward_out_row(
-    device const int* coords,
-    device const int* offsets,
-    int rows,
-    int kernels,
-    int out_row,
-    int stride_x,
-    int stride_y,
-    int stride_z,
-    int pad_x,
-    int pad_y,
-    int pad_z
-) {
-    int degree = 0;
-    for (int in_row = 0; in_row < rows; ++in_row) {
-        for (int kernel_id = 0; kernel_id < kernels; ++kernel_id) {
-            int candidate[4];
-            int edge_out = -1;
-            if (valid_forward_edge_coord(
-                    coords,
-                    rows,
-                    kernel_id,
-                    offsets,
-                    stride_x,
-                    stride_y,
-                    stride_z,
-                    pad_x,
-                    pad_y,
-                    pad_z,
-                    in_row,
-                    candidate,
-                    edge_out
-                ) &&
-                edge_out == out_row) {
-                degree += 1;
-            }
-        }
-    }
-    return max(degree, 1);
-}
+#include "native/backends/metal/exec/common.metal"
 
 [[kernel]] void spmm_edges_f32_serial(
     device const float* feats [[buffer(0)]],
@@ -620,6 +370,17 @@ inline int degree_for_forward_out_row(
     constant const int& pad_x [[buffer(17)]],
     constant const int& pad_y [[buffer(18)]],
     constant const int& pad_z [[buffer(19)]],
+    constant const int& feat_s0 [[buffer(20)]],
+    constant const int& feat_s1 [[buffer(21)]],
+    constant const int& weight_s0 [[buffer(22)]],
+    constant const int& weight_s1 [[buffer(23)]],
+    constant const int& weight_s2 [[buffer(24)]],
+    constant const int& weight_s3 [[buffer(25)]],
+    constant const int& weight_s4 [[buffer(26)]],
+    constant const int& weight_layout [[buffer(27)]],
+    constant const int& kernel_x [[buffer(28)]],
+    constant const int& kernel_y [[buffer(29)]],
+    constant const int& kernel_z [[buffer(30)]],
     uint elem [[thread_position_in_grid]]
 ) {
     if (elem != 0) {
@@ -668,13 +429,24 @@ inline int degree_for_forward_out_row(
                 }
                 edge_count += 1;
                 for (int ci = 0; ci < in_channels; ++ci) {
-                    float value = feats[in_row * in_channels + ci];
-                    int weight_base =
-                        (kernel_id * in_channels + ci) * out_channels;
+                    float value = feats[in_row * feat_s0 + ci * feat_s1];
                     int feat_base = out_row * out_channels;
                     for (int co = 0; co < out_channels; ++co) {
                         out_feats[feat_base + co] +=
-                            value * weights[weight_base + co];
+                            value * weights[weight_offset(
+                                        kernel_id,
+                                        ci,
+                                        co,
+                                        weight_layout,
+                                        kernel_x,
+                                        kernel_y,
+                                        kernel_z,
+                                        weight_s0,
+                                        weight_s1,
+                                        weight_s2,
+                                        weight_s3,
+                                        weight_s4
+                                    )];
                     }
                 }
             }
@@ -721,13 +493,24 @@ inline int degree_for_forward_out_row(
                 }
                 edge_count += 1;
                 for (int ci = 0; ci < in_channels; ++ci) {
-                    float value = feats[in_row * in_channels + ci];
-                    int weight_base =
-                        (kernel_id * in_channels + ci) * out_channels;
+                    float value = feats[in_row * feat_s0 + ci * feat_s1];
                     int feat_base = out_row * out_channels;
                     for (int co = 0; co < out_channels; ++co) {
                         out_feats[feat_base + co] +=
-                            value * weights[weight_base + co];
+                            value * weights[weight_offset(
+                                        kernel_id,
+                                        ci,
+                                        co,
+                                        weight_layout,
+                                        kernel_x,
+                                        kernel_y,
+                                        kernel_z,
+                                        weight_s0,
+                                        weight_s1,
+                                        weight_s2,
+                                        weight_s3,
+                                        weight_s4
+                                    )];
                     }
                 }
             }
@@ -757,6 +540,17 @@ inline int degree_for_forward_out_row(
     constant const int& pad_x [[buffer(15)]],
     constant const int& pad_y [[buffer(16)]],
     constant const int& pad_z [[buffer(17)]],
+    constant const int& cotangent_s0 [[buffer(18)]],
+    constant const int& cotangent_s1 [[buffer(19)]],
+    constant const int& weight_s0 [[buffer(20)]],
+    constant const int& weight_s1 [[buffer(21)]],
+    constant const int& weight_s2 [[buffer(22)]],
+    constant const int& weight_s3 [[buffer(23)]],
+    constant const int& weight_s4 [[buffer(24)]],
+    constant const int& weight_layout [[buffer(25)]],
+    constant const int& kernel_x [[buffer(26)]],
+    constant const int& kernel_y [[buffer(27)]],
+    constant const int& kernel_z [[buffer(28)]],
     uint elem [[thread_position_in_grid]]
 ) {
     if (elem != 0) {
@@ -822,11 +616,23 @@ inline int degree_for_forward_out_row(
                 continue;
             }
             for (int ci = 0; ci < in_channels; ++ci) {
-                int weight_base = (kernel_id * in_channels + ci) * out_channels;
                 for (int co = 0; co < out_channels; ++co) {
                     grad[in_row * in_channels + ci] +=
-                        cotangent[out_row * out_channels + co] *
-                        weights[weight_base + co];
+                        cotangent[out_row * cotangent_s0 + co * cotangent_s1] *
+                        weights[weight_offset(
+                            kernel_id,
+                            ci,
+                            co,
+                            weight_layout,
+                            kernel_x,
+                            kernel_y,
+                            kernel_z,
+                            weight_s0,
+                            weight_s1,
+                            weight_s2,
+                            weight_s3,
+                            weight_s4
+                        )];
                 }
             }
         }
@@ -852,6 +658,14 @@ inline int degree_for_forward_out_row(
     constant const int& pad_x [[buffer(15)]],
     constant const int& pad_y [[buffer(16)]],
     constant const int& pad_z [[buffer(17)]],
+    constant const int& feat_s0 [[buffer(18)]],
+    constant const int& feat_s1 [[buffer(19)]],
+    constant const int& cotangent_s0 [[buffer(20)]],
+    constant const int& cotangent_s1 [[buffer(21)]],
+    constant const int& weight_layout [[buffer(22)]],
+    constant const int& kernel_x [[buffer(23)]],
+    constant const int& kernel_y [[buffer(24)]],
+    constant const int& kernel_z [[buffer(25)]],
     uint elem [[thread_position_in_grid]]
 ) {
     if (elem != 0) {
@@ -918,11 +732,19 @@ inline int degree_for_forward_out_row(
                 continue;
             }
             for (int ci = 0; ci < in_channels; ++ci) {
-                int grad_base = (kernel_id * in_channels + ci) * out_channels;
                 for (int co = 0; co < out_channels; ++co) {
-                    grad[grad_base + co] +=
-                        feats[in_row * in_channels + ci] *
-                        cotangent[out_row * out_channels + co];
+                    grad[dense_weight_offset(
+                        kernel_id,
+                        ci,
+                        co,
+                        weight_layout,
+                        kernel_x,
+                        kernel_y,
+                        kernel_z,
+                        in_channels,
+                        out_channels
+                    )] += feats[in_row * feat_s0 + ci * feat_s1] *
+                          cotangent[out_row * cotangent_s0 + co * cotangent_s1];
                 }
             }
         }
@@ -948,6 +770,8 @@ inline int degree_for_forward_out_row(
     constant const int& pad_x [[buffer(15)]],
     constant const int& pad_y [[buffer(16)]],
     constant const int& pad_z [[buffer(17)]],
+    constant const int& feat_s0 [[buffer(18)]],
+    constant const int& feat_s1 [[buffer(19)]],
     uint elem [[thread_position_in_grid]]
 ) {
     if (elem != 0) {
@@ -998,7 +822,7 @@ inline int degree_for_forward_out_row(
             edge_count += 1;
             for (int channel = 0; channel < channels; ++channel) {
                 int out_index = out_row * channels + channel;
-                float value = feats[in_row * channels + channel];
+                float value = feats[in_row * feat_s0 + channel * feat_s1];
                 if (reduce == 1) {
                     out_feats[out_index] = max(out_feats[out_index], value);
                 } else {
@@ -1050,11 +874,18 @@ inline int degree_for_forward_out_row(
     constant const int& pad_x [[buffer(15)]],
     constant const int& pad_y [[buffer(16)]],
     constant const int& pad_z [[buffer(17)]],
+    constant const int& cotangent_s0 [[buffer(18)]],
+    constant const int& cotangent_s1 [[buffer(19)]],
+    constant const int& feat_s0 [[buffer(20)]],
+    constant const int& feat_s1 [[buffer(21)]],
+    constant const int& pooled_s0 [[buffer(22)]],
+    constant const int& pooled_s1 [[buffer(23)]],
     uint elem [[thread_position_in_grid]]
 ) {
     if (elem != 0) {
         return;
     }
+    (void)n_out_rows;
     int rows = min(active_rows[0], n_in_rows);
     for (int index = 0; index < n_in_rows * channels; ++index) {
         grad[index] = 0.0f;
@@ -1095,12 +926,99 @@ inline int degree_for_forward_out_row(
             );
             for (int channel = 0; channel < channels; ++channel) {
                 int in_index = in_row * channels + channel;
-                int out_index = out_row * channels + channel;
-                if (reduce == 1 && feats[in_index] != pooled[out_index]) {
+                float feat_value = feats[in_row * feat_s0 + channel * feat_s1];
+                float pooled_value =
+                    pooled[out_row * pooled_s0 + channel * pooled_s1];
+                if (reduce == 1 && feat_value != pooled_value) {
                     continue;
                 }
                 float scale = reduce == 2 ? 1.0f / float(degree) : 1.0f;
-                grad[in_index] += cotangent[out_index] * scale;
+                grad[in_index] +=
+                    cotangent[out_row * cotangent_s0 + channel * cotangent_s1] *
+                    scale;
+            }
+        }
+    }
+}
+
+[[kernel]] void sparse_pool_jvp_f32_i32_serial(
+    device const float* tangent [[buffer(0)]],
+    device const float* feats [[buffer(1)]],
+    device const float* pooled [[buffer(2)]],
+    device const int* coords [[buffer(3)]],
+    device const int* active_rows [[buffer(4)]],
+    device const int* offsets [[buffer(5)]],
+    device float* out [[buffer(6)]],
+    constant const int& reduce [[buffer(7)]],
+    constant const int& n_in_rows [[buffer(8)]],
+    constant const int& n_out_rows [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& channels [[buffer(11)]],
+    constant const int& stride_x [[buffer(12)]],
+    constant const int& stride_y [[buffer(13)]],
+    constant const int& stride_z [[buffer(14)]],
+    constant const int& pad_x [[buffer(15)]],
+    constant const int& pad_y [[buffer(16)]],
+    constant const int& pad_z [[buffer(17)]],
+    constant const int& tangent_s0 [[buffer(18)]],
+    constant const int& tangent_s1 [[buffer(19)]],
+    constant const int& feat_s0 [[buffer(20)]],
+    constant const int& feat_s1 [[buffer(21)]],
+    constant const int& pooled_s0 [[buffer(22)]],
+    constant const int& pooled_s1 [[buffer(23)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+    int rows = min(active_rows[0], n_in_rows);
+    for (int index = 0; index < n_out_rows * channels; ++index) {
+        out[index] = 0.0f;
+    }
+    for (int in_row = 0; in_row < rows; ++in_row) {
+        for (int kernel_id = 0; kernel_id < n_kernels; ++kernel_id) {
+            int out_coord[4];
+            int out_row = -1;
+            if (!valid_forward_edge_coord(
+                    coords,
+                    rows,
+                    kernel_id,
+                    offsets,
+                    stride_x,
+                    stride_y,
+                    stride_z,
+                    pad_x,
+                    pad_y,
+                    pad_z,
+                    in_row,
+                    out_coord,
+                    out_row
+                )) {
+                continue;
+            }
+            int degree = degree_for_forward_out_row(
+                coords,
+                offsets,
+                rows,
+                n_kernels,
+                out_row,
+                stride_x,
+                stride_y,
+                stride_z,
+                pad_x,
+                pad_y,
+                pad_z
+            );
+            for (int channel = 0; channel < channels; ++channel) {
+                float feat_value = feats[in_row * feat_s0 + channel * feat_s1];
+                float pooled_value =
+                    pooled[out_row * pooled_s0 + channel * pooled_s1];
+                if (reduce == 1 && feat_value != pooled_value) {
+                    continue;
+                }
+                float scale = reduce == 2 ? 1.0f / float(degree) : 1.0f;
+                out[out_row * channels + channel] +=
+                    tangent[in_row * tangent_s0 + channel * tangent_s1] * scale;
             }
         }
     }

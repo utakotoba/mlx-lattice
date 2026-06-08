@@ -81,9 +81,16 @@ NativeSparseTensorOutput sparse_conv(
     auto offsets = op == SparseMapOp::Generative
                        ? kernel_offsets(kernel_size)
                        : kernel_offsets(kernel_size, dilation);
-    if (weights.shape(0) != int(offsets.size())) {
+    auto kernel_rows = int(offsets.size());
+    if (weights.ndim() == 3 && weights.shape(0) != kernel_rows) {
         throw std::invalid_argument(
             "weight kernel rows must match the sparse convolution kernel."
+        );
+    }
+    if (weights.ndim() == 5 &&
+        weights.shape(1) * weights.shape(2) * weights.shape(3) != kernel_rows) {
+        throw std::invalid_argument(
+            "weight spatial kernel shape must match kernel_size."
         );
     }
     return dispatch_sparse_conv(
