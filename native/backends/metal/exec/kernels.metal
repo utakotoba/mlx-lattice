@@ -45,3 +45,76 @@ using namespace metal;
         }
     }
 }
+
+[[kernel]] void pool_sum_edges_f32_serial(
+    device const float* feats [[buffer(0)]],
+    device const int* in_rows [[buffer(1)]],
+    device const int* out_rows [[buffer(2)]],
+    device float* out [[buffer(3)]],
+    constant const int& edge_count [[buffer(4)]],
+    constant const int& channels [[buffer(5)]],
+    constant const int& n_out_rows [[buffer(6)]],
+    constant const int& n_in_rows [[buffer(7)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+
+    int out_size = n_out_rows * channels;
+    for (int index = 0; index < out_size; ++index) {
+        out[index] = 0.0f;
+    }
+
+    for (int edge = 0; edge < edge_count; ++edge) {
+        int in_row = in_rows[edge];
+        int out_row = out_rows[edge];
+        if (in_row < 0 || in_row >= n_in_rows || out_row < 0 ||
+            out_row >= n_out_rows) {
+            continue;
+        }
+
+        int in_base = in_row * channels;
+        int out_base = out_row * channels;
+        for (int channel = 0; channel < channels; ++channel) {
+            out[out_base + channel] += feats[in_base + channel];
+        }
+    }
+}
+
+[[kernel]] void pool_max_edges_f32_serial(
+    device const float* feats [[buffer(0)]],
+    device const int* in_rows [[buffer(1)]],
+    device const int* out_rows [[buffer(2)]],
+    device float* out [[buffer(3)]],
+    constant const int& edge_count [[buffer(4)]],
+    constant const int& channels [[buffer(5)]],
+    constant const int& n_out_rows [[buffer(6)]],
+    constant const int& n_in_rows [[buffer(7)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+
+    int out_size = n_out_rows * channels;
+    for (int index = 0; index < out_size; ++index) {
+        out[index] = -INFINITY;
+    }
+
+    for (int edge = 0; edge < edge_count; ++edge) {
+        int in_row = in_rows[edge];
+        int out_row = out_rows[edge];
+        if (in_row < 0 || in_row >= n_in_rows || out_row < 0 ||
+            out_row >= n_out_rows) {
+            continue;
+        }
+
+        int in_base = in_row * channels;
+        int out_base = out_row * channels;
+        for (int channel = 0; channel < channels; ++channel) {
+            int index = out_base + channel;
+            out[index] = max(out[index], feats[in_base + channel]);
+        }
+    }
+}

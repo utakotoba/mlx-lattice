@@ -12,4 +12,11 @@ void eval_spmm_edges(
     std::vector<mx::array>& outputs
 );
 
+void eval_pool_edges(
+    PoolReduceOp op,
+    PoolEdgesShape shape,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
 } // namespace mlx_lattice::exec::cpu

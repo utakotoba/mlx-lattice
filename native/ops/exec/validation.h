@@ -13,4 +13,11 @@ void validate_spmm_edges(
     int n_out_rows
 );
 
+void validate_pool_edges(
+    const mx::array& feats,
+    const mx::array& in_rows,
+    const mx::array& out_rows,
+    int n_out_rows
+);
+
 } // namespace mlx_lattice

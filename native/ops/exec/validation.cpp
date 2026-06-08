@@ -62,4 +62,30 @@ void validate_spmm_edges(
     }
 }
 
+void validate_pool_edges(
+    const mx::array& feats, // NOLINT(bugprone-easily-swappable-parameters)
+    const mx::array& in_rows,
+    const mx::array& out_rows,
+    int n_out_rows
+) {
+    if (feats.ndim() != 2) {
+        throw std::invalid_argument("feats must have shape (N_in, C).");
+    }
+    if (feats.dtype() != mx::float32) {
+        throw std::invalid_argument(
+            "pool edge reductions currently support float32 feats."
+        );
+    }
+    validate_row_index(in_rows, "in_rows");
+    validate_row_index(out_rows, "out_rows");
+    if (in_rows.shape(0) != out_rows.shape(0)) {
+        throw std::invalid_argument(
+            "in_rows and out_rows must have the same length."
+        );
+    }
+    if (n_out_rows < 0) {
+        throw std::invalid_argument("n_out_rows must be non-negative.");
+    }
+}
+
 } // namespace mlx_lattice

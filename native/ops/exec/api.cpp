@@ -21,4 +21,28 @@ mx::array spmm_edges(
     );
 }
 
+mx::array pool_sum_edges(
+    const mx::array& feats,
+    const mx::array& in_rows,
+    const mx::array& out_rows,
+    int n_out_rows
+) {
+    validate_pool_edges(feats, in_rows, out_rows, n_out_rows);
+    return dispatch_pool_edges(
+        PoolReduceOp::Sum, feats, in_rows, out_rows, n_out_rows
+    );
+}
+
+mx::array pool_max_edges(
+    const mx::array& feats,
+    const mx::array& in_rows,
+    const mx::array& out_rows,
+    int n_out_rows
+) {
+    validate_pool_edges(feats, in_rows, out_rows, n_out_rows);
+    return dispatch_pool_edges(
+        PoolReduceOp::Max, feats, in_rows, out_rows, n_out_rows
+    );
+}
+
 } // namespace mlx_lattice

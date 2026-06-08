@@ -27,6 +27,17 @@ mx::Device device_for(
     return mx::Device::cpu;
 }
 
+mx::Device device_for_pool(
+    const mx::array& feats,
+    const mx::array& in_rows,
+    const mx::array& out_rows
+) {
+    if (exec::metal::supports_pool(feats, in_rows, out_rows)) {
+        return mx::Device::gpu;
+    }
+    return mx::Device::cpu;
+}
+
 class SpmmEdges final : public mx::Primitive {
   public:
     SpmmEdges(mx::Stream stream, SpmmEdgesShape shape)
@@ -60,6 +71,39 @@ class SpmmEdges final : public mx::Primitive {
     SpmmEdgesShape shape_;
 };
 
+class PoolEdges final : public mx::Primitive {
+  public:
+    PoolEdges(mx::Stream stream, PoolReduceOp op, PoolEdgesShape shape)
+        : mx::Primitive(stream), op_(op), shape_(shape) {}
+
+    void eval_cpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        exec::cpu::eval_pool_edges(op_, shape_, inputs, outputs);
+    }
+
+    void eval_gpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        exec::metal::eval_pool_edges(op_, shape_, stream(), inputs, outputs);
+    }
+
+    const char* name() const override { return "lattice::PoolEdges"; }
+
+    bool is_equivalent(const mx::Primitive& other) const override {
+        const auto& op = static_cast<const PoolEdges&>(other);
+        return op_ == op.op_ && shape_.edge_count == op.shape_.edge_count &&
+               shape_.channels == op.shape_.channels &&
+               shape_.n_out_rows == op.shape_.n_out_rows;
+    }
+
+  private:
+    PoolReduceOp op_;
+    PoolEdgesShape shape_;
+};
+
 } // namespace
 
 mx::array dispatch_spmm_edges(
@@ -89,6 +133,35 @@ mx::array dispatch_spmm_edges(
     mx::eval(inputs);
     return mx::array::make_arrays(
         {mx::Shape{n_out_rows, weights.shape(2)}},
+        {feats.dtype()},
+        primitive,
+        inputs
+    )[0];
+}
+
+mx::array dispatch_pool_edges(
+    PoolReduceOp op,
+    const mx::array& feats,
+    const mx::array& in_rows,
+    const mx::array& out_rows,
+    int n_out_rows
+) {
+    auto shape = PoolEdgesShape{
+        in_rows.shape(0),
+        feats.shape(1),
+        n_out_rows,
+    };
+    auto device = device_for_pool(feats, in_rows, out_rows);
+    auto stream = mx::default_stream(device);
+    auto primitive = std::make_shared<PoolEdges>(stream, op, shape);
+    auto inputs = std::vector<mx::array>{
+        mx::contiguous(feats, false, device),
+        mx::contiguous(in_rows, false, device),
+        mx::contiguous(out_rows, false, device),
+    };
+    mx::eval(inputs);
+    return mx::array::make_arrays(
+        {mx::Shape{n_out_rows, feats.shape(1)}},
         {feats.dtype()},
         primitive,
         inputs

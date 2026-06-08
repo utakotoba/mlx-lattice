@@ -14,7 +14,7 @@ from mlx_lattice.ops.coords import (
     lookup_coords,
     union_coords,
 )
-from mlx_lattice.ops.exec import spmm_edges
+from mlx_lattice.ops.exec import pool_max_edges, pool_sum_edges, spmm_edges
 from mlx_lattice.ops.maps import (
     build_generative_map,
     build_kernel_map,
@@ -42,6 +42,8 @@ __all__ = [
     'kernel_map',
     'kernel_offsets',
     'lookup_coords',
+    'pool_max_edges',
+    'pool_sum_edges',
     'prune',
     'sparse_collate',
     'spmm_edges',

@@ -13,4 +13,15 @@ struct SpmmEdgesShape {
     int n_out_rows;
 };
 
+enum class PoolReduceOp {
+    Sum,
+    Max,
+};
+
+struct PoolEdgesShape {
+    int edge_count;
+    int channels;
+    int n_out_rows;
+};
+
 } // namespace mlx_lattice

@@ -5,7 +5,7 @@ import mlx.core as mx
 from mlx_lattice._native import ext
 from mlx_lattice.core.maps import KernelMap
 
-__all__ = ['spmm_edges']
+__all__ = ['pool_max_edges', 'pool_sum_edges', 'spmm_edges']
 
 
 def spmm_edges(
@@ -21,5 +21,27 @@ def spmm_edges(
         mapping.in_rows,
         mapping.out_rows,
         mapping.kernel_ids,
+        mapping.n_out_rows,
+    )
+
+
+def pool_sum_edges(feats: mx.array, mapping: KernelMap) -> mx.array:
+    if mapping.n_out_rows is None:
+        raise ValueError('mapping must define n_out_rows.')
+    return ext.pool_sum_edges(
+        feats,
+        mapping.in_rows,
+        mapping.out_rows,
+        mapping.n_out_rows,
+    )
+
+
+def pool_max_edges(feats: mx.array, mapping: KernelMap) -> mx.array:
+    if mapping.n_out_rows is None:
+        raise ValueError('mapping must define n_out_rows.')
+    return ext.pool_max_edges(
+        feats,
+        mapping.in_rows,
+        mapping.out_rows,
         mapping.n_out_rows,
     )
