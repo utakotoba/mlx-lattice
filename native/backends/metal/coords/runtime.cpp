@@ -199,7 +199,7 @@ void eval_generic_kernel_relation(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    require_i32_inputs(inputs, {"coords", "kernel offsets"});
+    require_i32_inputs(inputs, {"coords", "kernel offsets", "active rows"});
 
 #ifdef _METAL_
     allocate_all(outputs);
@@ -212,17 +212,18 @@ void eval_generic_kernel_relation(
     encoder.set_compute_pipeline_state(kernel);
     encoder.set_input_array(inputs[0], 0);
     encoder.set_input_array(inputs[1], 1);
+    encoder.set_input_array(inputs[2], 2);
     for (int i = 0; i < int(outputs.size()); ++i) {
-        encoder.set_output_array(outputs[i], i + 2);
+        encoder.set_output_array(outputs[i], i + 3);
     }
-    encoder.set_bytes(rows, 7);
-    encoder.set_bytes(kernel_count, 8);
-    encoder.set_bytes(stride[0], 9);
-    encoder.set_bytes(stride[1], 10);
-    encoder.set_bytes(stride[2], 11);
-    encoder.set_bytes(padding[0], 12);
-    encoder.set_bytes(padding[1], 13);
-    encoder.set_bytes(padding[2], 14);
+    encoder.set_bytes(rows, 8);
+    encoder.set_bytes(kernel_count, 9);
+    encoder.set_bytes(stride[0], 10);
+    encoder.set_bytes(stride[1], 11);
+    encoder.set_bytes(stride[2], 12);
+    encoder.set_bytes(padding[0], 13);
+    encoder.set_bytes(padding[1], 14);
+    encoder.set_bytes(padding[2], 15);
     encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
 #else
     (void)op;
@@ -245,7 +246,7 @@ void eval_generative_kernel_relation(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    require_i32_inputs(inputs, {"coords", "kernel offsets"});
+    require_i32_inputs(inputs, {"coords", "kernel offsets", "active rows"});
 
 #ifdef _METAL_
     allocate_all(outputs);
@@ -265,14 +266,15 @@ void eval_generative_kernel_relation(
     encoder.set_compute_pipeline_state(kernel);
     encoder.set_input_array(inputs[0], 0);
     encoder.set_input_array(inputs[1], 1);
+    encoder.set_input_array(inputs[2], 2);
     for (int i = 0; i < int(outputs.size()); ++i) {
-        encoder.set_output_array(outputs[i], i + 2);
+        encoder.set_output_array(outputs[i], i + 3);
     }
-    encoder.set_bytes(rows, 6);
-    encoder.set_bytes(kernel_count, 7);
-    encoder.set_bytes(stride[0], 8);
-    encoder.set_bytes(stride[1], 9);
-    encoder.set_bytes(stride[2], 10);
+    encoder.set_bytes(rows, 8);
+    encoder.set_bytes(kernel_count, 9);
+    encoder.set_bytes(stride[0], 10);
+    encoder.set_bytes(stride[1], 11);
+    encoder.set_bytes(stride[2], 12);
     encoder.dispatch_threads(
         MTL::Size(static_cast<size_t>(thread_count), 1, 1),
         MTL::Size(group, 1, 1)

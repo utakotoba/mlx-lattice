@@ -15,7 +15,12 @@ from mlx_lattice.ops import (
     sparse_collate,
     sum_pool3d,
 )
-from tests.support import assert_nested_close, mx
+from tests.support import (
+    active_coords,
+    active_feats,
+    assert_nested_close,
+    mx,
+)
 
 
 def test_local_pooling_uses_kernel_relation_edge_reductions() -> None:
@@ -33,10 +38,18 @@ def test_local_pooling_uses_kernel_relation_edge_reductions() -> None:
     maxed = max_pool3d(x, kernel_size=(3, 1, 1), stride=1)
     averaged = avg_pool3d(x, kernel_size=(3, 1, 1), stride=1)
 
-    assert summed.coords.tolist() == coords.tolist()
-    assert summed.feats.tolist() == [[3.0, 30.0], [6.0, 60.0], [5.0, 50.0]]
-    assert maxed.feats.tolist() == [[2.0, 20.0], [3.0, 30.0], [3.0, 30.0]]
-    assert averaged.feats.tolist() == [
+    assert active_coords(summed) == coords.tolist()
+    assert active_feats(summed).tolist() == [
+        [3.0, 30.0],
+        [6.0, 60.0],
+        [5.0, 50.0],
+    ]
+    assert active_feats(maxed).tolist() == [
+        [2.0, 20.0],
+        [3.0, 30.0],
+        [3.0, 30.0],
+    ]
+    assert active_feats(averaged).tolist() == [
         [1.5, 15.0],
         [2.0, 20.0],
         [2.5, 25.0],
@@ -82,8 +95,8 @@ def test_strided_pooling_updates_output_stride_and_manager_context() -> (
 
     out = sum_pool3d(x, kernel_size=1, stride=2)
 
-    assert out.coords.tolist() == [[0, 0, 0, 0], [0, 1, 0, 0]]
-    assert out.feats.tolist() == [[1.0], [3.0]]
+    assert active_coords(out) == [[0, 0, 0, 0], [0, 1, 0, 0]]
+    assert active_feats(out).tolist() == [[1.0], [3.0]]
     assert out.stride == (2, 2, 2)
     assert out.coord_manager is x.coord_manager
     assert out.coord_key != x.coord_key

@@ -35,7 +35,10 @@ class CoordinateManager:
     _manager_id: int = field(default_factory=_next_manager_id, init=False)
     _next_id: int = 0
     _coords: dict[CoordinateMapKey, mx.array] = field(default_factory=dict)
-    _identity_keys: dict[tuple[int, Triple], CoordinateMapKey] = field(
+    _identity_keys: dict[tuple[int, int, Triple], CoordinateMapKey] = field(
+        default_factory=dict
+    )
+    _active_rows: dict[CoordinateMapKey, mx.array] = field(
         default_factory=dict
     )
     _kernel_relations: dict[
@@ -46,17 +49,24 @@ class CoordinateManager:
         self,
         coords: mx.array,
         stride: int | Sequence[int] = 1,
+        active_rows: mx.array | None = None,
     ) -> CoordinateMapKey:
         """Register a coordinate array by object identity and stride."""
         validate_coords(coords)
         normalized = triple(stride, name='stride')
-        cache_key = (id(coords), normalized)
+        active = (
+            mx.array([coords.shape[0]], dtype=mx.int32)
+            if active_rows is None
+            else active_rows
+        )
+        cache_key = (id(coords), id(active), normalized)
         if cache_key in self._identity_keys:
             return self._identity_keys[cache_key]
 
         key = CoordinateMapKey(self._next_id, normalized, self._manager_id)
         self._next_id += 1
         self._coords[key] = coords
+        self._active_rows[key] = active
         self._identity_keys[cache_key] = key
         return key
 
@@ -69,6 +79,13 @@ class CoordinateManager:
                 'coordinate key does not belong to this manager.'
             )
         return self._coords[key]
+
+    def active_rows(self, key: CoordinateMapKey) -> mx.array:
+        if not self.owns(key):
+            raise ValueError(
+                'coordinate key does not belong to this manager.'
+            )
+        return self._active_rows[key]
 
     def inverse_map(
         self,
@@ -96,6 +113,7 @@ class CoordinateManager:
         if cache_key not in self._kernel_relations:
             self._kernel_relations[cache_key] = build_kernel_relation(
                 self.coords(key),
+                active_rows=self.active_rows(key),
                 kernel_size=spec.size,
                 stride=spec.stride,
                 padding=spec.padding,
@@ -115,6 +133,7 @@ class CoordinateManager:
         if cache_key not in self._kernel_relations:
             self._kernel_relations[cache_key] = build_generative_relation(
                 self.coords(key),
+                active_rows=self.active_rows(key),
                 kernel_size=spec.size,
                 stride=spec.stride,
             )
@@ -140,6 +159,7 @@ class CoordinateManager:
             self._kernel_relations[cache_key] = (
                 build_transposed_kernel_relation(
                     self.coords(key),
+                    active_rows=self.active_rows(key),
                     kernel_size=spec.size,
                     stride=spec.stride,
                     padding=spec.padding,

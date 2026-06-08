@@ -5,10 +5,9 @@ from typing import Literal
 
 import mlx.core as mx
 
-from mlx_lattice.core import KernelRelation, KernelSpec, SparseTensor
+from mlx_lattice._native import ext
+from mlx_lattice.core import KernelSpec, SparseTensor
 from mlx_lattice.core.types import Triple
-from mlx_lattice.ops._exec import execute_pool_max, execute_pool_sum
-from mlx_lattice.ops.relations import kernel_relation
 
 PoolMode = Literal['sum', 'max', 'avg']
 
@@ -38,18 +37,10 @@ def pool3d(
         padding=padding,
         dilation=dilation,
     )
-    relation = kernel_relation(
+    return _fused_pool(
         x,
-        kernel_size=spec.size,
-        stride=spec.stride,
-        padding=spec.padding,
-        dilation=spec.dilation,
-    )
-    feats = _pool_features(x, relation, mode)
-    return _pooled_tensor(
-        x,
-        relation,
-        feats,
+        spec,
+        mode,
         output_stride=_mul_stride(x.stride, spec.stride),
     )
 
@@ -123,44 +114,33 @@ def global_max_pool(x: SparseTensor) -> mx.array:
 # MARK: - local pooling
 
 
-def _pool_features(
+def _fused_pool(
     x: SparseTensor,
-    relation: KernelRelation,
+    spec: KernelSpec,
     mode: PoolMode,
-) -> mx.array:
-    _validate_pool_dtype(x.feats)
-    if mode == 'sum':
-        return execute_pool_sum(x.feats, relation)
-    if mode == 'max':
-        return execute_pool_max(x.feats, relation)
-    if mode == 'avg':
-        sums = execute_pool_sum(x.feats, relation)
-        counts = execute_pool_sum(_ones_like_rows(x), relation)
-        return sums / counts
-    raise ValueError("mode must be 'sum', 'max', or 'avg'.")
-
-
-def _pooled_tensor(
-    x: SparseTensor,
-    relation: KernelRelation,
-    feats: mx.array,
     *,
     output_stride: Triple,
 ) -> SparseTensor:
-    if relation.out_coords is None:
-        raise ValueError(
-            'pooling relations must define output coordinates.'
-        )
+    _validate_pool_dtype(x.feats)
+    if mode not in ('sum', 'max', 'avg'):
+        raise ValueError("mode must be 'sum', 'max', or 'avg'.")
+    out_coords, feats, counts = ext.sparse_pool(
+        x.coords,
+        x.active_rows,
+        x.feats,
+        mode,
+        list(spec.size),
+        list(spec.stride),
+        list(spec.padding),
+        list(spec.dilation),
+    )
     return SparseTensor(
-        relation.out_coords,
+        out_coords,
         feats,
         stride=output_stride,
         coord_manager=x.coord_manager,
+        active_rows=counts[1:2],
     )
-
-
-def _ones_like_rows(x: SparseTensor) -> mx.array:
-    return mx.ones((x.n_points, 1), dtype=x.feats.dtype)
 
 
 # MARK: - global pooling

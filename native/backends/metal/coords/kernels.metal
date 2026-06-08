@@ -159,18 +159,25 @@ using namespace metal;
 [[kernel]] void build_generative_kernel_relation_i32(
     device const int* coords [[buffer(0)]],
     device const int* offsets [[buffer(1)]],
-    device int* in_rows [[buffer(2)]],
-    device int* out_rows [[buffer(3)]],
-    device int* kernel_ids [[buffer(4)]],
-    device int* out_coords [[buffer(5)]],
-    constant const int& rows [[buffer(6)]],
-    constant const int& kernel_count [[buffer(7)]],
-    constant const int& stride_x [[buffer(8)]],
-    constant const int& stride_y [[buffer(9)]],
-    constant const int& stride_z [[buffer(10)]],
+    device const int* active_rows [[buffer(2)]],
+    device int* in_rows [[buffer(3)]],
+    device int* out_rows [[buffer(4)]],
+    device int* kernel_ids [[buffer(5)]],
+    device int* out_coords [[buffer(6)]],
+    device int* counts [[buffer(7)]],
+    constant const int& rows [[buffer(8)]],
+    constant const int& kernel_count [[buffer(9)]],
+    constant const int& stride_x [[buffer(10)]],
+    constant const int& stride_y [[buffer(11)]],
+    constant const int& stride_z [[buffer(12)]],
     uint elem [[thread_position_in_grid]]
 ) {
-    uint total = uint(rows * kernel_count);
+    int logical_rows = min(active_rows[0], rows);
+    uint total = uint(logical_rows * kernel_count);
+    if (elem == 0) {
+        counts[0] = int(total);
+        counts[1] = int(total);
+    }
     if (elem >= total) {
         return;
     }
@@ -199,30 +206,32 @@ using namespace metal;
 [[kernel]] void build_forward_kernel_relation_i32(
     device const int* coords [[buffer(0)]],
     device const int* kernel_offsets [[buffer(1)]],
-    device int* in_rows [[buffer(2)]],
-    device int* out_rows [[buffer(3)]],
-    device int* kernel_ids [[buffer(4)]],
-    device int* out_coords [[buffer(5)]],
-    device int* counts [[buffer(6)]],
-    constant const int& rows [[buffer(7)]],
-    constant const int& kernel_count [[buffer(8)]],
-    constant const int& stride_x [[buffer(9)]],
-    constant const int& stride_y [[buffer(10)]],
-    constant const int& stride_z [[buffer(11)]],
-    constant const int& pad_x [[buffer(12)]],
-    constant const int& pad_y [[buffer(13)]],
-    constant const int& pad_z [[buffer(14)]],
+    device const int* active_rows [[buffer(2)]],
+    device int* in_rows [[buffer(3)]],
+    device int* out_rows [[buffer(4)]],
+    device int* kernel_ids [[buffer(5)]],
+    device int* out_coords [[buffer(6)]],
+    device int* counts [[buffer(7)]],
+    constant const int& rows [[buffer(8)]],
+    constant const int& kernel_count [[buffer(9)]],
+    constant const int& stride_x [[buffer(10)]],
+    constant const int& stride_y [[buffer(11)]],
+    constant const int& stride_z [[buffer(12)]],
+    constant const int& pad_x [[buffer(13)]],
+    constant const int& pad_y [[buffer(14)]],
+    constant const int& pad_z [[buffer(15)]],
     uint elem [[thread_position_in_grid]]
 ) {
     if (elem != 0) {
         return;
     }
 
+    int logical_rows = min(active_rows[0], rows);
     int out_count = 0;
     bool identity_out = stride_x == 1 && stride_y == 1 && stride_z == 1 &&
                         pad_x == 0 && pad_y == 0 && pad_z == 0;
 
-    for (int row = 0; row < rows; ++row) {
+    for (int row = 0; row < logical_rows; ++row) {
         int base = row * 4;
         int candidate[4] = {
             coords[base],
@@ -260,7 +269,7 @@ using namespace metal;
                 out_coords[out_base + 3] * stride_z +
                     kernel_offsets[offset_base + 2] - pad_z,
             };
-            for (int in_row = 0; in_row < rows; ++in_row) {
+            for (int in_row = 0; in_row < logical_rows; ++in_row) {
                 if (coord4_equal(candidate, coords, in_row)) {
                     write_edge(
                         in_rows,
@@ -285,19 +294,20 @@ using namespace metal;
 [[kernel]] void build_transposed_kernel_relation_i32(
     device const int* coords [[buffer(0)]],
     device const int* kernel_offsets [[buffer(1)]],
-    device int* in_rows [[buffer(2)]],
-    device int* out_rows [[buffer(3)]],
-    device int* kernel_ids [[buffer(4)]],
-    device int* out_coords [[buffer(5)]],
-    device int* counts [[buffer(6)]],
-    constant const int& rows [[buffer(7)]],
-    constant const int& kernel_count [[buffer(8)]],
-    constant const int& stride_x [[buffer(9)]],
-    constant const int& stride_y [[buffer(10)]],
-    constant const int& stride_z [[buffer(11)]],
-    constant const int& pad_x [[buffer(12)]],
-    constant const int& pad_y [[buffer(13)]],
-    constant const int& pad_z [[buffer(14)]],
+    device const int* active_rows [[buffer(2)]],
+    device int* in_rows [[buffer(3)]],
+    device int* out_rows [[buffer(4)]],
+    device int* kernel_ids [[buffer(5)]],
+    device int* out_coords [[buffer(6)]],
+    device int* counts [[buffer(7)]],
+    constant const int& rows [[buffer(8)]],
+    constant const int& kernel_count [[buffer(9)]],
+    constant const int& stride_x [[buffer(10)]],
+    constant const int& stride_y [[buffer(11)]],
+    constant const int& stride_z [[buffer(12)]],
+    constant const int& pad_x [[buffer(13)]],
+    constant const int& pad_y [[buffer(14)]],
+    constant const int& pad_z [[buffer(15)]],
     uint elem [[thread_position_in_grid]]
 ) {
     if (elem != 0) {
@@ -306,7 +316,8 @@ using namespace metal;
 
     int edge_count = 0;
     int out_count = 0;
-    for (int in_row = 0; in_row < rows; ++in_row) {
+    int logical_rows = min(active_rows[0], rows);
+    for (int in_row = 0; in_row < logical_rows; ++in_row) {
         int in_base = in_row * 4;
         for (int kernel_id = 0; kernel_id < kernel_count; ++kernel_id) {
             int offset_base = kernel_id * 3;

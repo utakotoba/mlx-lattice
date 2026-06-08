@@ -32,6 +32,21 @@ def assert_same_sparse_identity(left: Any, right: Any) -> None:
     assert left.coords is right.coords
 
 
+def active_count(tensor: Any) -> int:
+    return int(tensor.active_rows.tolist()[0])
+
+
+def active_coords(tensor: Any) -> list[list[int]]:
+    return cast(
+        'list[list[int]]',
+        tensor.coords[: active_count(tensor)].tolist(),
+    )
+
+
+def active_feats(tensor: Any) -> Any:
+    return tensor.feats[: active_count(tensor)]
+
+
 def skip_without_metal() -> None:
     from mlx_lattice import backend_info
 

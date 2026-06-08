@@ -23,6 +23,7 @@ class SparseTensor:
     coord_key: CoordinateMapKey
     coord_manager: CoordinateManager
     batch_counts: tuple[int, ...] | None
+    active_rows: mx.array
 
     def __init__(
         self,
@@ -33,11 +34,14 @@ class SparseTensor:
         coord_key: CoordinateMapKey | None = None,
         coord_manager: CoordinateManager | None = None,
         batch_counts: Sequence[int] | None = None,
+        active_rows: mx.array | None = None,
     ) -> None:
         normalized_stride = triple(stride, name='stride')
+        normalized_active = _active_rows(active_rows, coords.shape[0])
         manager, key, owned_coords = _resolve_coordinate_identity(
             coords,
             normalized_stride,
+            normalized_active,
             coord_key=coord_key,
             coord_manager=coord_manager,
         )
@@ -58,9 +62,14 @@ class SparseTensor:
         object.__setattr__(self, 'coord_key', key)
         object.__setattr__(self, 'coord_manager', manager)
         object.__setattr__(self, 'batch_counts', normalized_counts)
+        object.__setattr__(self, 'active_rows', normalized_active)
 
     @property
     def n_points(self) -> int:
+        return int(self.coords.shape[0])
+
+    @property
+    def capacity(self) -> int:
         return int(self.coords.shape[0])
 
     @property
@@ -135,6 +144,7 @@ class SparseTensor:
             coord_key=self.coord_key if reuse_key else None,
             coord_manager=self.coord_manager,
             batch_counts=self.batch_counts if reuse_key else None,
+            active_rows=self.active_rows if reuse_key else None,
         )
 
     def reuse_coords_from(self, other: SparseTensor) -> SparseTensor:
@@ -147,6 +157,7 @@ class SparseTensor:
             coord_key=other.coord_key,
             coord_manager=other.coord_manager,
             batch_counts=other.batch_counts,
+            active_rows=other.active_rows,
         )
 
     def same_coords(self, other: SparseTensor) -> bool:
@@ -168,6 +179,7 @@ class SparseTensor:
 def _resolve_coordinate_identity(
     coords: mx.array,
     stride: Triple,
+    active_rows: mx.array,
     *,
     coord_key: CoordinateMapKey | None,
     coord_manager: CoordinateManager | None,
@@ -177,7 +189,11 @@ def _resolve_coordinate_identity(
         manager = (
             CoordinateManager() if coord_manager is None else coord_manager
         )
-        return manager, manager.insert_coords(coords, stride), coords
+        return (
+            manager,
+            manager.insert_coords(coords, stride, active_rows),
+            coords,
+        )
 
     if coord_manager is None:
         raise ValueError('coord_manager is required when coord_key is set.')
@@ -208,3 +224,13 @@ def _batch_counts(
     if sum(counts) != rows:
         raise ValueError('batch_counts must cover all sparse rows.')
     return counts
+
+
+def _active_rows(value: mx.array | None, capacity: int) -> mx.array:
+    if value is None:
+        return mx.array([capacity], dtype=mx.int32)
+    if value.shape != (1,) or value.dtype != mx.int32:
+        raise ValueError(
+            'active_rows must have shape (1,) and int32 dtype.'
+        )
+    return value

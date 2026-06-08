@@ -41,6 +41,7 @@ struct NativeKernelRelation {
     mx::array out_rows;
     mx::array kernel_ids;
     mx::array out_coords;
+    mx::array counts;
 };
 
 struct CoordSetShape {

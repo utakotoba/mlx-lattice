@@ -9,6 +9,7 @@
 #include "mlx/device.h"
 #include "mlx/ops.h"
 #include "mlx/primitives.h"
+#include "mlx/transforms.h"
 
 namespace mlx_lattice {
 
@@ -39,60 +40,34 @@ mx::array make_offsets_array(const std::vector<Triple>& offsets) {
     );
 }
 
-int scalar_i32(const mx::array& value) {
-    auto cpu_value = mx::contiguous(value, false, mx::Device::cpu);
+mx::array compact_coords(const std::vector<mx::array>& outputs) {
+    auto cpu_value = mx::contiguous(outputs[1], false, mx::Device::cpu);
     cpu_value.eval();
     cpu_value.wait();
-    return cpu_value.data<int32_t>()[0];
-}
-
-mx::array compact_coords(const std::vector<mx::array>& outputs) {
-    auto rows = scalar_i32(outputs[1]);
+    auto rows = cpu_value.data<int32_t>()[0];
     return mx::slice(outputs[0], {0, 0}, {rows, 4});
 }
 
-mx::array compact_rows(const mx::array& rows, int count) {
-    return mx::slice(rows, {0}, {count});
-}
-
-NativeKernelRelation compact_relation(const std::vector<mx::array>& outputs) {
-    auto count_values =
-        mx::contiguous(outputs[RelationCounts], false, mx::Device::cpu);
-    count_values.eval();
-    count_values.wait();
-    auto counts = count_values.data<int32_t>();
-    auto edge_count = counts[0];
-    auto out_count = counts[1];
-    return {
-        compact_rows(outputs[RelationInRows], edge_count),
-        compact_rows(outputs[RelationOutRows], edge_count),
-        compact_rows(outputs[RelationKernelIds], edge_count),
-        mx::slice(outputs[RelationOutCoords], {0, 0}, {out_count, 4}),
-    };
-}
-
-NativeKernelRelation direct_relation(const std::vector<mx::array>& outputs) {
+NativeKernelRelation
+relation_from_outputs(const std::vector<mx::array>& outputs) {
     return {
         outputs[RelationInRows],
         outputs[RelationOutRows],
         outputs[RelationKernelIds],
         outputs[RelationOutCoords],
+        outputs[RelationCounts],
     };
 }
 
 RelationOutputSpec relation_output_spec(
     int edges,    // NOLINT(bugprone-easily-swappable-parameters)
     int out_rows, // NOLINT(bugprone-easily-swappable-parameters)
-    mx::Dtype coord_dtype,
-    bool compact
+    mx::Dtype coord_dtype
 ) {
-    auto count = compact ? RelationOutputCount : DirectRelationOutputCount;
-    std::vector<mx::Shape> shapes(count, mx::Shape{edges});
-    std::vector<mx::Dtype> dtypes(count, mx::int32);
+    std::vector<mx::Shape> shapes(RelationOutputCount, mx::Shape{edges});
+    std::vector<mx::Dtype> dtypes(RelationOutputCount, mx::int32);
     shapes[RelationOutCoords] = mx::Shape{out_rows, 4};
-    if (compact) {
-        shapes[RelationCounts] = mx::Shape{2};
-    }
+    shapes[RelationCounts] = mx::Shape{2};
     dtypes[RelationOutCoords] = coord_dtype;
     return {shapes, dtypes};
 }
@@ -102,15 +77,16 @@ std::vector<mx::array> make_relation_outputs(
     const std::shared_ptr<mx::Primitive>& primitive,
     const mx::array& coords,
     const mx::array& offsets,
+    const mx::array& active_rows,
     mx::Device device
 ) {
-    return mx::array::make_arrays(
-        spec.shapes,
-        spec.dtypes,
-        primitive,
-        {mx::contiguous(coords, false, device),
-         mx::contiguous(offsets, false, device)}
-    );
+    auto inputs = std::vector<mx::array>{
+        mx::contiguous(coords, false, device),
+        mx::contiguous(offsets, false, device),
+        mx::contiguous(active_rows, false, device),
+    };
+    mx::eval(inputs);
+    return mx::array::make_arrays(spec.shapes, spec.dtypes, primitive, inputs);
 }
 
 // MARK: - primitives
@@ -129,6 +105,7 @@ class SetCoords final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
+        mx::eval(inputs);
         coords::cpu::eval_set_coords(op_, stride_, inputs, outputs);
     }
 
@@ -136,6 +113,7 @@ class SetCoords final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
+        mx::eval(inputs);
         coords::metal::eval_set_coords(
             op_, stride_, shape_, stream(), inputs, outputs
         );
@@ -165,6 +143,7 @@ class LookupCoords final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
+        mx::eval(inputs);
         coords::cpu::eval_lookup_coords(inputs, outputs);
     }
 
@@ -172,6 +151,7 @@ class LookupCoords final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
+        mx::eval(inputs);
         coords::metal::eval_lookup_coords(shape_, stream(), inputs, outputs);
     }
 
@@ -204,6 +184,7 @@ class GenericKernelRelation final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
+        mx::eval(inputs);
         coords::cpu::eval_generic_kernel_relation(
             op_, stride_, padding_, inputs, outputs
         );
@@ -213,6 +194,7 @@ class GenericKernelRelation final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
+        mx::eval(inputs);
         coords::metal::eval_generic_kernel_relation(
             op_,
             rows_,
@@ -259,6 +241,7 @@ class GenerativeKernelRelation final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
+        mx::eval(inputs);
         coords::cpu::eval_generative_kernel_relation(stride_, inputs, outputs);
     }
 
@@ -266,6 +249,7 @@ class GenerativeKernelRelation final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
+        mx::eval(inputs);
         coords::metal::eval_generative_kernel_relation(
             rows_, kernel_count_, stride_, stream(), inputs, outputs
         );
@@ -367,6 +351,7 @@ dispatch_lookup_coords(const mx::array& coords, const mx::array& queries) {
 
 NativeKernelRelation dispatch_build_kernel_relation(
     const mx::array& coords,
+    const mx::array& active_rows,
     Triple kernel_size, // NOLINT(bugprone-easily-swappable-parameters)
     Triple stride,
     Triple padding, // NOLINT(bugprone-easily-swappable-parameters)
@@ -380,7 +365,7 @@ NativeKernelRelation dispatch_build_kernel_relation(
     auto max_edges = max_out_rows * kernel_count;
     auto device = device_for(coords);
     auto outputs = make_relation_outputs(
-        relation_output_spec(max_edges, max_out_rows, coords.dtype(), true),
+        relation_output_spec(max_edges, max_out_rows, coords.dtype()),
         std::make_shared<GenericKernelRelation>(
             mx::default_stream(device),
             CoordRelationOp::Forward,
@@ -391,13 +376,15 @@ NativeKernelRelation dispatch_build_kernel_relation(
         ),
         coords,
         offset_values,
+        active_rows,
         device
     );
-    return compact_relation(outputs);
+    return relation_from_outputs(outputs);
 }
 
 NativeKernelRelation dispatch_build_generative_relation(
     const mx::array& coords,
+    const mx::array& active_rows,
     Triple kernel_size, // NOLINT(bugprone-easily-swappable-parameters)
     Triple stride
 ) {
@@ -408,19 +395,21 @@ NativeKernelRelation dispatch_build_generative_relation(
     auto pair_count = rows * kernel_count;
     auto device = device_for(coords);
     auto outputs = make_relation_outputs(
-        relation_output_spec(pair_count, pair_count, coords.dtype(), false),
+        relation_output_spec(pair_count, pair_count, coords.dtype()),
         std::make_shared<GenerativeKernelRelation>(
             mx::default_stream(device), rows, kernel_count, stride
         ),
         coords,
         offset_values,
+        active_rows,
         device
     );
-    return direct_relation(outputs);
+    return relation_from_outputs(outputs);
 }
 
 NativeKernelRelation dispatch_build_transposed_kernel_relation(
     const mx::array& coords,
+    const mx::array& active_rows,
     Triple kernel_size, // NOLINT(bugprone-easily-swappable-parameters)
     Triple stride,
     Triple padding, // NOLINT(bugprone-easily-swappable-parameters)
@@ -433,7 +422,7 @@ NativeKernelRelation dispatch_build_transposed_kernel_relation(
     auto max_edges = rows * kernel_count;
     auto device = device_for(coords);
     auto outputs = make_relation_outputs(
-        relation_output_spec(max_edges, max_edges, coords.dtype(), true),
+        relation_output_spec(max_edges, max_edges, coords.dtype()),
         std::make_shared<GenericKernelRelation>(
             mx::default_stream(device),
             CoordRelationOp::Transposed,
@@ -444,9 +433,10 @@ NativeKernelRelation dispatch_build_transposed_kernel_relation(
         ),
         coords,
         offset_values,
+        active_rows,
         device
     );
-    return compact_relation(outputs);
+    return relation_from_outputs(outputs);
 }
 
 } // namespace mlx_lattice

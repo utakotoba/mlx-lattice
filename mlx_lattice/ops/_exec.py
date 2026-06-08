@@ -46,6 +46,7 @@ def spmm_edge_coo(
         plan.edge_coo.in_rows,
         plan.edge_coo.out_rows,
         plan.edge_coo.kernel_ids,
+        plan.edge_count,
         plan.n_out_rows,
     )
 
@@ -55,6 +56,7 @@ def pool_sum_edge_coo(feats: mx.array, plan: EdgeCooPlan) -> mx.array:
         feats,
         plan.edge_coo.in_rows,
         plan.edge_coo.out_rows,
+        plan.edge_count,
         plan.n_out_rows,
     )
 
@@ -64,5 +66,6 @@ def pool_max_edge_coo(feats: mx.array, plan: EdgeCooPlan) -> mx.array:
         feats,
         plan.edge_coo.in_rows,
         plan.edge_coo.out_rows,
+        plan.edge_count,
         plan.n_out_rows,
     )

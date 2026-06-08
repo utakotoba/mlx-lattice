@@ -16,6 +16,7 @@ mx::array lookup_coords(const mx::array& coords, const mx::array& queries);
 
 NativeKernelRelation build_kernel_relation(
     const mx::array& coords,
+    const mx::array& active_rows,
     Triple kernel_size,
     Triple stride,
     Triple padding,
@@ -24,12 +25,14 @@ NativeKernelRelation build_kernel_relation(
 
 NativeKernelRelation build_generative_relation(
     const mx::array& coords,
+    const mx::array& active_rows,
     Triple kernel_size,
     Triple stride
 );
 
 NativeKernelRelation build_transposed_kernel_relation(
     const mx::array& coords,
+    const mx::array& active_rows,
     Triple kernel_size,
     Triple stride,
     Triple padding,

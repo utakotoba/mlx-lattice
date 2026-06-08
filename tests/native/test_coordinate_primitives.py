@@ -17,6 +17,16 @@ from mlx_lattice.ops import (
 from tests.support import mx, run_with_gpu_default
 
 
+def _active_rows(values: mx.array, count: mx.array) -> list[int]:
+    return cast('list[int]', values[: int(count.tolist()[0])].tolist())
+
+
+def _active_coords(values: mx.array, count: mx.array) -> list[list[int]]:
+    return cast(
+        'list[list[int]]', values[: int(count.tolist()[0])].tolist()
+    )
+
+
 def test_coordinate_set_primitives_preserve_first_seen_order() -> None:
     lhs = mx.array(
         [[0, 0, 0, 0], [0, 1, 0, 0], [0, 1, 0, 0]],
@@ -49,10 +59,42 @@ def test_kernel_offsets_and_relation_builders_emit_expected_edges() -> None:
 
     assert kernel_offsets((3, 1, 1)) == ((-1, 0, 0), (0, 0, 0), (1, 0, 0))
     assert relation.out_coords is not None
-    assert relation.out_coords.tolist() == coords.tolist()
-    assert relation.edge_coo.in_rows.tolist() == [0, 1, 0, 1, 2, 1, 2]
-    assert relation.edge_coo.out_rows.tolist() == [1, 2, 0, 1, 2, 0, 1]
-    assert relation.edge_coo.kernel_ids.tolist() == [0, 0, 1, 1, 1, 2, 2]
+    assert relation.counts.tolist() == [7, 3]
+    assert (
+        _active_coords(relation.out_coords, relation.out_count)
+        == coords.tolist()
+    )
+    assert _active_rows(relation.edge_coo.in_rows, relation.edge_count) == [
+        0,
+        1,
+        0,
+        1,
+        2,
+        1,
+        2,
+    ]
+    assert _active_rows(
+        relation.edge_coo.out_rows, relation.edge_count
+    ) == [
+        1,
+        2,
+        0,
+        1,
+        2,
+        0,
+        1,
+    ]
+    assert _active_rows(
+        relation.edge_coo.kernel_ids, relation.edge_count
+    ) == [
+        0,
+        0,
+        1,
+        1,
+        1,
+        2,
+        2,
+    ]
 
 
 def test_strided_and_transposed_relations_define_output_policy() -> None:
@@ -73,12 +115,25 @@ def test_strided_and_transposed_relations_define_output_policy() -> None:
     )
 
     assert strided.out_coords is not None
-    assert strided.out_coords.tolist() == [[0, 0, 0, 0], [0, 1, 0, 0]]
-    assert strided.edge_coo.in_rows.tolist() == [0, 2]
+    assert strided.counts.tolist() == [2, 2]
+    assert _active_coords(strided.out_coords, strided.out_count) == [
+        [0, 0, 0, 0],
+        [0, 1, 0, 0],
+    ]
+    assert _active_rows(strided.edge_coo.in_rows, strided.edge_count) == [
+        0,
+        2,
+    ]
     assert generated.out_coords is not None
-    assert generated.out_coords.tolist() == [[0, 2, 0, 0], [0, 3, 0, 0]]
+    assert generated.counts.tolist() == [2, 2]
+    assert _active_coords(generated.out_coords, generated.out_count) == [
+        [0, 2, 0, 0],
+        [0, 3, 0, 0],
+    ]
     assert transposed.out_coords is not None
-    assert transposed.out_coords.tolist() == generated.out_coords.tolist()
+    assert _active_coords(transposed.out_coords, transposed.out_count) == (
+        _active_coords(generated.out_coords, generated.out_count)
+    )
 
 
 def test_coordinate_manager_caches_tensor_kernel_relations() -> None:
@@ -99,7 +154,13 @@ def test_coordinate_manager_caches_tensor_kernel_relations() -> None:
 def test_metal_coordinate_primitives_match_cpu_contract_when_available() -> (
     None
 ):
-    def run() -> tuple[list[list[int]], list[int], list[int], list[int]]:
+    def run() -> tuple[
+        list[list[int]],
+        list[int],
+        list[int],
+        list[int],
+        list[int],
+    ]:
         coords = mx.array(
             [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
             dtype=mx.int32,
@@ -110,13 +171,15 @@ def test_metal_coordinate_primitives_match_cpu_contract_when_available() -> (
             relation.edge_coo.in_rows,
             relation.edge_coo.out_rows,
             relation.edge_coo.kernel_ids,
+            relation.counts,
         )
         assert relation.out_coords is not None
         return (
-            cast('list[list[int]]', relation.out_coords.tolist()),
-            cast('list[int]', relation.edge_coo.in_rows.tolist()),
-            cast('list[int]', relation.edge_coo.out_rows.tolist()),
-            cast('list[int]', relation.edge_coo.kernel_ids.tolist()),
+            _active_coords(relation.out_coords, relation.out_count),
+            _active_rows(relation.edge_coo.in_rows, relation.edge_count),
+            _active_rows(relation.edge_coo.out_rows, relation.edge_count),
+            _active_rows(relation.edge_coo.kernel_ids, relation.edge_count),
+            cast('list[int]', relation.counts.tolist()),
         )
 
     assert run_with_gpu_default(run) == (
@@ -124,4 +187,5 @@ def test_metal_coordinate_primitives_match_cpu_contract_when_available() -> (
         [0, 1, 0, 1, 2, 1, 2],
         [1, 2, 0, 1, 2, 0, 1],
         [0, 0, 1, 1, 1, 2, 2],
+        [7, 3],
     )

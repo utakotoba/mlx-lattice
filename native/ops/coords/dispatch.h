@@ -13,6 +13,7 @@ dispatch_lookup_coords(const mx::array& coords, const mx::array& queries);
 
 NativeKernelRelation dispatch_build_kernel_relation(
     const mx::array& coords,
+    const mx::array& active_rows,
     Triple kernel_size,
     Triple stride,
     Triple padding,
@@ -21,12 +22,14 @@ NativeKernelRelation dispatch_build_kernel_relation(
 
 NativeKernelRelation dispatch_build_generative_relation(
     const mx::array& coords,
+    const mx::array& active_rows,
     Triple kernel_size,
     Triple stride
 );
 
 NativeKernelRelation dispatch_build_transposed_kernel_relation(
     const mx::array& coords,
+    const mx::array& active_rows,
     Triple kernel_size,
     Triple stride,
     Triple padding,

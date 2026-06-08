@@ -34,6 +34,7 @@ class EdgeCoo:
 @dataclass(frozen=True, slots=True, init=False)
 class KernelRelation:
     edge_coo: EdgeCoo
+    counts: mx.array
     kernel_offsets: tuple[Triple, ...]
     out_coords: mx.array | None = None
     n_in_rows: int | None = None
@@ -46,6 +47,7 @@ class KernelRelation:
         out_rows: mx.array,
         kernel_ids: mx.array,
         *,
+        counts: mx.array | None = None,
         kernel_offsets: tuple[Triple, ...] = (),
         out_coords: mx.array | None = None,
         n_in_rows: int | None = None,
@@ -54,6 +56,15 @@ class KernelRelation:
     ) -> None:
         if out_coords is not None:
             _validate_coords(out_coords, name='out_coords')
+        if counts is None:
+            counts = mx.array(
+                [
+                    in_rows.shape[0],
+                    0 if out_coords is None else out_coords.shape[0],
+                ],
+                dtype=mx.int32,
+            )
+        _validate_counts(counts)
 
         edge_coo = EdgeCoo(in_rows, out_rows, kernel_ids)
         normalized_kernel_offsets = tuple(
@@ -80,6 +91,7 @@ class KernelRelation:
             normalized_n_out_rows = out_coord_rows
 
         object.__setattr__(self, 'edge_coo', edge_coo)
+        object.__setattr__(self, 'counts', counts)
         object.__setattr__(
             self, 'kernel_offsets', normalized_kernel_offsets
         )
@@ -91,6 +103,14 @@ class KernelRelation:
     @property
     def n_edges(self) -> int:
         return self.edge_coo.n_edges
+
+    @property
+    def edge_count(self) -> mx.array:
+        return self.counts[:1]
+
+    @property
+    def out_count(self) -> mx.array:
+        return self.counts[1:2]
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,12 +124,15 @@ class EdgeCooPlan:
 
     edge_coo: EdgeCoo
     n_out_rows: int
+    edge_count: mx.array
 
 
 def edge_coo_plan(relation: KernelRelation) -> EdgeCooPlan:
     if relation.n_out_rows is None:
         raise ValueError('kernel relation must define n_out_rows.')
-    return EdgeCooPlan(relation.edge_coo, relation.n_out_rows)
+    return EdgeCooPlan(
+        relation.edge_coo, relation.n_out_rows, relation.edge_count
+    )
 
 
 # MARK: - helpers
@@ -127,6 +150,13 @@ def _validate_coords(value: mx.array, *, name: str) -> None:
         raise ValueError(f'{name} must have shape (N, 4).')
     if value.dtype not in (mx.int32, mx.int64):
         raise ValueError(f'{name} must be int32 or int64.')
+
+
+def _validate_counts(value: mx.array) -> None:
+    if value.shape != (2,) or value.dtype != mx.int32:
+        raise ValueError(
+            'relation counts must have shape (2,) and int32 dtype.'
+        )
 
 
 def _require_same_rows(

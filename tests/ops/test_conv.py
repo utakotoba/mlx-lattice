@@ -11,7 +11,12 @@ from mlx_lattice.ops import (
     subm_conv3d,
 )
 from mlx_lattice.ops._exec import execute_spmm
-from tests.support import assert_same_sparse_identity, mx
+from tests.support import (
+    active_coords,
+    active_feats,
+    assert_same_sparse_identity,
+    mx,
+)
 
 
 def test_conv3d_pointwise_matches_dense_linear_contract() -> None:
@@ -44,12 +49,12 @@ def test_conv3d_generic_matches_native_edge_spmm_reference() -> None:
         3, 1, 1
     )
 
-    assert out.coords.tolist() == coords.tolist()
+    assert active_coords(out) == coords.tolist()
     assert (
-        out.feats.tolist()
+        active_feats(out).tolist()
         == execute_spmm(feats, native_weight, relation).tolist()
     )
-    assert out.feats.tolist() == [[8.0], [14.0], [8.0]]
+    assert active_feats(out).tolist() == [[8.0], [14.0], [8.0]]
     assert out.stride == (1, 1, 1)
     assert out.coord_manager is x.coord_manager
     assert out.coord_key != x.coord_key
@@ -93,8 +98,8 @@ def test_conv3d_strided_updates_output_stride_and_coordinates() -> None:
 
     out = conv3d(x, weight, kernel_size=1, stride=2)
 
-    assert out.coords.tolist() == [[0, 0, 0, 0], [0, 1, 0, 0]]
-    assert out.feats.tolist() == [[1.0], [3.0]]
+    assert active_coords(out) == [[0, 0, 0, 0], [0, 1, 0, 0]]
+    assert active_feats(out).tolist() == [[1.0], [3.0]]
     assert out.stride == (2, 2, 2)
 
 
@@ -134,11 +139,11 @@ def test_transpose_convs_generate_the_same_output_contract() -> None:
         stride=(2, 1, 1),
     )
 
-    assert out.coords.tolist() == [[0, 2, 0, 0], [0, 3, 0, 0]]
-    assert out.feats.tolist() == [[8.0], [12.0]]
+    assert active_coords(out) == [[0, 2, 0, 0], [0, 3, 0, 0]]
+    assert active_feats(out).tolist() == [[8.0], [12.0]]
     assert out.stride == (1, 1, 1)
-    assert generated.coords.tolist() == out.coords.tolist()
-    assert generated.feats.tolist() == out.feats.tolist()
+    assert active_coords(generated) == active_coords(out)
+    assert active_feats(generated).tolist() == active_feats(out).tolist()
     assert generated.stride == out.stride
 
 

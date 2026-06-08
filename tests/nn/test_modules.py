@@ -13,6 +13,8 @@ from mlx_lattice.ops import (
     sparse_collate,
 )
 from tests.support import (
+    active_coords,
+    active_feats,
     assert_nested_close,
     assert_same_sparse_identity,
     mx,
@@ -111,11 +113,11 @@ def test_convolution_modules_use_mlx_weight_layout_and_public_ops() -> None:
     subm_out = subm(x)
 
     assert conv.weight.shape == (1, 3, 1, 1, 1)
-    assert out.feats.tolist() == functional.feats.tolist()
-    assert out.feats.tolist() == [[3.0], [6.0], [5.0]]
+    assert active_feats(out).tolist() == active_feats(functional).tolist()
+    assert active_feats(out).tolist() == [[3.0], [6.0], [5.0]]
     assert out.coord_manager is x.coord_manager
     assert subm_out.coord_key == x.coord_key
-    assert subm_out.feats.tolist() == out.feats.tolist()
+    assert subm_out.feats.tolist() == active_feats(out).tolist()
 
 
 def test_sparse_operator_modules_are_autogradable() -> None:
@@ -165,9 +167,9 @@ def test_transpose_and_pool_modules_wrap_sparse_policies() -> None:
     pooled = lnn.SumPool3d(kernel_size=1, stride=1)(out)
 
     assert transposed.weight.shape == (1, 2, 1, 1, 1)
-    assert out.coords.tolist() == [[0, 2, 0, 0], [0, 3, 0, 0]]
-    assert out.feats.tolist() == [[8.0], [12.0]]
-    assert pooled.feats.tolist() == out.feats.tolist()
+    assert active_coords(out) == [[0, 2, 0, 0], [0, 3, 0, 0]]
+    assert active_feats(out).tolist() == [[8.0], [12.0]]
+    assert active_feats(pooled).tolist() == active_feats(out).tolist()
 
 
 def test_global_pool_modules_return_dense_batch_features() -> None:

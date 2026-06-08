@@ -82,6 +82,13 @@ std::vector<Triple> read_offsets(const mx::array& offsets) {
     return out;
 }
 
+int read_scalar_i32(const mx::array& value) {
+    auto cpu_value = mx::contiguous(value, false, mx::Device::cpu);
+    cpu_value.eval();
+    cpu_value.wait();
+    return cpu_value.data<int32_t>()[0];
+}
+
 void write_i32(mx::array& out, const std::vector<int32_t>& values) {
     out.set_data(mx::allocator::malloc(out.nbytes()));
     auto data = out.data<int32_t>();
@@ -284,11 +291,13 @@ lookup_values(const mx::array& coords, const mx::array& queries) {
 void write_kernel_relation(
     std::vector<mx::array>& outputs,
     const mx::array& coords,
+    int active_rows,
     const std::vector<Triple>& offsets,
     Triple stride,
     Triple padding
 ) {
     auto values = read_coords(coords);
+    values.resize(std::min(active_rows, int(values.size())));
     auto rows = first_row_map(values);
     bool identity_out = stride == Triple{1, 1, 1} && padding == Triple{0, 0, 0};
     auto out_values = identity_out ? values : downsample_values(values, stride);
@@ -318,10 +327,12 @@ void write_kernel_relation(
 void write_generative_relation(
     std::vector<mx::array>& outputs,
     const mx::array& coords,
+    int active_rows,
     const std::vector<Triple>& offsets,
     Triple stride
 ) {
     auto values = read_coords(coords);
+    values.resize(std::min(active_rows, int(values.size())));
     std::vector<Edge> edges;
     std::vector<Coord> out_values;
     edges.reserve(values.size() * offsets.size());
@@ -346,17 +357,19 @@ void write_generative_relation(
         }
     }
 
-    write_map(outputs, edges, out_values, coords.dtype(), false);
+    write_map(outputs, edges, out_values, coords.dtype(), true);
 }
 
 void write_transposed_kernel_relation(
     std::vector<mx::array>& outputs,
     const mx::array& coords,
+    int active_rows,
     const std::vector<Triple>& offsets,
     Triple stride,
     Triple padding
 ) {
     auto values = read_coords(coords);
+    values.resize(std::min(active_rows, int(values.size())));
     std::vector<Edge> edges;
     std::vector<Coord> out_values;
     std::unordered_map<Coord, int32_t, CoordHash> out_rows;
@@ -433,14 +446,17 @@ void eval_generic_kernel_relation(
     std::vector<mx::array>& outputs
 ) {
     auto offsets = read_offsets(inputs[1]);
+    auto active_rows = read_scalar_i32(inputs[2]);
 
     switch (op) {
     case CoordRelationOp::Forward:
-        write_kernel_relation(outputs, inputs[0], offsets, stride, padding);
+        write_kernel_relation(
+            outputs, inputs[0], active_rows, offsets, stride, padding
+        );
         break;
     case CoordRelationOp::Transposed:
         write_transposed_kernel_relation(
-            outputs, inputs[0], offsets, stride, padding
+            outputs, inputs[0], active_rows, offsets, stride, padding
         );
         break;
     }
@@ -451,8 +467,9 @@ void eval_generative_kernel_relation(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
+    auto active_rows = read_scalar_i32(inputs[2]);
     write_generative_relation(
-        outputs, inputs[0], read_offsets(inputs[1]), stride
+        outputs, inputs[0], active_rows, read_offsets(inputs[1]), stride
     );
 }
 

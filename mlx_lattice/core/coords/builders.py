@@ -17,6 +17,7 @@ type NativeKernelRelation = tuple[
     mx.array,
     mx.array,
     mx.array,
+    mx.array,
 ]
 
 
@@ -47,6 +48,7 @@ def kernel_offsets(
 
 def build_kernel_relation(
     coords: mx.array,
+    active_rows: mx.array | None = None,
     kernel_size: int | Sequence[int] = 3,
     stride: int | Sequence[int] = 1,
     padding: int | Sequence[int] = 0,
@@ -62,6 +64,7 @@ def build_kernel_relation(
     offsets = kernel_offsets(spec.size, spec.dilation)
     native = ext.build_kernel_relation(
         coords,
+        _active_rows(active_rows, coords),
         spec.size,
         spec.stride,
         spec.padding,
@@ -76,6 +79,7 @@ def build_kernel_relation(
 
 def build_generative_relation(
     coords: mx.array,
+    active_rows: mx.array | None = None,
     kernel_size: int | Sequence[int] = 2,
     stride: int | Sequence[int] = 2,
 ) -> KernelRelation:
@@ -88,6 +92,7 @@ def build_generative_relation(
     offsets = kernel_offsets(kernel)
     native = ext.build_generative_relation(
         coords,
+        _active_rows(active_rows, coords),
         kernel,
         step,
     )
@@ -100,6 +105,7 @@ def build_generative_relation(
 
 def build_transposed_kernel_relation(
     coords: mx.array,
+    active_rows: mx.array | None = None,
     kernel_size: int | Sequence[int] = 2,
     stride: int | Sequence[int] = 2,
     padding: int | Sequence[int] = 0,
@@ -118,6 +124,7 @@ def build_transposed_kernel_relation(
     offsets = kernel_offsets(kernel, rate)
     native = ext.build_transposed_kernel_relation(
         coords,
+        _active_rows(active_rows, coords),
         kernel,
         step,
         pad,
@@ -144,11 +151,13 @@ def _kernel_relation_from_native(
         out_rows,
         kernel_ids,
         out_coords,
+        counts,
     ) = native
     return KernelRelation(
         in_rows,
         out_rows,
         kernel_ids,
+        counts=counts,
         kernel_offsets=offsets,
         out_coords=out_coords,
         n_in_rows=n_in_rows,
@@ -168,3 +177,13 @@ def _require_positive(values: Triple, name: str) -> None:
 def _require_nonnegative(values: Triple, name: str) -> None:
     if any(value < 0 for value in values):
         raise ValueError(f'{name} values must be non-negative.')
+
+
+def _active_rows(value: mx.array | None, coords: mx.array) -> mx.array:
+    if value is not None:
+        if value.shape != (1,) or value.dtype != mx.int32:
+            raise ValueError(
+                'active_rows must have shape (1,) and int32 dtype.'
+            )
+        return value
+    return mx.array([coords.shape[0]], dtype=mx.int32)
