@@ -3,8 +3,20 @@ from __future__ import annotations
 import mlx_lattice
 from mlx_lattice import SparseTensor
 from mlx_lattice import nn as lnn
-from mlx_lattice.ops import conv3d, sparse_collate
-from tests.support import assert_same_sparse_identity, mx
+from mlx_lattice.ops import (
+    conv3d,
+    gelu,
+    layer_norm,
+    leaky_relu,
+    linear,
+    rms_norm,
+    sparse_collate,
+)
+from tests.support import (
+    assert_nested_close,
+    assert_same_sparse_identity,
+    mx,
+)
 
 
 def _tensor() -> SparseTensor:
@@ -28,6 +40,40 @@ def test_feature_modules_preserve_sparse_identity_and_own_parameters() -> (
     assert_same_sparse_identity(out, x)
     assert 'weight' in layer
     assert 'bias' in layer
+
+
+def test_feature_modules_match_functional_sparse_ops() -> None:
+    x = _tensor()
+    linear_module = lnn.Linear(2, 2)
+    linear_module.weight = mx.array(
+        [[2.0, 3.0], [5.0, 7.0]],
+        dtype=mx.float32,
+    )
+    linear_module.bias = mx.array([1.0, -1.0], dtype=mx.float32)
+    leak = lnn.LeakyReLU(negative_slope=0.2)
+    norm = lnn.LayerNorm(2)
+    norm.weight = mx.array([2.0, 3.0], dtype=mx.float32)
+    norm.bias = mx.array([0.5, -0.5], dtype=mx.float32)
+    rms = lnn.RMSNorm(2)
+    rms.weight = mx.array([2.0, 3.0], dtype=mx.float32)
+
+    checks = [
+        (
+            linear_module(x),
+            linear(x, linear_module.weight, linear_module.bias),
+        ),
+        (lnn.GELU('tanh')(x), gelu(x, approximate='tanh')),
+        (leak(x), leaky_relu(x, negative_slope=0.2)),
+        (norm(x), layer_norm(x, weight=norm.weight, bias=norm.bias)),
+        (rms(x), rms_norm(x, weight=rms.weight)),
+    ]
+
+    for module_out, functional_out in checks:
+        assert_nested_close(
+            module_out.feats.tolist(),
+            functional_out.feats.tolist(),
+        )
+        assert_same_sparse_identity(module_out, x)
 
 
 def test_normalization_and_dropout_modules_delegate_feature_state() -> None:

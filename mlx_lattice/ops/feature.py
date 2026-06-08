@@ -6,7 +6,7 @@ import mlx.core as mx
 
 from mlx_lattice.core import SparseTensor
 
-GeluApprox = Literal['none', 'tanh']
+GeluApprox = Literal['none', 'precise', 'tanh', 'fast']
 
 __all__ = [
     'batch_norm',
@@ -49,7 +49,7 @@ def gelu(
     *,
     approximate: GeluApprox = 'none',
 ) -> SparseTensor:
-    if approximate == 'none':
+    if approximate in ('none', 'precise'):
         scale = mx.array(0.5, dtype=x.feats.dtype)
         root_half = mx.array(0.7071067811865476, dtype=x.feats.dtype)
         return x.replace(
@@ -63,7 +63,11 @@ def gelu(
             * x.feats
             * (1 + mx.tanh(scale * (x.feats + coeff * x.feats**3)))
         )
-    raise ValueError("approximate must be 'none' or 'tanh'.")
+    if approximate == 'fast':
+        return x.replace(feats=x.feats * mx.sigmoid(1.702 * x.feats))
+    raise ValueError(
+        "approximate must be 'none', 'precise', 'tanh', or 'fast'."
+    )
 
 
 def silu(x: SparseTensor) -> SparseTensor:
@@ -143,10 +147,11 @@ def layer_norm(
 ) -> SparseTensor:
     if eps <= 0:
         raise ValueError('eps must be positive.')
-    mean = mx.mean(x.feats, axis=-1, keepdims=True)
-    var = mx.var(x.feats, axis=-1, keepdims=True)
-    feats = (x.feats - mean) * mx.rsqrt(var + eps)
-    return x.replace(feats=_affine(feats, weight=weight, bias=bias))
+    if weight is not None:
+        _require_channel_vector(weight, x.channels, 'weight')
+    if bias is not None:
+        _require_channel_vector(bias, x.channels, 'bias')
+    return x.replace(feats=mx.fast.layer_norm(x.feats, weight, bias, eps))
 
 
 def rms_norm(
@@ -157,9 +162,9 @@ def rms_norm(
 ) -> SparseTensor:
     if eps <= 0:
         raise ValueError('eps must be positive.')
-    rms = mx.mean(x.feats * x.feats, axis=-1, keepdims=True)
-    feats = x.feats * mx.rsqrt(rms + eps)
-    return x.replace(feats=_affine(feats, weight=weight, bias=None))
+    if weight is not None:
+        _require_channel_vector(weight, x.channels, 'weight')
+    return x.replace(feats=mx.fast.rms_norm(x.feats, weight, eps))
 
 
 # MARK: - helpers

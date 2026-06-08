@@ -110,7 +110,7 @@ def test_feature_ops_reject_invalid_contracts() -> None:
     with pytest.raises(ValueError, match='bias'):
         linear(x, mx.ones((1, 2), dtype=mx.float32), mx.ones((2, 1)))
     with pytest.raises(ValueError, match='approximate'):
-        gelu(x, approximate=cast('Any', 'fast'))
+        gelu(x, approximate=cast('Any', 'unsupported'))
     with pytest.raises(ValueError, match='p must'):
         dropout(x, p=1.0)
     with pytest.raises(ValueError, match='eps'):
