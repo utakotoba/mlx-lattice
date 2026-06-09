@@ -27,6 +27,8 @@ def test_case_catalog_exposes_expected_public_surface_groups() -> None:
     }
     assert 'voxelize_mean' in names
     assert 'conv3d_generic' in names
+    assert 'conv3d_generic_dfeatures' in names
+    assert 'conv3d_generic_dweight' in names
     assert 'workload_mini_encoder' in names
     assert cases[0].params[0]['N'] == 256
 
@@ -132,6 +134,28 @@ def test_harness_reports_unsupported_mode_skips() -> None:
 
     assert skips == [('test_voxelize', 4, 'compiled_hot', 'cpu')]
     assert results == []
+
+
+def test_harness_can_scope_case_to_specific_modes() -> None:
+    case = BenchmarkCase(
+        name='test_backward_only',
+        group='quantization',
+        params=({'N': 4, 'channels': 1},),
+        setup=lambda params: point_arrays(
+            rows=int(params['N']),
+            channels=int(params['channels']),
+        ),
+        prepare=lambda fixture: fixture,
+        run=_run_voxelize,
+        backward=lambda fixture: (
+            lambda feats: mx.sum(feats),
+            (fixture.feats,),
+        ),
+        modes=('backward',),
+    )
+
+    assert not case.supports('hot_op')
+    assert case.supports('backward')
 
 
 def test_cli_explicit_modes_do_not_append_default_modes() -> None:

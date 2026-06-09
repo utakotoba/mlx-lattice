@@ -28,6 +28,7 @@ type ConvKind = Literal[
     'transpose',
     'generative_transpose',
 ]
+type ConvGradTarget = Literal['features', 'weight', 'both']
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,16 +56,23 @@ def cases(
     params = tuple(
         dict(item) for item in param_grid(preset, n_values=n_values)
     )
-    return tuple(
-        _case(name, kind, params)
-        for name, kind in (
-            ('conv3d_pointwise', 'pointwise'),
-            ('conv3d_generic', 'generic'),
-            ('subm_conv3d', 'subm'),
-            ('conv_transpose3d', 'transpose'),
-            ('generative_conv_transpose3d', 'generative_transpose'),
+    specs = (
+        ('conv3d_pointwise', 'pointwise'),
+        ('conv3d_generic', 'generic'),
+        ('subm_conv3d', 'subm'),
+        ('conv_transpose3d', 'transpose'),
+        ('generative_conv_transpose3d', 'generative_transpose'),
+    )
+    forward_cases = tuple(_case(name, kind, params) for name, kind in specs)
+    backward_cases = tuple(
+        _backward_case(f'{name}_{suffix}', kind, target, params)
+        for name, kind in specs
+        for suffix, target in (
+            ('dfeatures', 'features'),
+            ('dweight', 'weight'),
         )
     )
+    return forward_cases + backward_cases
 
 
 def _case(
@@ -80,8 +88,27 @@ def _case(
         prepare=_prepare,
         run=lambda inputs: _run(kind, inputs),
         compiled=_compiled(kind),
-        backward=_backward(kind),
+        backward=_backward(kind, 'both'),
         units=('elements', 'n_in', 'n_out'),
+    )
+
+
+def _backward_case(
+    name: str,
+    kind: ConvKind,
+    target: ConvGradTarget,
+    params: tuple[Mapping[str, Any], ...],
+) -> BenchmarkCase:
+    return BenchmarkCase(
+        name=name,
+        group='conv',
+        params=params,
+        setup=_setup,
+        prepare=_prepare,
+        run=lambda inputs: _run(kind, inputs),
+        backward=_backward(kind, target),
+        units=('elements', 'n_in', 'n_out'),
+        modes=('backward',),
     )
 
 
@@ -155,6 +182,7 @@ def _compiled(
 
 def _backward(
     kind: ConvKind,
+    target: ConvGradTarget,
 ) -> Callable[[ConvFixture], tuple[Any, tuple[Any, ...]]]:
     def factory(fixture: ConvFixture) -> tuple[Any, tuple[Any, ...]]:
         weight = _weight_for(kind, fixture)
@@ -171,9 +199,20 @@ def _backward(
                 _run(kind, _compiled_inputs(kind, x, weight_arg)).feats
             )
 
-        return mx.grad(loss, argnums=(0, 1)), (fixture.arrays.feats, weight)
+        return mx.grad(loss, argnums=_argnums_for(target)), (
+            fixture.arrays.feats,
+            weight,
+        )
 
     return factory
+
+
+def _argnums_for(target: ConvGradTarget) -> int | tuple[int, int]:
+    if target == 'features':
+        return 0
+    if target == 'weight':
+        return 1
+    return (0, 1)
 
 
 def _compiled_inputs(

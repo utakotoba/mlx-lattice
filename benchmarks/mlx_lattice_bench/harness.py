@@ -35,8 +35,11 @@ class BenchmarkCase:
     compiled: CompiledFactory | None = None
     backward: CompiledFactory | None = None
     units: tuple[str, ...] = ()
+    modes: tuple[Mode, ...] | None = None
 
     def supports(self, mode: Mode) -> bool:
+        if self.modes is not None and mode not in self.modes:
+            return False
         if mode == 'compiled_hot':
             return self.compiled is not None
         if mode == 'backward':
