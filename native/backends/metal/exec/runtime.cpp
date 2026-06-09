@@ -73,6 +73,16 @@ bool is_nonoverlapping_transposed(
            shape.kernel_z == stride[2];
 }
 
+bool is_nonoverlapping_forward_pool(
+    SparsePoolShape shape,
+    Triple stride,
+    Triple padding
+) {
+    return padding == Triple{0, 0, 0} && stride[0] > 0 && stride[1] > 0 &&
+           stride[2] > 0 &&
+           shape.n_kernels == stride[0] * stride[1] * stride[2];
+}
+
 #ifdef _METAL_
 mx::array make_int32_temp(int elements) {
     auto count = std::max(elements, 1);
@@ -907,60 +917,115 @@ void eval_sparse_pool(
     encoder.set_bytes(reduce_id, 5);
     dispatch_1d(encoder, clear, std::max(coord_elements, feat_elements));
 
-    auto coords_kernel = device.get_kernel(
-        is_identity_forward_coords(stride, padding)
-            ? "sparse_forward_identity_coords_i32"
-            : "sparse_conv_forward_coords_i32",
+    auto use_downsample_pool =
+        is_nonoverlapping_forward_pool(shape, stride, padding);
+    if (use_downsample_pool) {
+        auto table_capacity =
+            next_power_of_two(std::max(shape.in_capacity * 2, 1));
+        auto empty_key = int(0x7fffffff);
+        auto table_keys = make_int32_temp(table_capacity);
+        auto table_rows = make_int32_temp(table_capacity);
+        auto coords_kernel = device.get_kernel(
+            "sparse_pool_downsample_coords_hash_i32", library
+        );
+        encoder.set_compute_pipeline_state(coords_kernel);
+        encoder.set_input_array(inputs[0], 0);
+        encoder.set_input_array(inputs[1], 1);
+        encoder.set_output_array(table_keys, 2);
+        encoder.set_output_array(table_rows, 3);
+        encoder.set_output_array(outputs[SparseOutCoords], 4);
+        encoder.set_output_array(outputs[SparseCounts], 5);
+        encoder.set_bytes(shape.in_capacity, 6);
+        encoder.set_bytes(table_capacity, 7);
+        encoder.set_bytes(empty_key, 8);
+        encoder.set_bytes(stride[0], 9);
+        encoder.set_bytes(stride[1], 10);
+        encoder.set_bytes(stride[2], 11);
+        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+    } else {
+        auto coords_kernel = device.get_kernel(
+            is_identity_forward_coords(stride, padding)
+                ? "sparse_forward_identity_coords_i32"
+                : "sparse_conv_forward_coords_i32",
+            library
+        );
+        encoder.set_compute_pipeline_state(coords_kernel);
+        encoder.set_input_array(inputs[0], 0);
+        encoder.set_input_array(inputs[1], 1);
+        encoder.set_input_array(inputs[3], 2);
+        encoder.set_output_array(outputs[SparseOutCoords], 3);
+        encoder.set_output_array(outputs[SparseCounts], 4);
+        encoder.set_bytes(shape.in_capacity, 5);
+        encoder.set_bytes(shape.n_kernels, 6);
+        if (!is_identity_forward_coords(stride, padding)) {
+            encoder.set_bytes(stride[0], 7);
+            encoder.set_bytes(stride[1], 8);
+            encoder.set_bytes(stride[2], 9);
+            encoder.set_bytes(padding[0], 10);
+            encoder.set_bytes(padding[1], 11);
+            encoder.set_bytes(padding[2], 12);
+        }
+        dispatch_1d(
+            encoder,
+            coords_kernel,
+            is_identity_forward_coords(stride, padding)
+                ? static_cast<size_t>(shape.in_capacity) * 4
+                : static_cast<size_t>(shape.in_capacity)
+        );
+    }
+
+    auto use_downsample_row_gather =
+        use_downsample_pool && reduce != PoolReduceOp::Sum;
+    auto gather = device.get_kernel(
+        use_downsample_pool
+            ? (use_downsample_row_gather
+                   ? "sparse_pool_downsample_gather_rows_f32_i32"
+                   : "sparse_pool_downsample_gather_f32_i32")
+            : "sparse_pool_forward_gather_f32_i32",
         library
     );
-    encoder.set_compute_pipeline_state(coords_kernel);
-    encoder.set_input_array(inputs[0], 0);
-    encoder.set_input_array(inputs[1], 1);
-    encoder.set_input_array(inputs[3], 2);
-    encoder.set_output_array(outputs[SparseOutCoords], 3);
-    encoder.set_output_array(outputs[SparseCounts], 4);
-    encoder.set_bytes(shape.in_capacity, 5);
-    encoder.set_bytes(shape.n_kernels, 6);
-    if (!is_identity_forward_coords(stride, padding)) {
-        encoder.set_bytes(stride[0], 7);
-        encoder.set_bytes(stride[1], 8);
-        encoder.set_bytes(stride[2], 9);
-        encoder.set_bytes(padding[0], 10);
-        encoder.set_bytes(padding[1], 11);
-        encoder.set_bytes(padding[2], 12);
-    }
-    dispatch_1d(
-        encoder,
-        coords_kernel,
-        is_identity_forward_coords(stride, padding)
-            ? static_cast<size_t>(shape.in_capacity) * 4
-            : static_cast<size_t>(shape.in_capacity)
-    );
-
-    auto gather =
-        device.get_kernel("sparse_pool_forward_gather_f32_i32", library);
     encoder.set_compute_pipeline_state(gather);
     encoder.set_input_array(inputs[0], 0);
     encoder.set_input_array(inputs[1], 1);
     encoder.set_input_array(inputs[2], 2);
-    encoder.set_input_array(inputs[3], 3);
-    encoder.set_input_array(outputs[SparseOutCoords], 4);
-    encoder.set_input_array(outputs[SparseCounts], 5);
-    encoder.set_output_array(outputs[SparseOutFeats], 6);
-    encoder.set_bytes(reduce_id, 7);
-    encoder.set_bytes(shape.in_capacity, 8);
-    encoder.set_bytes(shape.out_capacity, 9);
-    encoder.set_bytes(shape.n_kernels, 10);
-    encoder.set_bytes(shape.channels, 11);
-    encoder.set_bytes(stride[0], 12);
-    encoder.set_bytes(stride[1], 13);
-    encoder.set_bytes(stride[2], 14);
-    encoder.set_bytes(padding[0], 15);
-    encoder.set_bytes(padding[1], 16);
-    encoder.set_bytes(padding[2], 17);
-    encoder.set_bytes(stride_at(inputs[2], 0), 18);
-    encoder.set_bytes(stride_at(inputs[2], 1), 19);
-    dispatch_1d(encoder, gather, feat_elements);
+    if (use_downsample_pool) {
+        encoder.set_input_array(outputs[SparseOutCoords], 3);
+        encoder.set_input_array(outputs[SparseCounts], 4);
+        encoder.set_output_array(outputs[SparseOutFeats], 5);
+        encoder.set_bytes(reduce_id, 6);
+        encoder.set_bytes(shape.in_capacity, 7);
+        encoder.set_bytes(shape.out_capacity, 8);
+        encoder.set_bytes(shape.channels, 9);
+        encoder.set_bytes(stride[0], 10);
+        encoder.set_bytes(stride[1], 11);
+        encoder.set_bytes(stride[2], 12);
+        encoder.set_bytes(stride_at(inputs[2], 0), 13);
+        encoder.set_bytes(stride_at(inputs[2], 1), 14);
+    } else {
+        encoder.set_input_array(inputs[3], 3);
+        encoder.set_input_array(outputs[SparseOutCoords], 4);
+        encoder.set_input_array(outputs[SparseCounts], 5);
+        encoder.set_output_array(outputs[SparseOutFeats], 6);
+        encoder.set_bytes(reduce_id, 7);
+        encoder.set_bytes(shape.in_capacity, 8);
+        encoder.set_bytes(shape.out_capacity, 9);
+        encoder.set_bytes(shape.n_kernels, 10);
+        encoder.set_bytes(shape.channels, 11);
+        encoder.set_bytes(stride[0], 12);
+        encoder.set_bytes(stride[1], 13);
+        encoder.set_bytes(stride[2], 14);
+        encoder.set_bytes(padding[0], 15);
+        encoder.set_bytes(padding[1], 16);
+        encoder.set_bytes(padding[2], 17);
+        encoder.set_bytes(stride_at(inputs[2], 0), 18);
+        encoder.set_bytes(stride_at(inputs[2], 1), 19);
+    }
+    dispatch_1d(
+        encoder,
+        gather,
+        use_downsample_row_gather ? static_cast<size_t>(shape.out_capacity)
+                                  : feat_elements
+    );
 #else
     (void)reduce;
     (void)shape;

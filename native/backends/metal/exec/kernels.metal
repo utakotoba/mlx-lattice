@@ -200,6 +200,61 @@ using namespace metal;
     out_coords[elem] = row < rows ? coords[elem] : 0;
 }
 
+[[kernel]] void sparse_pool_downsample_coords_hash_i32(
+    device const int* coords [[buffer(0)]],
+    device const int* active_rows [[buffer(1)]],
+    device int* table_keys [[buffer(2)]],
+    device int* table_rows [[buffer(3)]],
+    device int* out_coords [[buffer(4)]],
+    device int* counts [[buffer(5)]],
+    constant const int& n_in_rows [[buffer(6)]],
+    constant const int& table_capacity [[buffer(7)]],
+    constant const int& empty_key [[buffer(8)]],
+    constant const int& stride_x [[buffer(9)]],
+    constant const int& stride_y [[buffer(10)]],
+    constant const int& stride_z [[buffer(11)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+
+    for (int slot = 0; slot < table_capacity; ++slot) {
+        table_keys[slot] = empty_key;
+        table_rows[slot] = -1;
+    }
+
+    int rows = min(active_rows[0], n_in_rows);
+    int out_count = 0;
+    for (int row = 0; row < rows; ++row) {
+        int candidate[4];
+        downsample_coord(coords, row, stride_x, stride_y, stride_z, candidate);
+        int key = exec_coord_hash_i32(candidate);
+        int slot = key & (table_capacity - 1);
+        for (int probe = 0; probe < table_capacity; ++probe) {
+            int found = table_keys[slot];
+            if (found == empty_key) {
+                table_keys[slot] = key;
+                table_rows[slot] = out_count;
+                write_coord(out_coords, out_count, candidate);
+                out_count += 1;
+                break;
+            }
+            if (found == key) {
+                int out_row = table_rows[slot];
+                if (out_row >= 0 &&
+                    coord4_equal(candidate, out_coords, out_row)) {
+                    break;
+                }
+            }
+            slot = (slot + 1) & (table_capacity - 1);
+        }
+    }
+
+    counts[0] = rows;
+    counts[1] = out_count;
+}
+
 [[kernel]] void sparse_conv_forward_plan_i32(
     device const int* coords [[buffer(0)]],
     device const int* active_rows [[buffer(1)]],
@@ -1937,6 +1992,133 @@ using namespace metal;
         acc /= float(max(degree, 1));
     }
     out_feats[elem] = acc;
+}
+
+[[kernel]] void sparse_pool_downsample_gather_f32_i32(
+    device const int* coords [[buffer(0)]],
+    device const int* active_rows [[buffer(1)]],
+    device const float* feats [[buffer(2)]],
+    device const int* out_coords [[buffer(3)]],
+    device const int* counts [[buffer(4)]],
+    device float* out_feats [[buffer(5)]],
+    constant const int& reduce [[buffer(6)]],
+    constant const int& n_in_rows [[buffer(7)]],
+    constant const int& n_out_rows [[buffer(8)]],
+    constant const int& channels [[buffer(9)]],
+    constant const int& stride_x [[buffer(10)]],
+    constant const int& stride_y [[buffer(11)]],
+    constant const int& stride_z [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    int total = n_out_rows * channels;
+    if (elem >= uint(total)) {
+        return;
+    }
+
+    int out_row = int(elem) / channels;
+    int channel = int(elem) - out_row * channels;
+    int out_count = counts[1];
+    int rows = min(active_rows[0], n_in_rows);
+    if (out_row >= out_count) {
+        return;
+    }
+
+    int out_base = out_row * 4;
+    int target[4] = {
+        out_coords[out_base],
+        out_coords[out_base + 1],
+        out_coords[out_base + 2],
+        out_coords[out_base + 3],
+    };
+    float acc = reduce == 1 ? -INFINITY : 0.0f;
+    int degree = 0;
+    for (int in_row = 0; in_row < rows; ++in_row) {
+        int candidate[4];
+        downsample_coord(
+            coords, in_row, stride_x, stride_y, stride_z, candidate
+        );
+        if (!coord_equal4(candidate, target)) {
+            continue;
+        }
+        float value = feats[in_row * feat_s0 + channel * feat_s1];
+        if (reduce == 1) {
+            acc = max(acc, value);
+        } else {
+            acc += value;
+        }
+        degree += 1;
+    }
+    if (reduce == 2) {
+        acc /= float(max(degree, 1));
+    }
+    out_feats[elem] = acc;
+}
+
+[[kernel]] void sparse_pool_downsample_gather_rows_f32_i32(
+    device const int* coords [[buffer(0)]],
+    device const int* active_rows [[buffer(1)]],
+    device const float* feats [[buffer(2)]],
+    device const int* out_coords [[buffer(3)]],
+    device const int* counts [[buffer(4)]],
+    device float* out_feats [[buffer(5)]],
+    constant const int& reduce [[buffer(6)]],
+    constant const int& n_in_rows [[buffer(7)]],
+    constant const int& n_out_rows [[buffer(8)]],
+    constant const int& channels [[buffer(9)]],
+    constant const int& stride_x [[buffer(10)]],
+    constant const int& stride_y [[buffer(11)]],
+    constant const int& stride_z [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    uint out_row [[thread_position_in_grid]]
+) {
+    int out_count = counts[1];
+    if (out_row >= uint(n_out_rows) || out_row >= uint(out_count)) {
+        return;
+    }
+
+    int rows = min(active_rows[0], n_in_rows);
+    int out_base = int(out_row) * 4;
+    int target[4] = {
+        out_coords[out_base],
+        out_coords[out_base + 1],
+        out_coords[out_base + 2],
+        out_coords[out_base + 3],
+    };
+    int out_feat_base = int(out_row) * channels;
+    for (int channel = 0; channel < channels; ++channel) {
+        out_feats[out_feat_base + channel] = reduce == 1 ? -INFINITY : 0.0f;
+    }
+
+    int degree = 0;
+    for (int in_row = 0; in_row < rows; ++in_row) {
+        int candidate[4];
+        downsample_coord(
+            coords, in_row, stride_x, stride_y, stride_z, candidate
+        );
+        if (!coord_equal4(candidate, target)) {
+            continue;
+        }
+        for (int channel = 0; channel < channels; ++channel) {
+            int out_index = out_feat_base + channel;
+            float value = feats[in_row * feat_s0 + channel * feat_s1];
+            if (reduce == 1) {
+                out_feats[out_index] = max(out_feats[out_index], value);
+            } else {
+                out_feats[out_index] += value;
+            }
+        }
+        degree += 1;
+    }
+
+    if (reduce == 2) {
+        float scale = 1.0f / float(max(degree, 1));
+        for (int channel = 0; channel < channels; ++channel) {
+            out_feats[out_feat_base + channel] *= scale;
+        }
+    }
 }
 
 [[kernel]] void sparse_pool_grad_f32_i32_serial(
