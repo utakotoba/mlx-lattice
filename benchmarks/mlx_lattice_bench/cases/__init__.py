@@ -18,6 +18,7 @@ def all_cases(
     preset: str,
     *,
     groups: tuple[str, ...] = GROUPS,
+    n_values: tuple[int, ...] | None = None,
 ) -> tuple[BenchmarkCase, ...]:
     selected = []
     modules = {
@@ -30,7 +31,7 @@ def all_cases(
         'workloads': workloads,
     }
     for group in groups:
-        selected.extend(modules[group].cases(preset))
+        selected.extend(modules[group].cases(preset, n_values=n_values))
     return tuple(selected)
 
 

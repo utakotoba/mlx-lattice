@@ -124,7 +124,7 @@ class Console:
 
     def _format_params(self, params: Mapping[str, Any]) -> str:
         preferred = (
-            'rows',
+            'N',
             'points',
             'channels',
             'batches',

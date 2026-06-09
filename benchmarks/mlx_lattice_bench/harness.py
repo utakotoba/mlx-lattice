@@ -339,7 +339,7 @@ def _derive_workload_metrics(
 
 def _apply_param_metrics(metrics: WorkloadMetrics, params: Params) -> None:
     for key, metric in (
-        ('rows', 'rows'),
+        ('N', 'N'),
         ('points', 'points'),
         ('channels', 'channels_in'),
         ('batches', 'batches'),
@@ -505,7 +505,14 @@ def _derive_composite_metrics(metrics: WorkloadMetrics) -> None:
 def _default_units(workload: WorkloadMetrics) -> tuple[str, ...]:
     return tuple(
         unit
-        for unit in ('edges', 'elements', 'points', 'n_out', 'n_in', 'rows')
+        for unit in (
+            'edges',
+            'elements',
+            'points',
+            'n_out',
+            'n_in',
+            'N',
+        )
         if unit in workload
     )
 

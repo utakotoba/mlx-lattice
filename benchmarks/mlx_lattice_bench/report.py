@@ -99,7 +99,7 @@ def table(results: list[BenchmarkResult], *, color: bool = False) -> str:
 
 def _params(params: dict[str, Any]) -> str:
     parts = []
-    for key in ('rows', 'points', 'channels', 'batches', 'kernel'):
+    for key in ('N', 'points', 'channels', 'batches', 'kernel'):
         if key in params:
             parts.append(f'{key}={params[key]}')
     return ','.join(parts)

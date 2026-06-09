@@ -12,7 +12,7 @@ from mlx_lattice.ops import (
     union_coords,
 )
 
-from mlx_lattice_bench.cases.common import param_grid
+from mlx_lattice_bench.cases.common import benchmark_n, param_grid
 from mlx_lattice_bench.datasets import SparseArrays, sparse_arrays
 from mlx_lattice_bench.harness import BenchmarkCase
 
@@ -23,10 +23,19 @@ class CoordInputs:
     rhs: mx.array
 
 
-def cases(preset: str) -> tuple[BenchmarkCase, ...]:
+def cases(
+    preset: str,
+    *,
+    n_values: tuple[int, ...] | None = None,
+) -> tuple[BenchmarkCase, ...]:
     params = tuple(
         dict(item)
-        for item in param_grid(preset, channels=(8,), batches=(1,))
+        for item in param_grid(
+            preset,
+            n_values=n_values,
+            channels=(8,),
+            batches=(1,),
+        )
     )
     return (
         BenchmarkCase(
@@ -69,7 +78,7 @@ def cases(preset: str) -> tuple[BenchmarkCase, ...]:
 
 
 def _setup(params: Mapping[str, Any]) -> tuple[SparseArrays, SparseArrays]:
-    rows = int(params['rows'])
+    rows = benchmark_n(params)
     lhs = sparse_arrays(rows=rows, channels=1)
     rhs = sparse_arrays(rows=rows, channels=1)
     return lhs, rhs

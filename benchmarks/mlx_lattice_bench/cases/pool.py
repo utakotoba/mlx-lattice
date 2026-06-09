@@ -15,7 +15,7 @@ from mlx_lattice.ops import (
     sum_pool3d,
 )
 
-from mlx_lattice_bench.cases.common import param_grid
+from mlx_lattice_bench.cases.common import benchmark_n, param_grid
 from mlx_lattice_bench.datasets import SparseArrays, sparse_arrays
 from mlx_lattice_bench.harness import BenchmarkCase
 
@@ -34,8 +34,14 @@ class PoolInputs:
     x: SparseTensor
 
 
-def cases(preset: str) -> tuple[BenchmarkCase, ...]:
-    params = tuple(dict(item) for item in param_grid(preset))
+def cases(
+    preset: str,
+    *,
+    n_values: tuple[int, ...] | None = None,
+) -> tuple[BenchmarkCase, ...]:
+    params = tuple(
+        dict(item) for item in param_grid(preset, n_values=n_values)
+    )
     return tuple(
         _case(name, kind, params)
         for name, kind in (
@@ -69,7 +75,7 @@ def _case(
 
 def _setup(params: Mapping[str, Any]) -> SparseArrays:
     return sparse_arrays(
-        rows=int(params['rows']),
+        rows=benchmark_n(params),
         channels=int(params['channels']),
         batches=int(params['batches']),
     )

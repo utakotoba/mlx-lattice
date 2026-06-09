@@ -33,13 +33,14 @@ def main() -> None:
     args = _parser().parse_args()
     groups = tuple(args.group) if args.group else GROUPS
     modes = tuple(args.mode) if args.mode else ('cold_op', 'hot_op')
+    n_values = tuple(args.n_values) if args.n_values else None
 
     runtime = _load_runtime(
         show_build_log=args.show_build_log,
         preload_native=not args.list,
     )
     console = make_console(args.color, quiet=args.quiet)
-    cases = runtime.all_cases(args.preset, groups=groups)
+    cases = runtime.all_cases(args.preset, groups=groups, n_values=n_values)
 
     if args.list:
         for case in cases:
@@ -109,6 +110,13 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument('--warmup', type=int, default=5)
     parser.add_argument('--repeats', type=int, default=20)
+    parser.add_argument(
+        '--size',
+        dest='n_values',
+        action='append',
+        type=_positive_int,
+        help='planned input size N; repeat to sweep multiple values',
+    )
     parser.add_argument(
         '--output',
         help=(
@@ -229,14 +237,28 @@ def _json_report_path(args: argparse.Namespace) -> Path:
     stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
     groups = _slug(args.group or GROUPS)
     modes = _slug(args.mode or ('cold_op', 'hot_op'))
+    n_part = _n_slug(args.n_values)
     return (
         _RESULTS_DIR
-        / f'{stamp}-{args.preset}-{args.device}-{groups}-{modes}.json'
+        / f'{stamp}-{args.preset}-{args.device}-{n_part}-{groups}-{modes}.json'
     )
 
 
 def _slug(values: Sequence[str]) -> str:
     return '-'.join(value.replace('_', '-') for value in values)
+
+
+def _n_slug(values: Sequence[int] | None) -> str:
+    if not values:
+        return 'preset-N'
+    return 'N' + '-'.join(str(value) for value in values)
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError('must be a positive integer')
+    return parsed
 
 
 class _CapturedOutput(AbstractContextManager['_CapturedOutput']):

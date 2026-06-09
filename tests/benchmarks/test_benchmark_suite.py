@@ -28,14 +28,18 @@ def test_case_catalog_exposes_expected_public_surface_groups() -> None:
     assert 'voxelize_mean' in names
     assert 'conv3d_generic' in names
     assert 'workload_mini_encoder' in names
+    assert cases[0].params[0]['N'] == 256
 
 
 def test_harness_runs_cold_and_hot_public_operator_cases() -> None:
     case = BenchmarkCase(
         name='test_voxelize',
         group='quantization',
-        params=({'rows': 8, 'points': 8, 'channels': 2},),
-        setup=lambda _: point_arrays(rows=8, channels=2),
+        params=({'N': 8, 'channels': 2},),
+        setup=lambda params: point_arrays(
+            rows=int(params['N']),
+            channels=int(params['channels']),
+        ),
         prepare=lambda fixture: fixture,
         run=_run_voxelize,
         units=('points',),
@@ -72,8 +76,11 @@ def test_harness_reports_progress_on_shared_case_layer() -> None:
     case = BenchmarkCase(
         name='test_voxelize',
         group='quantization',
-        params=({'rows': 4, 'points': 4, 'channels': 1},),
-        setup=lambda _: point_arrays(rows=4, channels=1),
+        params=({'N': 4, 'channels': 1},),
+        setup=lambda params: point_arrays(
+            rows=int(params['N']),
+            channels=int(params['channels']),
+        ),
         prepare=lambda fixture: fixture,
         run=_run_voxelize,
         units=('points',),
@@ -88,7 +95,7 @@ def test_harness_reports_progress_on_shared_case_layer() -> None:
         warmup=0,
         repeats=1,
         on_start=lambda item, params, mode, device: starts.append(
-            (item.name, params['rows'], mode, device)
+            (item.name, params['N'], mode, device)
         ),
         on_result=lambda result, *_: finishes.append(result.case),
     )
@@ -102,8 +109,11 @@ def test_harness_reports_unsupported_mode_skips() -> None:
     case = BenchmarkCase(
         name='test_voxelize',
         group='quantization',
-        params=({'rows': 4, 'points': 4, 'channels': 1},),
-        setup=lambda _: point_arrays(rows=4, channels=1),
+        params=({'N': 4, 'channels': 1},),
+        setup=lambda params: point_arrays(
+            rows=int(params['N']),
+            channels=int(params['channels']),
+        ),
         prepare=lambda fixture: fixture,
         run=_run_voxelize,
     )
@@ -116,7 +126,7 @@ def test_harness_reports_unsupported_mode_skips() -> None:
         warmup=0,
         repeats=1,
         on_skip=lambda item, params, mode, device: skips.append(
-            (item.name, params['rows'], mode, device)
+            (item.name, params['N'], mode, device)
         ),
     )
 
@@ -128,6 +138,16 @@ def test_cli_explicit_modes_do_not_append_default_modes() -> None:
     args = _parser().parse_args(['--mode', 'backward'])
 
     assert args.mode == ['backward']
+
+
+def test_cli_repeated_size_values_define_custom_n_sweep() -> None:
+    args = _parser().parse_args(['--size', '16', '--size', '32'])
+
+    assert args.n_values == [16, 32]
+    cases = all_cases(
+        'smoke', groups=('coords',), n_values=tuple(args.n_values)
+    )
+    assert [params['N'] for params in cases[0].params] == [16, 32]
 
 
 def test_cli_report_paths_resolve_under_results_dir() -> None:
@@ -143,8 +163,11 @@ def test_json_report_contains_environment_and_samples(tmp_path) -> None:
     case = BenchmarkCase(
         name='test_voxelize',
         group='quantization',
-        params=({'rows': 4, 'points': 4, 'channels': 1},),
-        setup=lambda _: point_arrays(rows=4, channels=1),
+        params=({'N': 4, 'channels': 1},),
+        setup=lambda params: point_arrays(
+            rows=int(params['N']),
+            channels=int(params['channels']),
+        ),
         prepare=lambda fixture: fixture,
         run=_run_voxelize,
         units=('points',),

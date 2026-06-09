@@ -21,7 +21,7 @@ from mlx_lattice.ops import (
     tanh,
 )
 
-from mlx_lattice_bench.cases.common import param_grid
+from mlx_lattice_bench.cases.common import benchmark_n, param_grid
 from mlx_lattice_bench.datasets import (
     SparseArrays,
     dense_bias,
@@ -62,8 +62,14 @@ class FeatureInputs:
     channel_weight: mx.array
 
 
-def cases(preset: str) -> tuple[BenchmarkCase, ...]:
-    params = tuple(dict(item) for item in param_grid(preset))
+def cases(
+    preset: str,
+    *,
+    n_values: tuple[int, ...] | None = None,
+) -> tuple[BenchmarkCase, ...]:
+    params = tuple(
+        dict(item) for item in param_grid(preset, n_values=n_values)
+    )
     return tuple(
         _case(f'feature_{kind}', kind, params)
         for kind in (
@@ -105,7 +111,7 @@ def _setup(params: Mapping[str, Any]) -> FeatureFixture:
     channels = int(params['channels'])
     return FeatureFixture(
         arrays=sparse_arrays(
-            rows=int(params['rows']),
+            rows=benchmark_n(params),
             channels=channels,
             batches=int(params['batches']),
         ),

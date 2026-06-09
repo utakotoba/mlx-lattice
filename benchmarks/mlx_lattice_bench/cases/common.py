@@ -11,30 +11,39 @@ from mlx_lattice.core import SparseTensor
 def param_grid(
     preset: str,
     *,
-    small_rows: int = 256,
-    standard_rows: int = 2048,
-    full_rows: int = 8192,
+    n_values: tuple[int, ...] | None = None,
+    small_n: int = 256,
+    standard_n: int = 2048,
+    full_n: int = 8192,
     channels: tuple[int, ...] = (16, 64),
     batches: tuple[int, ...] = (1, 4),
 ) -> tuple[Mapping[str, Any], ...]:
     if preset == 'smoke':
-        return (
-            {'rows': small_rows, 'channels': channels[0], 'batches': 1},
+        sizes = n_values or (small_n,)
+        return tuple(
+            {'N': n, 'channels': channels[0], 'batches': 1} for n in sizes
         )
     if preset == 'standard':
+        sizes = n_values or (standard_n,)
         return tuple(
-            {'rows': standard_rows, 'channels': channel, 'batches': batch}
+            {'N': n, 'channels': channel, 'batches': batch}
+            for n in sizes
             for channel in channels
             for batch in batches
         )
     if preset == 'full':
+        sizes = n_values or (standard_n, full_n)
         return tuple(
-            {'rows': rows, 'channels': channel, 'batches': batch}
-            for rows in (standard_rows, full_rows)
+            {'N': n, 'channels': channel, 'batches': batch}
+            for n in sizes
             for channel in channels
             for batch in batches
         )
     raise ValueError("preset must be 'smoke', 'standard', or 'full'.")
+
+
+def benchmark_n(params: Mapping[str, Any]) -> int:
+    return int(params['N'])
 
 
 @dataclass(frozen=True, slots=True)

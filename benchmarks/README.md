@@ -16,6 +16,7 @@ uv run --all-packages mlx-lattice-bench --device all
 uv run --all-packages mlx-lattice-bench --group conv --group pool
 uv run --all-packages mlx-lattice-bench --mode compiled_hot
 uv run --all-packages mlx-lattice-bench --mode backward
+uv run --all-packages mlx-lattice-bench --size 1000 --size 5000
 uv run --all-packages mlx-lattice-bench --output smoke.json
 ```
 
@@ -90,6 +91,7 @@ rebuild output is hidden during benchmark startup by default; pass
 Sparse workload metadata is collected after timed evaluation, so host reads of
 lazy scalar counts do not affect latency samples. The key fields are:
 
+- `N`: planned input size requested by the benchmark parameter sweep.
 - `P`: raw point rows before quantization.
 - `Nin`: effective sparse input rows.
 - `Nout`: effective sparse output rows.
@@ -108,4 +110,4 @@ JSON reports include:
 - warmup/repeat counts;
 - all latency samples;
 - median, min, p90, and p95 latency;
-- derived throughput for declared row/point counts.
+- derived throughput for declared `N`, point, sparse row, and edge counts.
