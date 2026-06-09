@@ -35,4 +35,21 @@ NativeKernelRelation make_transposed_kernel_relation(
     Triple dilation
 );
 
+NativeNeighborRelation make_knn_relation(
+    const mx::array& source_coords,
+    const mx::array& source_active_rows,
+    const mx::array& query_coords,
+    const mx::array& query_active_rows,
+    int k
+);
+
+NativeNeighborRelation make_radius_relation(
+    const mx::array& source_coords,
+    const mx::array& source_active_rows,
+    const mx::array& query_coords,
+    const mx::array& query_active_rows,
+    double radius,
+    int max_neighbors
+);
+
 } // namespace mlx_lattice

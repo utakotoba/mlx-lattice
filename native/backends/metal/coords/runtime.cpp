@@ -37,6 +37,15 @@ const char* relation_kernel_name(CoordRelationOp op) {
     }
 }
 
+int neighbor_relation_op_id(NeighborRelationOp op) {
+    switch (op) {
+    case NeighborRelationOp::Knn:
+        return 0;
+    case NeighborRelationOp::Radius:
+        return 1;
+    }
+}
+
 // MARK: - guards
 
 void require_i32_inputs(
@@ -250,6 +259,55 @@ void eval_generative_kernel_relation(
     (void)rows;
     (void)kernel_count;
     (void)stride;
+    (void)stream;
+    (void)inputs;
+    (void)outputs;
+    throw std::runtime_error("Metal support is not available.");
+#endif
+}
+
+void eval_neighbor_relation(
+    NeighborRelationOp op,
+    NeighborRelationShape shape,
+    float radius_squared,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    require_i32_inputs(
+        inputs,
+        {"source coords",
+         "query coords",
+         "source active rows",
+         "query active rows"}
+    );
+
+#ifdef _METAL_
+    backend::allocate_all(outputs);
+
+    auto& device = mx::metal::device(stream.device);
+    auto library =
+        device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
+    auto& encoder = mx::metal::get_command_encoder(stream);
+    auto kernel = device.get_kernel("build_neighbor_relation_i32", library);
+
+    encoder.set_compute_pipeline_state(kernel);
+    for (int i = 0; i < int(inputs.size()); ++i) {
+        encoder.set_input_array(inputs[i], i);
+    }
+    for (int i = 0; i < int(outputs.size()); ++i) {
+        encoder.set_output_array(outputs[i], i + 4);
+    }
+    encoder.set_bytes(neighbor_relation_op_id(op), 9);
+    encoder.set_bytes(shape.source_rows, 10);
+    encoder.set_bytes(shape.query_rows, 11);
+    encoder.set_bytes(shape.max_neighbors, 12);
+    encoder.set_bytes(radius_squared, 13);
+    encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+#else
+    (void)op;
+    (void)shape;
+    (void)radius_squared;
     (void)stream;
     (void)inputs;
     (void)outputs;

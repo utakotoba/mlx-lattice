@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from mlx_lattice.core import KernelRelation, KernelSpec, RelationEdges
+from mlx_lattice.core import (
+    KernelRelation,
+    KernelSpec,
+    NeighborEdges,
+    NeighborRelation,
+    RelationEdges,
+)
 from tests.support import mx
 
 
@@ -59,3 +65,32 @@ def test_kernel_relation_accepts_and_validates_edge_contract() -> None:
         KernelRelation(
             rows, rows, rows, kernel_offsets=((0, 0, 0),), n_kernels=2
         )
+
+
+def test_neighbor_relation_accepts_and_validates_query_contract() -> None:
+    rows = mx.array([0, 1], dtype=mx.int32)
+    short = mx.array([0], dtype=mx.int32)
+    distances = mx.array([1.0, 4.0], dtype=mx.float32)
+
+    relation = NeighborRelation(
+        rows,
+        rows,
+        rows,
+        distances,
+        n_query_capacity=2,
+        n_source_capacity=3,
+        max_neighbors=2,
+    )
+
+    assert relation.edge_capacity == 2
+    assert isinstance(relation.edges, NeighborEdges)
+    assert relation.n_query_capacity == 2
+    assert relation.n_source_capacity == 3
+    assert relation.max_neighbors == 2
+    assert relation.edge_count.tolist() == [2]
+    assert relation.query_count.tolist() == [0]
+
+    with pytest.raises(ValueError, match='same row count'):
+        NeighborRelation(rows, short, rows, distances)
+    with pytest.raises(ValueError, match='distances'):
+        NeighborRelation(rows, rows, rows, rows)

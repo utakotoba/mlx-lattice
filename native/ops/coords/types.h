@@ -34,6 +34,20 @@ enum CoordRelationOutputSlot : std::size_t {
 
 constexpr std::size_t DirectRelationOutputCount = RelationOutputCount - 1;
 
+enum class NeighborRelationOp : std::uint8_t {
+    Knn,
+    Radius,
+};
+
+enum NeighborRelationOutputSlot : std::size_t {
+    NeighborQueryRows = 0,
+    NeighborSourceRows,
+    NeighborIds,
+    NeighborDistances,
+    NeighborCounts,
+    NeighborOutputCount,
+};
+
 struct NativeKernelRelation {
     // Baseline edge-COO view of a logical relation. Future native execution
     // plans can lower the same relation into CSR, buckets, or implicit GEMM.
@@ -41,6 +55,14 @@ struct NativeKernelRelation {
     mx::array out_rows;
     mx::array kernel_ids;
     mx::array out_coords;
+    mx::array counts;
+};
+
+struct NativeNeighborRelation {
+    mx::array query_rows;
+    mx::array source_rows;
+    mx::array neighbor_ids;
+    mx::array distances;
     mx::array counts;
 };
 
@@ -57,6 +79,12 @@ struct CoordSetShape {
 struct CoordLookupShape {
     int rows;
     int query_rows;
+};
+
+struct NeighborRelationShape {
+    int source_rows;
+    int query_rows;
+    int max_neighbors;
 };
 
 } // namespace mlx_lattice

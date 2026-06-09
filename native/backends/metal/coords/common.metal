@@ -49,3 +49,26 @@ inline void write_edge(
     out_rows[row] = out_row;
     kernel_ids[row] = kernel_id;
 }
+
+inline float squared_spatial_distance(
+    device const int* lhs,
+    int lhs_row,
+    device const int* rhs,
+    int rhs_row
+) {
+    int lhs_base = lhs_row * 4;
+    int rhs_base = rhs_row * 4;
+    float dx = float(lhs[lhs_base + 1] - rhs[rhs_base + 1]);
+    float dy = float(lhs[lhs_base + 2] - rhs[rhs_base + 2]);
+    float dz = float(lhs[lhs_base + 3] - rhs[rhs_base + 3]);
+    return dx * dx + dy * dy + dz * dz;
+}
+
+inline bool same_batch(
+    device const int* lhs,
+    int lhs_row,
+    device const int* rhs,
+    int rhs_row
+) {
+    return lhs[lhs_row * 4] == rhs[rhs_row * 4];
+}

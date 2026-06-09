@@ -5,19 +5,25 @@ from collections.abc import Sequence
 from mlx_lattice.core.coords.builders import (
     build_generative_relation,
     build_kernel_relation,
+    build_knn_relation,
+    build_radius_relation,
     build_transposed_kernel_relation,
     kernel_offsets,
 )
-from mlx_lattice.core.relations import KernelRelation
+from mlx_lattice.core.relations import KernelRelation, NeighborRelation
 from mlx_lattice.core.tensor import SparseTensor
 
 __all__ = [
     'build_generative_relation',
     'build_kernel_relation',
+    'build_knn_relation',
+    'build_radius_relation',
     'build_transposed_kernel_relation',
     'generative_kernel_relation',
     'kernel_offsets',
     'kernel_relation',
+    'knn_relation',
+    'radius_relation',
     'transposed_kernel_relation',
 ]
 
@@ -67,3 +73,48 @@ def transposed_kernel_relation(
         padding=padding,
         dilation=dilation,
     )
+
+
+def knn_relation(
+    source: SparseTensor,
+    query: SparseTensor | None = None,
+    *,
+    k: int,
+) -> NeighborRelation:
+    query = source if query is None else query
+    _require_matching_stride(source, query)
+    return build_knn_relation(
+        source.coords,
+        query.coords,
+        source_active_rows=source.active_rows,
+        query_active_rows=query.active_rows,
+        k=k,
+    )
+
+
+def radius_relation(
+    source: SparseTensor,
+    query: SparseTensor | None = None,
+    *,
+    radius: float,
+    max_neighbors: int | None = None,
+) -> NeighborRelation:
+    query = source if query is None else query
+    _require_matching_stride(source, query)
+    return build_radius_relation(
+        source.coords,
+        query.coords,
+        source_active_rows=source.active_rows,
+        query_active_rows=query.active_rows,
+        radius=radius,
+        max_neighbors=max_neighbors,
+    )
+
+
+def _require_matching_stride(
+    source: SparseTensor, query: SparseTensor
+) -> None:
+    if source.stride != query.stride:
+        raise ValueError(
+            'source and query tensors must use the same coordinate stride.'
+        )

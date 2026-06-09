@@ -24,6 +24,15 @@ void validate_coord_pair(const mx::array& lhs, const mx::array& rhs) {
     }
 }
 
+void validate_active_rows(const mx::array& active_rows) {
+    if (active_rows.shape() != mx::Shape{1} ||
+        active_rows.dtype() != mx::int32) {
+        throw std::invalid_argument(
+            "active_rows must have shape (1,) and int32 dtype."
+        );
+    }
+}
+
 void validate_positive(Triple values, const char* name) {
     for (auto value : values) {
         if (value <= 0) {

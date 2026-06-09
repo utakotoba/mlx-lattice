@@ -1,5 +1,7 @@
 #include "ops/coords.h"
 
+#include <stdexcept>
+
 #include "ops/coords/factories.h"
 #include "ops/coords/validation.h"
 
@@ -39,6 +41,7 @@ NativeKernelRelation build_kernel_relation(
     Triple dilation
 ) {
     validate_coords(coords);
+    validate_active_rows(active_rows);
     validate_positive(kernel_size, "kernel_size");
     validate_positive(stride, "stride");
     validate_nonnegative(padding, "padding");
@@ -55,6 +58,7 @@ NativeKernelRelation build_generative_relation(
     Triple stride
 ) {
     validate_coords(coords);
+    validate_active_rows(active_rows);
     validate_positive(kernel_size, "kernel_size");
     validate_positive(stride, "stride");
     return make_generative_relation(coords, active_rows, kernel_size, stride);
@@ -69,12 +73,58 @@ NativeKernelRelation build_transposed_kernel_relation(
     Triple dilation
 ) {
     validate_coords(coords);
+    validate_active_rows(active_rows);
     validate_positive(kernel_size, "kernel_size");
     validate_positive(stride, "stride");
     validate_nonnegative(padding, "padding");
     validate_positive(dilation, "dilation");
     return make_transposed_kernel_relation(
         coords, active_rows, kernel_size, stride, padding, dilation
+    );
+}
+
+NativeNeighborRelation build_knn_relation(
+    const mx::array& source_coords,
+    const mx::array& source_active_rows,
+    const mx::array& query_coords,
+    const mx::array& query_active_rows,
+    int k
+) {
+    validate_coord_pair(source_coords, query_coords);
+    validate_active_rows(source_active_rows);
+    validate_active_rows(query_active_rows);
+    if (k <= 0) {
+        throw std::invalid_argument("k must be positive.");
+    }
+    return make_knn_relation(
+        source_coords, source_active_rows, query_coords, query_active_rows, k
+    );
+}
+
+NativeNeighborRelation build_radius_relation(
+    const mx::array& source_coords,
+    const mx::array& source_active_rows,
+    const mx::array& query_coords,
+    const mx::array& query_active_rows,
+    double radius,
+    int max_neighbors
+) {
+    validate_coord_pair(source_coords, query_coords);
+    validate_active_rows(source_active_rows);
+    validate_active_rows(query_active_rows);
+    if (radius < 0.0) {
+        throw std::invalid_argument("radius must be non-negative.");
+    }
+    if (max_neighbors < 0) {
+        throw std::invalid_argument("max_neighbors must be non-negative.");
+    }
+    return make_radius_relation(
+        source_coords,
+        source_active_rows,
+        query_coords,
+        query_active_rows,
+        radius,
+        max_neighbors
     );
 }
 

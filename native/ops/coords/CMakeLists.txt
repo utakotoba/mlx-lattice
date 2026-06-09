@@ -7,6 +7,7 @@ target_sources(
   PRIVATE
     api.cpp
     lookup.cpp
+    neighbors.cpp
     offsets.cpp
     relations.cpp
     set.cpp

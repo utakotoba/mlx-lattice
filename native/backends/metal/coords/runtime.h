@@ -43,4 +43,13 @@ void eval_generative_kernel_relation(
     std::vector<mx::array>& outputs
 );
 
+void eval_neighbor_relation(
+    NeighborRelationOp op,
+    NeighborRelationShape shape,
+    float radius_squared,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
 } // namespace mlx_lattice::coords::metal

@@ -21,6 +21,11 @@ namespace {
 using Coord = std::array<int64_t, 4>;
 using Edge = std::array<int32_t, 3>;
 
+struct NeighborCandidate {
+    int32_t source_row;
+    float distance;
+};
+
 struct CoordHash {
     size_t operator()(const Coord& coord) const {
         size_t seed = 0;
@@ -78,6 +83,12 @@ int read_scalar_i32(const mx::array& value) { return value.data<int32_t>()[0]; }
 void write_i32(mx::array& out, const std::vector<int32_t>& values) {
     auto data = out.data<int32_t>();
     std::fill(data, data + out.size(), 0);
+    std::copy(values.begin(), values.end(), data);
+}
+
+void write_f32(mx::array& out, const std::vector<float>& values) {
+    auto data = out.data<float>();
+    std::fill(data, data + out.size(), 0.0F);
     std::copy(values.begin(), values.end(), data);
 }
 
@@ -267,6 +278,89 @@ lookup_values(const mx::array& coords, const mx::array& queries) {
         out.push_back(match == rows.end() ? -1 : match->second);
     }
     return out;
+}
+
+bool same_batch(Coord lhs, Coord rhs) { return lhs[0] == rhs[0]; }
+
+float squared_spatial_distance(Coord lhs, Coord rhs) {
+    auto dx = static_cast<float>(lhs[1] - rhs[1]);
+    auto dy = static_cast<float>(lhs[2] - rhs[2]);
+    auto dz = static_cast<float>(lhs[3] - rhs[3]);
+    return dx * dx + dy * dy + dz * dz;
+}
+
+bool closer_neighbor(
+    const NeighborCandidate& lhs,
+    const NeighborCandidate& rhs
+) {
+    if (lhs.distance != rhs.distance) {
+        return lhs.distance < rhs.distance;
+    }
+    return lhs.source_row < rhs.source_row;
+}
+
+void write_neighbor_relation(
+    std::vector<mx::array>& outputs,
+    NeighborRelationOp op,
+    const mx::array& source_coords,
+    int source_active_rows,
+    const mx::array& query_coords,
+    int query_active_rows,
+    NeighborRelationShape shape,
+    float radius_squared
+) {
+    auto source_values = read_coords(source_coords);
+    source_values.resize(
+        std::min(source_active_rows, int(source_values.size()))
+    );
+    auto query_values = read_coords(query_coords);
+    query_values.resize(std::min(query_active_rows, int(query_values.size())));
+
+    std::vector<int32_t> query_rows;
+    std::vector<int32_t> source_rows;
+    std::vector<int32_t> neighbor_ids;
+    std::vector<float> distances;
+    query_rows.reserve(query_values.size() * shape.max_neighbors);
+    source_rows.reserve(query_values.size() * shape.max_neighbors);
+    neighbor_ids.reserve(query_values.size() * shape.max_neighbors);
+    distances.reserve(query_values.size() * shape.max_neighbors);
+
+    std::vector<NeighborCandidate> candidates;
+    candidates.reserve(source_values.size());
+    for (int query_row = 0; query_row < int(query_values.size()); ++query_row) {
+        candidates.clear();
+        auto query = query_values[query_row];
+        for (int source_row = 0; source_row < int(source_values.size());
+             ++source_row) {
+            auto source = source_values[source_row];
+            if (!same_batch(query, source)) {
+                continue;
+            }
+            auto distance = squared_spatial_distance(query, source);
+            if (op == NeighborRelationOp::Radius && distance > radius_squared) {
+                continue;
+            }
+            candidates.push_back({static_cast<int32_t>(source_row), distance});
+        }
+        std::sort(candidates.begin(), candidates.end(), closer_neighbor);
+        auto limit = std::min(shape.max_neighbors, int(candidates.size()));
+        for (int neighbor = 0; neighbor < limit; ++neighbor) {
+            query_rows.push_back(static_cast<int32_t>(query_row));
+            source_rows.push_back(candidates[neighbor].source_row);
+            neighbor_ids.push_back(static_cast<int32_t>(neighbor));
+            distances.push_back(candidates[neighbor].distance);
+        }
+    }
+
+    write_i32(outputs[NeighborQueryRows], query_rows);
+    write_i32(outputs[NeighborSourceRows], source_rows);
+    write_i32(outputs[NeighborIds], neighbor_ids);
+    write_f32(outputs[NeighborDistances], distances);
+    write_count(
+        outputs[NeighborCounts],
+        int(query_rows.size()),
+        int(query_values.size())
+    );
 }
 
 // MARK: - relations
@@ -513,6 +607,37 @@ void eval_generative_kernel_relation(
                 active_rows,
                 read_offsets(task_inputs[1]),
                 stride
+            );
+        }
+    );
+}
+
+void eval_neighbor_relation(
+    NeighborRelationOp op,
+    NeighborRelationShape shape,
+    float radius_squared,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    backend::allocate_all(outputs);
+    backend::schedule_cpu(
+        stream,
+        inputs,
+        outputs,
+        [op, shape, radius_squared](
+            const std::vector<mx::array>& task_inputs,
+            std::vector<mx::array>& task_outputs
+        ) {
+            write_neighbor_relation(
+                task_outputs,
+                op,
+                task_inputs[0],
+                read_scalar_i32(task_inputs[2]),
+                task_inputs[1],
+                read_scalar_i32(task_inputs[3]),
+                shape,
+                radius_squared
             );
         }
     );

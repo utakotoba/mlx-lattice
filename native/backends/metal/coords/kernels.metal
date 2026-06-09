@@ -360,3 +360,86 @@ using namespace metal;
     counts[0] = edge_count;
     counts[1] = out_count;
 }
+
+// MARK: - neighbor relations
+
+[[kernel]] void build_neighbor_relation_i32(
+    device const int* source_coords [[buffer(0)]],
+    device const int* query_coords [[buffer(1)]],
+    device const int* source_active_rows [[buffer(2)]],
+    device const int* query_active_rows [[buffer(3)]],
+    device int* query_rows [[buffer(4)]],
+    device int* source_rows [[buffer(5)]],
+    device int* neighbor_ids [[buffer(6)]],
+    device float* distances [[buffer(7)]],
+    device int* counts [[buffer(8)]],
+    constant const int& op [[buffer(9)]],
+    constant const int& source_capacity [[buffer(10)]],
+    constant const int& query_capacity [[buffer(11)]],
+    constant const int& max_neighbors [[buffer(12)]],
+    constant const float& radius_squared [[buffer(13)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+
+    int edge_capacity = query_capacity * max_neighbors;
+    for (int edge = 0; edge < edge_capacity; ++edge) {
+        query_rows[edge] = 0;
+        source_rows[edge] = 0;
+        neighbor_ids[edge] = 0;
+        distances[edge] = 0.0f;
+    }
+
+    int source_count = min(source_active_rows[0], source_capacity);
+    int query_count = min(query_active_rows[0], query_capacity);
+    int edge_count = 0;
+    for (int query_row = 0; query_row < query_count; ++query_row) {
+        int query_start = edge_count;
+        for (int neighbor = 0; neighbor < max_neighbors; ++neighbor) {
+            int best_source = -1;
+            float best_distance = 0.0f;
+            for (int source_row = 0; source_row < source_count; ++source_row) {
+                if (!same_batch(
+                        query_coords, query_row, source_coords, source_row
+                    )) {
+                    continue;
+                }
+                bool used = false;
+                for (int previous = query_start; previous < edge_count;
+                     ++previous) {
+                    if (source_rows[previous] == source_row) {
+                        used = true;
+                        break;
+                    }
+                }
+                if (used) {
+                    continue;
+                }
+                float distance = squared_spatial_distance(
+                    query_coords, query_row, source_coords, source_row
+                );
+                if (op == 1 && distance > radius_squared) {
+                    continue;
+                }
+                if (best_source < 0 || distance < best_distance ||
+                    (distance == best_distance && source_row < best_source)) {
+                    best_source = source_row;
+                    best_distance = distance;
+                }
+            }
+            if (best_source < 0) {
+                break;
+            }
+            query_rows[edge_count] = query_row;
+            source_rows[edge_count] = best_source;
+            neighbor_ids[edge_count] = neighbor;
+            distances[edge_count] = best_distance;
+            edge_count += 1;
+        }
+    }
+
+    counts[0] = edge_count;
+    counts[1] = query_count;
+}

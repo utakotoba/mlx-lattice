@@ -33,6 +33,16 @@ nb::tuple relation_tuple(const NativeKernelRelation& relation) {
     );
 }
 
+nb::tuple neighbor_tuple(const NativeNeighborRelation& relation) {
+    return nb::make_tuple(
+        relation.query_rows,
+        relation.source_rows,
+        relation.neighbor_ids,
+        relation.distances,
+        relation.counts
+    );
+}
+
 nb::tuple coord_set_tuple(const NativeCoordSet& result) {
     return nb::make_tuple(result.coords, result.count);
 }
@@ -189,6 +199,69 @@ void register_coords(nb::module_& module) {
             "mlx.core.array, mlx.core.array]"
         ),
         "Build a transposed sparse kernel relation."
+    );
+    module.def(
+        "build_knn_relation",
+        [](const mx::array& source_coords,
+           const mx::array& source_active_rows,
+           const mx::array& query_coords,
+           const mx::array& query_active_rows,
+           int k) {
+            return neighbor_tuple(build_knn_relation(
+                source_coords,
+                source_active_rows,
+                query_coords,
+                query_active_rows,
+                k
+            ));
+        },
+        "source_coords"_a,
+        "source_active_rows"_a,
+        "query_coords"_a,
+        "query_active_rows"_a,
+        "k"_a,
+        nb::sig(
+            "def build_knn_relation(source_coords: mlx.core.array, "
+            "source_active_rows: mlx.core.array, "
+            "query_coords: mlx.core.array, "
+            "query_active_rows: mlx.core.array, k: int) -> "
+            "tuple[mlx.core.array, mlx.core.array, mlx.core.array, "
+            "mlx.core.array, mlx.core.array]"
+        ),
+        "Build a semantic KNN neighbor relation."
+    );
+    module.def(
+        "build_radius_relation",
+        [](const mx::array& source_coords,
+           const mx::array& source_active_rows,
+           const mx::array& query_coords,
+           const mx::array& query_active_rows,
+           double radius,
+           int max_neighbors) {
+            return neighbor_tuple(build_radius_relation(
+                source_coords,
+                source_active_rows,
+                query_coords,
+                query_active_rows,
+                radius,
+                max_neighbors
+            ));
+        },
+        "source_coords"_a,
+        "source_active_rows"_a,
+        "query_coords"_a,
+        "query_active_rows"_a,
+        "radius"_a,
+        "max_neighbors"_a,
+        nb::sig(
+            "def build_radius_relation(source_coords: mlx.core.array, "
+            "source_active_rows: mlx.core.array, "
+            "query_coords: mlx.core.array, "
+            "query_active_rows: mlx.core.array, radius: float, "
+            "max_neighbors: int) -> tuple[mlx.core.array, mlx.core.array, "
+            "mlx.core.array, mlx.core.array, mlx.core.array]"
+        ),
+        "Build a semantic radius-query neighbor relation."
     );
 }
 

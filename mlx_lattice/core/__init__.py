@@ -8,6 +8,8 @@ from mlx_lattice.core.coords import (
 from mlx_lattice.core.relations import (
     KernelRelation,
     KernelSpec,
+    NeighborEdges,
+    NeighborRelation,
     RelationEdges,
 )
 from mlx_lattice.core.tensor import SparseTensor
@@ -19,6 +21,8 @@ __all__ = [
     'CoordinateSet',
     'KernelRelation',
     'KernelSpec',
+    'NeighborEdges',
+    'NeighborRelation',
     'RelationEdges',
     'SparseTensor',
     'Triple',

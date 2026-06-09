@@ -31,6 +31,30 @@ class RelationEdges:
         return int(self.in_rows.shape[0])
 
 
+@dataclass(frozen=True, slots=True)
+class NeighborEdges:
+    """Semantic neighbor edge arrays for query/source relations."""
+
+    query_rows: mx.array
+    source_rows: mx.array
+    neighbor_ids: mx.array
+
+    def __post_init__(self) -> None:
+        _validate_row_array(self.query_rows, name='query_rows')
+        _validate_row_array(self.source_rows, name='source_rows')
+        _validate_row_array(self.neighbor_ids, name='neighbor_ids')
+        _require_same_rows(
+            self.query_rows,
+            self.source_rows,
+            self.neighbor_ids,
+            names=('query_rows', 'source_rows', 'neighbor_ids'),
+        )
+
+    @property
+    def capacity(self) -> int:
+        return int(self.query_rows.shape[0])
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class KernelRelation:
     edges: RelationEdges
@@ -121,6 +145,70 @@ class KernelRelation:
         return self.counts[1:2]
 
 
+@dataclass(frozen=True, slots=True, init=False)
+class NeighborRelation:
+    edges: NeighborEdges
+    distances: mx.array
+    counts: mx.array
+    n_query_capacity: int | None = None
+    n_source_capacity: int | None = None
+    max_neighbors: int | None = None
+
+    def __init__(
+        self,
+        query_rows: mx.array,
+        source_rows: mx.array,
+        neighbor_ids: mx.array,
+        distances: mx.array,
+        *,
+        counts: mx.array | None = None,
+        n_query_capacity: int | None = None,
+        n_source_capacity: int | None = None,
+        max_neighbors: int | None = None,
+    ) -> None:
+        edges = NeighborEdges(query_rows, source_rows, neighbor_ids)
+        _validate_distance_array(distances)
+        _require_same_rows(
+            query_rows,
+            distances,
+            names=('query_rows', 'distances'),
+        )
+        if counts is None:
+            counts = mx.array([query_rows.shape[0], 0], dtype=mx.int32)
+        _validate_counts(counts)
+
+        object.__setattr__(self, 'edges', edges)
+        object.__setattr__(self, 'distances', distances)
+        object.__setattr__(self, 'counts', counts)
+        object.__setattr__(
+            self,
+            'n_query_capacity',
+            _optional_count(n_query_capacity, 'n_query_capacity'),
+        )
+        object.__setattr__(
+            self,
+            'n_source_capacity',
+            _optional_count(n_source_capacity, 'n_source_capacity'),
+        )
+        object.__setattr__(
+            self,
+            'max_neighbors',
+            _optional_count(max_neighbors, 'max_neighbors'),
+        )
+
+    @property
+    def edge_capacity(self) -> int:
+        return self.edges.capacity
+
+    @property
+    def edge_count(self) -> mx.array:
+        return self.counts[:1]
+
+    @property
+    def query_count(self) -> mx.array:
+        return self.counts[1:2]
+
+
 # MARK: - helpers
 
 
@@ -143,6 +231,13 @@ def _validate_counts(value: mx.array) -> None:
         raise ValueError(
             'relation counts must have shape (2,) and int32 dtype.'
         )
+
+
+def _validate_distance_array(value: mx.array) -> None:
+    if value.ndim != 1:
+        raise ValueError('distances must have shape (E,).')
+    if value.dtype not in (mx.float32, mx.float64):
+        raise ValueError('distances must be float32 or float64.')
 
 
 def _require_same_rows(
