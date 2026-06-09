@@ -316,6 +316,199 @@ void eval_sparse_conv_weight_grad(
     );
 }
 
+void eval_sparse_conv_features(
+    SparseConvShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    backend::allocate_all(outputs);
+    backend::schedule_cpu(
+        stream,
+        inputs,
+        outputs,
+        [shape](
+            const std::vector<mx::array>& ready,
+            std::vector<mx::array>& task_outputs
+        ) {
+            const auto& feats = ready[0];
+            const auto& weights = ready[1];
+            const auto& in_rows = ready[2];
+            const auto& out_rows = ready[3];
+            const auto& kernel_ids = ready[4];
+            const auto& counts = ready[5];
+
+            auto& out = task_outputs[0];
+            fill_zero(out);
+            auto* out_data = out.data<float>();
+            const auto* feat_data = feats.data<float>();
+            const auto* weight_data = weights.data<float>();
+            const auto* in_data = in_rows.data<int32_t>();
+            const auto* out_row_data = out_rows.data<int32_t>();
+            const auto* kernel_data = kernel_ids.data<int32_t>();
+            auto edge_count = std::min(
+                counts.data<int32_t>()[0], static_cast<int>(in_rows.shape(0))
+            );
+            const auto feat_s0 = feats.strides(0);
+            const auto feat_s1 = feats.strides(1);
+
+            for (int edge = 0; edge < edge_count; ++edge) {
+                auto in_row = in_data[edge];
+                auto out_row = out_row_data[edge];
+                auto kernel = kernel_data[edge];
+                if (in_row < 0 || out_row < 0 || kernel < 0 ||
+                    out_row >= shape.out_capacity) {
+                    continue;
+                }
+                auto* out_row_ptr =
+                    out_data +
+                    static_cast<std::ptrdiff_t>(out_row) * shape.out_channels;
+                for (int ci = 0; ci < shape.in_channels; ++ci) {
+                    auto value = feat_data
+                        [static_cast<std::ptrdiff_t>(in_row) * feat_s0 +
+                         static_cast<std::ptrdiff_t>(ci) * feat_s1];
+                    for (int co = 0; co < shape.out_channels; ++co) {
+                        out_row_ptr[co] +=
+                            value * weight_data[weight_offset(
+                                        weights, shape, kernel, ci, co
+                                    )];
+                    }
+                }
+            }
+        }
+    );
+}
+
+void eval_sparse_conv_features_input_grad(
+    SparseConvShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    backend::allocate_all(outputs);
+    backend::schedule_cpu(
+        stream,
+        inputs,
+        outputs,
+        [shape](
+            const std::vector<mx::array>& ready,
+            std::vector<mx::array>& task_outputs
+        ) {
+            const auto& cotangent = ready[0];
+            const auto& weights = ready[1];
+            const auto& in_rows = ready[2];
+            const auto& out_rows = ready[3];
+            const auto& kernel_ids = ready[4];
+            const auto& counts = ready[5];
+
+            auto& grad = task_outputs[0];
+            fill_zero(grad);
+            auto* grad_data = grad.data<float>();
+            const auto* cotangent_data = cotangent.data<float>();
+            const auto* weight_data = weights.data<float>();
+            const auto* in_data = in_rows.data<int32_t>();
+            const auto* out_row_data = out_rows.data<int32_t>();
+            const auto* kernel_data = kernel_ids.data<int32_t>();
+            auto edge_count = std::min(
+                counts.data<int32_t>()[0], static_cast<int>(in_rows.shape(0))
+            );
+            const auto cotangent_s0 = cotangent.strides(0);
+            const auto cotangent_s1 = cotangent.strides(1);
+
+            for (int edge = 0; edge < edge_count; ++edge) {
+                auto in_row = in_data[edge];
+                auto out_row = out_row_data[edge];
+                auto kernel = kernel_data[edge];
+                if (in_row < 0 || out_row < 0 || kernel < 0 ||
+                    out_row >= shape.out_capacity) {
+                    continue;
+                }
+                auto* grad_row =
+                    grad_data +
+                    static_cast<std::ptrdiff_t>(in_row) * shape.in_channels;
+                for (int ci = 0; ci < shape.in_channels; ++ci) {
+                    for (int co = 0; co < shape.out_channels; ++co) {
+                        grad_row[ci] +=
+                            cotangent_data
+                                [static_cast<std::ptrdiff_t>(out_row) *
+                                     cotangent_s0 +
+                                 static_cast<std::ptrdiff_t>(co) *
+                                     cotangent_s1] *
+                            weight_data[weight_offset(
+                                weights, shape, kernel, ci, co
+                            )];
+                    }
+                }
+            }
+        }
+    );
+}
+
+void eval_sparse_conv_features_weight_grad(
+    SparseConvShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    backend::allocate_all(outputs);
+    backend::schedule_cpu(
+        stream,
+        inputs,
+        outputs,
+        [shape](
+            const std::vector<mx::array>& ready,
+            std::vector<mx::array>& task_outputs
+        ) {
+            const auto& feats = ready[0];
+            const auto& cotangent = ready[1];
+            const auto& in_rows = ready[2];
+            const auto& out_rows = ready[3];
+            const auto& kernel_ids = ready[4];
+            const auto& counts = ready[5];
+
+            auto& grad = task_outputs[0];
+            fill_zero(grad);
+            auto* grad_data = grad.data<float>();
+            const auto* feat_data = feats.data<float>();
+            const auto* cotangent_data = cotangent.data<float>();
+            const auto* in_data = in_rows.data<int32_t>();
+            const auto* out_row_data = out_rows.data<int32_t>();
+            const auto* kernel_data = kernel_ids.data<int32_t>();
+            auto edge_count = std::min(
+                counts.data<int32_t>()[0], static_cast<int>(in_rows.shape(0))
+            );
+            const auto feat_s0 = feats.strides(0);
+            const auto feat_s1 = feats.strides(1);
+            const auto cotangent_s0 = cotangent.strides(0);
+            const auto cotangent_s1 = cotangent.strides(1);
+
+            for (int edge = 0; edge < edge_count; ++edge) {
+                auto in_row = in_data[edge];
+                auto out_row = out_row_data[edge];
+                auto kernel = kernel_data[edge];
+                if (in_row < 0 || out_row < 0 || kernel < 0 ||
+                    out_row >= shape.out_capacity) {
+                    continue;
+                }
+                for (int ci = 0; ci < shape.in_channels; ++ci) {
+                    auto feat_value = feat_data
+                        [static_cast<std::ptrdiff_t>(in_row) * feat_s0 +
+                         static_cast<std::ptrdiff_t>(ci) * feat_s1];
+                    for (int co = 0; co < shape.out_channels; ++co) {
+                        grad_data[dense_weight_offset(shape, kernel, ci, co)] +=
+                            feat_value *
+                            cotangent_data
+                                [static_cast<std::ptrdiff_t>(out_row) *
+                                     cotangent_s0 +
+                                 static_cast<std::ptrdiff_t>(co) *
+                                     cotangent_s1];
+                    }
+                }
+            }
+        }
+    );
+}
+
 void eval_sparse_pool(
     PoolReduceOp reduce,
     SparsePoolShape shape,

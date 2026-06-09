@@ -44,6 +44,27 @@ mx::Stream sparse_conv_stream(
     return sparse_exec_stream(device);
 }
 
+mx::Stream sparse_conv_features_stream(
+    const mx::array& feats,
+    const mx::array& weights,
+    const mx::array& in_rows,
+    const mx::array& out_rows,
+    const mx::array& kernel_ids,
+    const mx::array& counts
+) {
+    auto device = sparse_exec_device();
+    if (is_gpu_device(device) &&
+        (feats.dtype() != mx::float32 || weights.dtype() != mx::float32 ||
+         in_rows.dtype() != mx::int32 || out_rows.dtype() != mx::int32 ||
+         kernel_ids.dtype() != mx::int32 || counts.dtype() != mx::int32)) {
+        throw std::invalid_argument(
+            "Metal sparse convolution features require int32 relation arrays "
+            "and float32 features/weights."
+        );
+    }
+    return sparse_exec_stream(device);
+}
+
 mx::Stream sparse_pool_stream(
     const mx::array& coords,
     const mx::array& active_rows,

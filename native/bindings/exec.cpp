@@ -135,6 +135,44 @@ void register_exec(nb::module_& module) {
         ),
         "Run fused sparse pooling over native sparse coordinates."
     );
+    module.def(
+        "sparse_conv_features",
+        [](const mx::array& feats,
+           const mx::array& weights,
+           const mx::array& in_rows,
+           const mx::array& out_rows,
+           const mx::array& kernel_ids,
+           const mx::array& counts,
+           int out_capacity,
+           int n_kernels) {
+            return sparse_conv_features(
+                feats,
+                weights,
+                in_rows,
+                out_rows,
+                kernel_ids,
+                counts,
+                out_capacity,
+                n_kernels
+            );
+        },
+        "feats"_a,
+        "weights"_a,
+        "in_rows"_a,
+        "out_rows"_a,
+        "kernel_ids"_a,
+        "counts"_a,
+        "out_capacity"_a,
+        "n_kernels"_a,
+        nb::sig(
+            "def sparse_conv_features(feats: mlx.core.array, "
+            "weights: mlx.core.array, in_rows: mlx.core.array, "
+            "out_rows: mlx.core.array, kernel_ids: mlx.core.array, "
+            "counts: mlx.core.array, out_capacity: int, "
+            "n_kernels: int) -> mlx.core.array"
+        ),
+        "Run sparse convolution feature accumulation over a kernel relation."
+    );
 }
 
 } // namespace mlx_lattice::bindings

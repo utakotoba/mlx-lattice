@@ -52,6 +52,27 @@ void eval_sparse_conv_weight_grad(
     std::vector<mx::array>& outputs
 );
 
+void eval_sparse_conv_features(
+    SparseConvShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
+void eval_sparse_conv_features_input_grad(
+    SparseConvShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
+void eval_sparse_conv_features_weight_grad(
+    SparseConvShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
 void eval_sparse_pool(
     PoolReduceOp reduce,
     SparsePoolShape shape,

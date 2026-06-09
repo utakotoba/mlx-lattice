@@ -37,7 +37,7 @@ def conv3d(
             feats=_with_bias(_pointwise_features(x, weight), bias)
         )
 
-    return _fused_conv(
+    return _relation_conv(
         x,
         weight,
         bias,
@@ -67,7 +67,7 @@ def subm_conv3d(
             feats=_with_bias(_pointwise_features(x, weight), bias)
         )
 
-    return _fused_conv(
+    return _relation_conv(
         x,
         weight,
         bias,
@@ -94,7 +94,7 @@ def conv_transpose3d(
         padding=padding,
         dilation=dilation,
     )
-    return _fused_conv(
+    return _relation_conv(
         x,
         weight,
         bias,
@@ -113,7 +113,7 @@ def generative_conv_transpose3d(
     stride: int | Sequence[int] = 2,
 ) -> SparseTensor:
     spec = KernelSpec(size=kernel_size, stride=stride)
-    return _fused_conv(
+    return _relation_conv(
         x,
         weight,
         bias,
@@ -126,7 +126,7 @@ def generative_conv_transpose3d(
 # MARK: - execution policy
 
 
-def _fused_conv(
+def _relation_conv(
     x: SparseTensor,
     weight: mx.array,
     bias: mx.array | None,
@@ -137,26 +137,66 @@ def _fused_conv(
     reuse_input_coords: bool = False,
 ) -> SparseTensor:
     _validate_feature_dtype(x.feats, weight)
+    _validate_metal_coord_dtype(x)
     _validate_weight_for_kernel(x, weight, spec.volume)
-    out_coords, feats, counts = ext.sparse_conv(
-        x.coords,
-        x.active_rows,
+    relation = _kernel_relation(x, spec, map_kind)
+    if relation.n_out_capacity is None or relation.n_kernels is None:
+        raise ValueError(
+            'kernel relation is missing static shape metadata.'
+        )
+
+    feats = ext.sparse_conv_features(
         x.feats,
         weight,
-        map_kind,
-        list(spec.size),
-        list(spec.stride),
-        list(spec.padding),
-        list(spec.dilation),
+        relation.edges.in_rows,
+        relation.edges.out_rows,
+        relation.edges.kernel_ids,
+        relation.counts,
+        relation.n_out_capacity,
+        relation.n_kernels,
     )
     if reuse_input_coords:
         return x.replace(feats=_with_bias(feats, bias))
+    if relation.out_coords is None:
+        raise ValueError('kernel relation is missing output coordinates.')
     return SparseTensor(
-        out_coords,
+        relation.out_coords,
         _with_bias(feats, bias),
         stride=output_stride,
         coord_manager=x.coord_manager,
-        active_rows=counts[1:2],
+        active_rows=relation.out_count,
+    )
+
+
+def _kernel_relation(
+    x: SparseTensor,
+    spec: KernelSpec,
+    map_kind: str,
+):
+    if map_kind == 'forward':
+        return x.coord_manager.kernel_relation(
+            x.coord_key,
+            kernel_size=spec.size,
+            stride=spec.stride,
+            padding=spec.padding,
+            dilation=spec.dilation,
+        )
+    if map_kind == 'transposed':
+        return x.coord_manager.transposed_kernel_relation(
+            x.coord_key,
+            kernel_size=spec.size,
+            stride=spec.stride,
+            padding=spec.padding,
+            dilation=spec.dilation,
+        )
+    if map_kind == 'generative':
+        return x.coord_manager.generative_relation(
+            x.coord_key,
+            kernel_size=spec.size,
+            stride=spec.stride,
+        )
+    raise ValueError(
+        "map_kind must be 'forward', 'transposed', or 'generative'."
     )
 
 
@@ -172,6 +212,13 @@ def _pointwise_features(x: SparseTensor, weight: mx.array) -> mx.array:
 def _validate_feature_dtype(feats: mx.array, weight: mx.array) -> None:
     if feats.dtype != mx.float32 or weight.dtype != mx.float32:
         raise ValueError('convolution currently supports float32 tensors.')
+
+
+def _validate_metal_coord_dtype(x: SparseTensor) -> None:
+    if mx.default_device() == mx.gpu and x.coords.dtype != mx.int32:
+        raise ValueError(
+            'Metal sparse convolution requires int32 coordinates.'
+        )
 
 
 def _pointwise_weight_matrix(x: SparseTensor, weight: mx.array) -> mx.array:

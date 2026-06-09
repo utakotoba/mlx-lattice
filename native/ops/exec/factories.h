@@ -15,6 +15,17 @@ NativeSparseTensorOutput make_sparse_conv(
     Triple padding
 );
 
+mx::array make_sparse_conv_features(
+    const mx::array& feats,
+    const mx::array& weights,
+    const mx::array& in_rows,
+    const mx::array& out_rows,
+    const mx::array& kernel_ids,
+    const mx::array& counts,
+    int out_capacity,
+    int n_kernels
+);
+
 NativeSparseTensorOutput make_sparse_pool(
     PoolReduceOp reduce,
     const mx::array& coords,
