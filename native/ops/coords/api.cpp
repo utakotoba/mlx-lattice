@@ -30,6 +30,37 @@ mx::array lookup_coords(const mx::array& coords, const mx::array& queries) {
     return make_lookup_coords(coords, queries);
 }
 
+// MARK: - quantization
+
+NativeSparseQuantization sparse_quantize(
+    const mx::array& points,
+    const mx::array& batch_indices,
+    const mx::array& active_rows,
+    QuantizationSpec spec
+) {
+    validate_points(points);
+    validate_batch_indices(batch_indices, points.shape(0));
+    validate_active_rows(active_rows);
+    validate_positive(spec.voxel_size, "voxel_size");
+    return make_sparse_quantize(points, batch_indices, active_rows, spec);
+}
+
+mx::array voxelize_features(
+    const mx::array& feats,
+    const mx::array& inverse_rows,
+    const mx::array& voxel_counts,
+    const mx::array& active_rows,
+    VoxelReduceOp reduce
+) {
+    validate_feature_matrix(feats);
+    validate_inverse_rows(inverse_rows, feats.shape(0));
+    validate_voxel_counts(voxel_counts, feats.shape(0));
+    validate_active_rows(active_rows);
+    return make_voxelize_features(
+        feats, inverse_rows, voxel_counts, active_rows, reduce
+    );
+}
+
 // MARK: - relations
 
 NativeKernelRelation build_kernel_relation(

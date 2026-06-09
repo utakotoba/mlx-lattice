@@ -14,6 +14,21 @@ NativeCoordSet union_coords(const mx::array& lhs, const mx::array& rhs);
 NativeCoordSet intersection_coords(const mx::array& lhs, const mx::array& rhs);
 mx::array lookup_coords(const mx::array& coords, const mx::array& queries);
 
+NativeSparseQuantization sparse_quantize(
+    const mx::array& points,
+    const mx::array& batch_indices,
+    const mx::array& active_rows,
+    QuantizationSpec spec
+);
+
+mx::array voxelize_features(
+    const mx::array& feats,
+    const mx::array& inverse_rows,
+    const mx::array& voxel_counts,
+    const mx::array& active_rows,
+    VoxelReduceOp reduce
+);
+
 NativeKernelRelation build_kernel_relation(
     const mx::array& coords,
     const mx::array& active_rows,

@@ -46,7 +46,33 @@ int neighbor_relation_op_id(NeighborRelationOp op) {
     }
 }
 
+int voxel_reduce_op_id(VoxelReduceOp op) {
+    switch (op) {
+    case VoxelReduceOp::Sum:
+        return 0;
+    case VoxelReduceOp::Mean:
+        return 1;
+    }
+}
+
 // MARK: - guards
+
+void require_f32_input(const mx::array& input, const char* name) {
+    if (input.dtype() != mx::float32) {
+        throw std::invalid_argument(
+            std::string("Metal coordinate kernels require float32 ") + name +
+            "."
+        );
+    }
+}
+
+void require_i32_input(const mx::array& input, const char* name) {
+    if (input.dtype() != mx::int32) {
+        throw std::invalid_argument(
+            std::string("Metal coordinate kernels require int32 ") + name + "."
+        );
+    }
+}
 
 void require_i32_inputs(
     const std::vector<mx::array>& inputs,
@@ -54,12 +80,7 @@ void require_i32_inputs(
 ) {
     int index = 0;
     for (auto name : names) {
-        if (inputs[index++].dtype() != mx::int32) {
-            throw std::invalid_argument(
-                std::string("Metal coordinate kernels require int32 ") + name +
-                "."
-            );
-        }
+        require_i32_input(inputs[index++], name);
     }
 }
 
@@ -153,6 +174,135 @@ void eval_lookup_coords(
         MTL::Size(group, 1, 1)
     );
 #else
+    (void)shape;
+    (void)stream;
+    (void)inputs;
+    (void)outputs;
+    throw std::runtime_error("Metal support is not available.");
+#endif
+}
+
+// MARK: - quantization
+
+void eval_sparse_quantize(
+    QuantizationSpec spec,
+    int rows,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    require_f32_input(inputs[0], "points");
+    require_i32_input(inputs[1], "batch indices");
+    require_i32_input(inputs[2], "active rows");
+
+#ifdef _METAL_
+    backend::allocate_all(outputs);
+
+    auto& device = mx::metal::device(stream.device);
+    auto library =
+        device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
+    auto& encoder = mx::metal::get_command_encoder(stream);
+    auto kernel = device.get_kernel("sparse_quantize_f32_i32", library);
+
+    encoder.set_compute_pipeline_state(kernel);
+    for (int i = 0; i < int(inputs.size()); ++i) {
+        encoder.set_input_array(inputs[i], i);
+    }
+    for (int i = 0; i < int(outputs.size()); ++i) {
+        encoder.set_output_array(outputs[i], i + 3);
+    }
+    encoder.set_bytes(rows, 7);
+    encoder.set_bytes(spec.voxel_size[0], 8);
+    encoder.set_bytes(spec.voxel_size[1], 9);
+    encoder.set_bytes(spec.voxel_size[2], 10);
+    encoder.set_bytes(spec.origin[0], 11);
+    encoder.set_bytes(spec.origin[1], 12);
+    encoder.set_bytes(spec.origin[2], 13);
+    encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+#else
+    (void)spec;
+    (void)rows;
+    (void)stream;
+    (void)inputs;
+    (void)outputs;
+    throw std::runtime_error("Metal support is not available.");
+#endif
+}
+
+void eval_voxelize_features(
+    VoxelReduceOp reduce,
+    VoxelFeatureShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    require_f32_input(inputs[0], "features");
+    require_i32_input(inputs[1], "inverse rows");
+    require_i32_input(inputs[2], "voxel counts");
+    require_i32_input(inputs[3], "active rows");
+
+#ifdef _METAL_
+    backend::allocate_all(outputs);
+
+    auto& device = mx::metal::device(stream.device);
+    auto library =
+        device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
+    auto& encoder = mx::metal::get_command_encoder(stream);
+    auto kernel = device.get_kernel("voxelize_features_f32_i32", library);
+
+    encoder.set_compute_pipeline_state(kernel);
+    for (int i = 0; i < int(inputs.size()); ++i) {
+        encoder.set_input_array(inputs[i], i);
+    }
+    encoder.set_output_array(outputs[0], 4);
+    encoder.set_bytes(voxel_reduce_op_id(reduce), 5);
+    encoder.set_bytes(shape.point_rows, 6);
+    encoder.set_bytes(shape.voxel_rows, 7);
+    encoder.set_bytes(shape.channels, 8);
+    encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+#else
+    (void)reduce;
+    (void)shape;
+    (void)stream;
+    (void)inputs;
+    (void)outputs;
+    throw std::runtime_error("Metal support is not available.");
+#endif
+}
+
+void eval_voxelize_feature_grad(
+    VoxelReduceOp reduce,
+    VoxelFeatureShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    require_f32_input(inputs[0], "cotangent");
+    require_i32_input(inputs[1], "inverse rows");
+    require_i32_input(inputs[2], "voxel counts");
+    require_i32_input(inputs[3], "active rows");
+
+#ifdef _METAL_
+    backend::allocate_all(outputs);
+
+    auto& device = mx::metal::device(stream.device);
+    auto library =
+        device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
+    auto& encoder = mx::metal::get_command_encoder(stream);
+    auto kernel = device.get_kernel("voxelize_feature_grad_f32_i32", library);
+
+    encoder.set_compute_pipeline_state(kernel);
+    for (int i = 0; i < int(inputs.size()); ++i) {
+        encoder.set_input_array(inputs[i], i);
+    }
+    encoder.set_output_array(outputs[0], 4);
+    encoder.set_bytes(voxel_reduce_op_id(reduce), 5);
+    encoder.set_bytes(shape.point_rows, 6);
+    encoder.set_bytes(shape.voxel_rows, 7);
+    encoder.set_bytes(shape.channels, 8);
+    encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+#else
+    (void)reduce;
     (void)shape;
     (void)stream;
     (void)inputs;

@@ -8,11 +8,13 @@ from mlx_lattice.ops.conv import (
 )
 from mlx_lattice.ops.coords import (
     CoordinateSet,
+    SparseQuantization,
     contains_coords,
     downsample_coords,
     intersection_coords,
     inverse_map,
     lookup_coords,
+    sparse_quantize,
     union_coords,
 )
 from mlx_lattice.ops.feature import (
@@ -38,6 +40,7 @@ from mlx_lattice.ops.pool import (
     pool3d,
     sum_pool3d,
 )
+from mlx_lattice.ops.quantization import voxelize
 from mlx_lattice.ops.relations import (
     build_generative_relation,
     build_kernel_relation,
@@ -55,6 +58,7 @@ from mlx_lattice.ops.tensor import cat, prune, sparse_collate, topk_rows
 
 __all__ = [
     'CoordinateSet',
+    'SparseQuantization',
     'avg_pool3d',
     'batch_norm',
     'build_generative_relation',
@@ -93,10 +97,12 @@ __all__ = [
     'silu',
     'softplus',
     'sparse_collate',
+    'sparse_quantize',
     'subm_conv3d',
     'sum_pool3d',
     'tanh',
     'topk_rows',
     'transposed_kernel_relation',
     'union_coords',
+    'voxelize',
 ]

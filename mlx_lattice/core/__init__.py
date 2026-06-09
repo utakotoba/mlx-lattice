@@ -4,6 +4,7 @@ from mlx_lattice.core.coords import (
     CoordinateManager,
     CoordinateMapKey,
     CoordinateSet,
+    SparseQuantization,
 )
 from mlx_lattice.core.relations import (
     KernelRelation,
@@ -24,6 +25,7 @@ __all__ = [
     'NeighborEdges',
     'NeighborRelation',
     'RelationEdges',
+    'SparseQuantization',
     'SparseTensor',
     'Triple',
     'triple',

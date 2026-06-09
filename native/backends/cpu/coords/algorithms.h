@@ -20,6 +20,29 @@ void eval_lookup_coords(
     std::vector<mx::array>& outputs
 );
 
+void eval_sparse_quantize(
+    QuantizationSpec spec,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
+void eval_voxelize_features(
+    VoxelReduceOp reduce,
+    VoxelFeatureShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
+void eval_voxelize_feature_grad(
+    VoxelReduceOp reduce,
+    VoxelFeatureShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
 void eval_generic_kernel_relation(
     CoordRelationOp op,
     Triple stride,

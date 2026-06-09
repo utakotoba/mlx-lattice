@@ -9,6 +9,7 @@ target_sources(
     lookup.cpp
     neighbors.cpp
     offsets.cpp
+    quantization.cpp
     relations.cpp
     set.cpp
     streams.cpp

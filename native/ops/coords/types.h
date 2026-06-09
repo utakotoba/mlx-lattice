@@ -11,6 +11,7 @@ namespace mlx_lattice {
 namespace mx = mlx::core;
 
 using Triple = std::array<int, 3>;
+using FloatTriple = std::array<float, 3>;
 
 enum class CoordSetOp : std::uint8_t {
     Downsample,
@@ -37,6 +38,11 @@ constexpr std::size_t DirectRelationOutputCount = RelationOutputCount - 1;
 enum class NeighborRelationOp : std::uint8_t {
     Knn,
     Radius,
+};
+
+enum class VoxelReduceOp : std::uint8_t {
+    Sum,
+    Mean,
 };
 
 enum NeighborRelationOutputSlot : std::size_t {
@@ -71,6 +77,18 @@ struct NativeCoordSet {
     mx::array count;
 };
 
+struct QuantizationSpec {
+    FloatTriple voxel_size;
+    FloatTriple origin;
+};
+
+struct NativeSparseQuantization {
+    mx::array coords;
+    mx::array active_rows;
+    mx::array inverse_rows;
+    mx::array counts;
+};
+
 struct CoordSetShape {
     int lhs_rows;
     int rhs_rows;
@@ -85,6 +103,12 @@ struct NeighborRelationShape {
     int source_rows;
     int query_rows;
     int max_neighbors;
+};
+
+struct VoxelFeatureShape {
+    int point_rows;
+    int voxel_rows;
+    int channels;
 };
 
 } // namespace mlx_lattice

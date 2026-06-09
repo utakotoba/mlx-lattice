@@ -12,6 +12,10 @@ from mlx_lattice.core.coords.manager import (
     CoordinateManager,
     CoordinateMapKey,
 )
+from mlx_lattice.core.coords.quantization import (
+    SparseQuantization,
+    sparse_quantize,
+)
 from mlx_lattice.core.coords.set_ops import (
     CoordinateSet,
     contains_coords,
@@ -27,6 +31,7 @@ __all__ = [
     'CoordinateManager',
     'CoordinateMapKey',
     'CoordinateSet',
+    'SparseQuantization',
     'build_generative_relation',
     'build_kernel_relation',
     'build_knn_relation',
@@ -38,6 +43,7 @@ __all__ = [
     'inverse_map',
     'kernel_offsets',
     'lookup_coords',
+    'sparse_quantize',
     'union_coords',
     'validate_coords',
 ]

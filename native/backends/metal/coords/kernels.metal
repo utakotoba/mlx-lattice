@@ -154,6 +154,147 @@ using namespace metal;
     out_rows[query_row] = out;
 }
 
+// MARK: - quantization
+
+[[kernel]] void sparse_quantize_f32_i32(
+    device const float* points [[buffer(0)]],
+    device const int* batch_indices [[buffer(1)]],
+    device const int* active_rows [[buffer(2)]],
+    device int* out_coords [[buffer(3)]],
+    device int* out_active_rows [[buffer(4)]],
+    device int* inverse_rows [[buffer(5)]],
+    device int* voxel_counts [[buffer(6)]],
+    constant const int& rows [[buffer(7)]],
+    constant const float& voxel_x [[buffer(8)]],
+    constant const float& voxel_y [[buffer(9)]],
+    constant const float& voxel_z [[buffer(10)]],
+    constant const float& origin_x [[buffer(11)]],
+    constant const float& origin_y [[buffer(12)]],
+    constant const float& origin_z [[buffer(13)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+
+    for (int row = 0; row < rows; ++row) {
+        int coord_base = row * 4;
+        out_coords[coord_base] = 0;
+        out_coords[coord_base + 1] = 0;
+        out_coords[coord_base + 2] = 0;
+        out_coords[coord_base + 3] = 0;
+        inverse_rows[row] = -1;
+        voxel_counts[row] = 0;
+    }
+
+    int point_count = min(active_rows[0], rows);
+    int out_count = 0;
+    for (int point_row = 0; point_row < point_count; ++point_row) {
+        int point_base = point_row * 3;
+        int candidate[4] = {
+            batch_indices[point_row],
+            int(floor((points[point_base] - origin_x) / voxel_x)),
+            int(floor((points[point_base + 1] - origin_y) / voxel_y)),
+            int(floor((points[point_base + 2] - origin_z) / voxel_z)),
+        };
+
+        int out_row = -1;
+        for (int prev = 0; prev < out_count; ++prev) {
+            if (coord4_equal(candidate, out_coords, prev)) {
+                out_row = prev;
+                break;
+            }
+        }
+        if (out_row < 0) {
+            out_row = out_count;
+            write_coord(out_coords, out_row, candidate);
+            out_count += 1;
+        }
+        inverse_rows[point_row] = out_row;
+        voxel_counts[out_row] += 1;
+    }
+
+    out_active_rows[0] = out_count;
+}
+
+inline float
+voxel_reduce_scale(int reduce, device const int* voxel_counts, int voxel_row) {
+    if (reduce == 1) {
+        return 1.0f / float(max(voxel_counts[voxel_row], 1));
+    }
+    return 1.0f;
+}
+
+[[kernel]] void voxelize_features_f32_i32(
+    device const float* feats [[buffer(0)]],
+    device const int* inverse_rows [[buffer(1)]],
+    device const int* voxel_counts [[buffer(2)]],
+    device const int* active_rows [[buffer(3)]],
+    device float* out [[buffer(4)]],
+    constant const int& reduce [[buffer(5)]],
+    constant const int& point_rows [[buffer(6)]],
+    constant const int& voxel_rows [[buffer(7)]],
+    constant const int& channels [[buffer(8)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+
+    for (int index = 0; index < voxel_rows * channels; ++index) {
+        out[index] = 0.0f;
+    }
+
+    int point_count = min(active_rows[0], point_rows);
+    for (int point_row = 0; point_row < point_count; ++point_row) {
+        int voxel_row = inverse_rows[point_row];
+        if (voxel_row < 0 || voxel_row >= voxel_rows) {
+            continue;
+        }
+        float scale = voxel_reduce_scale(reduce, voxel_counts, voxel_row);
+        for (int channel = 0; channel < channels; ++channel) {
+            int point_index = point_row * channels + channel;
+            int voxel_index = voxel_row * channels + channel;
+            out[voxel_index] += feats[point_index] * scale;
+        }
+    }
+}
+
+[[kernel]] void voxelize_feature_grad_f32_i32(
+    device const float* cotangent [[buffer(0)]],
+    device const int* inverse_rows [[buffer(1)]],
+    device const int* voxel_counts [[buffer(2)]],
+    device const int* active_rows [[buffer(3)]],
+    device float* out [[buffer(4)]],
+    constant const int& reduce [[buffer(5)]],
+    constant const int& point_rows [[buffer(6)]],
+    constant const int& voxel_rows [[buffer(7)]],
+    constant const int& channels [[buffer(8)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+
+    for (int index = 0; index < point_rows * channels; ++index) {
+        out[index] = 0.0f;
+    }
+
+    int point_count = min(active_rows[0], point_rows);
+    for (int point_row = 0; point_row < point_count; ++point_row) {
+        int voxel_row = inverse_rows[point_row];
+        if (voxel_row < 0 || voxel_row >= voxel_rows) {
+            continue;
+        }
+        float scale = voxel_reduce_scale(reduce, voxel_counts, voxel_row);
+        for (int channel = 0; channel < channels; ++channel) {
+            int point_index = point_row * channels + channel;
+            int voxel_index = voxel_row * channels + channel;
+            out[point_index] = cotangent[voxel_index] * scale;
+        }
+    }
+}
+
 // MARK: - generative relations
 
 [[kernel]] void build_generative_kernel_relation_i32(

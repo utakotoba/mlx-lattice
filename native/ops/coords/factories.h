@@ -10,6 +10,21 @@ NativeCoordSet
 make_intersection_coords(const mx::array& lhs, const mx::array& rhs);
 mx::array make_lookup_coords(const mx::array& coords, const mx::array& queries);
 
+NativeSparseQuantization make_sparse_quantize(
+    const mx::array& points,
+    const mx::array& batch_indices,
+    const mx::array& active_rows,
+    QuantizationSpec spec
+);
+
+mx::array make_voxelize_features(
+    const mx::array& feats,
+    const mx::array& inverse_rows,
+    const mx::array& voxel_counts,
+    const mx::array& active_rows,
+    VoxelReduceOp reduce
+);
+
 NativeKernelRelation make_kernel_relation(
     const mx::array& coords,
     const mx::array& active_rows,

@@ -1,5 +1,6 @@
 #include "bindings/registrations.h"
 
+#include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 
 #include <stdexcept>
@@ -21,6 +22,26 @@ Triple triple_from_values(const std::vector<int>& values, const char* name) {
         );
     }
     return {values[0], values[1], values[2]};
+}
+
+FloatTriple
+float_triple_from_values(const std::vector<float>& values, const char* name) {
+    if (values.size() != 3) {
+        throw std::invalid_argument(
+            std::string(name) + " must contain exactly 3 values."
+        );
+    }
+    return {values[0], values[1], values[2]};
+}
+
+VoxelReduceOp voxel_reduce_from_name(const std::string& name) {
+    if (name == "sum") {
+        return VoxelReduceOp::Sum;
+    }
+    if (name == "mean") {
+        return VoxelReduceOp::Mean;
+    }
+    throw std::invalid_argument("voxel reduction must be 'sum' or 'mean'.");
 }
 
 nb::tuple relation_tuple(const NativeKernelRelation& relation) {
@@ -45,6 +66,12 @@ nb::tuple neighbor_tuple(const NativeNeighborRelation& relation) {
 
 nb::tuple coord_set_tuple(const NativeCoordSet& result) {
     return nb::make_tuple(result.coords, result.count);
+}
+
+nb::tuple quantization_tuple(const NativeSparseQuantization& result) {
+    return nb::make_tuple(
+        result.coords, result.active_rows, result.inverse_rows, result.counts
+    );
 }
 
 } // namespace
@@ -102,6 +129,65 @@ void register_coords(nb::module_& module) {
             "queries: mlx.core.array) -> mlx.core.array"
         ),
         "Return row indices of queries in coords, or -1."
+    );
+    module.def(
+        "sparse_quantize",
+        [](const mx::array& points,
+           const mx::array& batch_indices,
+           const mx::array& active_rows,
+           const std::vector<float>& voxel_size,
+           const std::vector<float>& origin) {
+            return quantization_tuple(sparse_quantize(
+                points,
+                batch_indices,
+                active_rows,
+                QuantizationSpec{
+                    float_triple_from_values(voxel_size, "voxel_size"),
+                    float_triple_from_values(origin, "origin"),
+                }
+            ));
+        },
+        "points"_a,
+        "batch_indices"_a,
+        "active_rows"_a,
+        "voxel_size"_a,
+        "origin"_a,
+        nb::sig(
+            "def sparse_quantize(points: mlx.core.array, "
+            "batch_indices: mlx.core.array, active_rows: mlx.core.array, "
+            "voxel_size: collections.abc.Sequence[float], "
+            "origin: collections.abc.Sequence[float]) -> "
+            "tuple[mlx.core.array, mlx.core.array, mlx.core.array, "
+            "mlx.core.array]"
+        ),
+        "Quantize dense points into ordered sparse voxel coordinates."
+    );
+    module.def(
+        "voxelize_features",
+        [](const mx::array& feats,
+           const mx::array& inverse_rows,
+           const mx::array& voxel_counts,
+           const mx::array& active_rows,
+           const std::string& reduction) {
+            return voxelize_features(
+                feats,
+                inverse_rows,
+                voxel_counts,
+                active_rows,
+                voxel_reduce_from_name(reduction)
+            );
+        },
+        "feats"_a,
+        "inverse_rows"_a,
+        "voxel_counts"_a,
+        "active_rows"_a,
+        "reduction"_a,
+        nb::sig(
+            "def voxelize_features(feats: mlx.core.array, "
+            "inverse_rows: mlx.core.array, voxel_counts: mlx.core.array, "
+            "active_rows: mlx.core.array, reduction: str) -> mlx.core.array"
+        ),
+        "Aggregate point features into sparse voxel rows."
     );
     module.def(
         "build_kernel_relation",
