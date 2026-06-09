@@ -23,45 +23,6 @@ mx::array make_offsets_array(const std::vector<Triple>& offsets) {
 
 } // namespace
 
-NativeSparseTensorOutput sparse_conv(
-    SparseMapOp op,
-    const mx::array& coords,
-    const mx::array& active_rows,
-    const mx::array& feats,
-    const mx::array& weights,
-    Triple kernel_size, // NOLINT(bugprone-easily-swappable-parameters)
-    Triple stride,
-    Triple padding, // NOLINT(bugprone-easily-swappable-parameters)
-    Triple dilation
-) {
-    validate_sparse_conv(coords, active_rows, feats, weights);
-    auto offsets = op == SparseMapOp::Generative
-                       ? kernel_offsets(kernel_size)
-                       : kernel_offsets(kernel_size, dilation);
-    auto kernel_rows = int(offsets.size());
-    if (weights.ndim() == 3 && weights.shape(0) != kernel_rows) {
-        throw std::invalid_argument(
-            "weight kernel rows must match the sparse convolution kernel."
-        );
-    }
-    if (weights.ndim() == 5 &&
-        weights.shape(1) * weights.shape(2) * weights.shape(3) != kernel_rows) {
-        throw std::invalid_argument(
-            "weight spatial kernel shape must match kernel_size."
-        );
-    }
-    return make_sparse_conv(
-        op,
-        coords,
-        active_rows,
-        feats,
-        weights,
-        make_offsets_array(offsets),
-        stride,
-        padding
-    );
-}
-
 mx::array sparse_conv_features(
     const mx::array& feats,
     const mx::array& weights,

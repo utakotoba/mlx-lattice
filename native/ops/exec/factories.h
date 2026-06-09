@@ -4,17 +4,6 @@
 
 namespace mlx_lattice {
 
-NativeSparseTensorOutput make_sparse_conv(
-    SparseMapOp op,
-    const mx::array& coords,
-    const mx::array& active_rows,
-    const mx::array& feats,
-    const mx::array& weights,
-    const mx::array& offsets,
-    Triple stride,
-    Triple padding
-);
-
 mx::array make_sparse_conv_features(
     const mx::array& feats,
     const mx::array& weights,

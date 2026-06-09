@@ -4,14 +4,6 @@
 
 namespace mlx_lattice {
 
-mx::Stream sparse_conv_stream(
-    const mx::array& coords,
-    const mx::array& active_rows,
-    const mx::array& feats,
-    const mx::array& weights,
-    const mx::array& offsets
-);
-
 mx::Stream sparse_conv_features_stream(
     const mx::array& feats,
     const mx::array& weights,

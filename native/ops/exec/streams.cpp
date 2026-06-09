@@ -24,26 +24,6 @@ mx::Stream sparse_exec_stream(const mx::Device& device) {
 
 } // namespace
 
-mx::Stream sparse_conv_stream(
-    const mx::array& coords,
-    const mx::array& active_rows,
-    const mx::array& feats,
-    const mx::array& weights,
-    const mx::array& offsets
-) {
-    auto device = sparse_exec_device();
-    if (is_gpu_device(device) &&
-        !exec::metal::can_run_sparse_conv(
-            coords, active_rows, feats, weights, offsets
-        )) {
-        throw std::invalid_argument(
-            "Metal sparse convolution requires int32 coords/active_rows/"
-            "offsets and float32 features/weights."
-        );
-    }
-    return sparse_exec_stream(device);
-}
-
 mx::Stream sparse_conv_features_stream(
     const mx::array& feats,
     const mx::array& weights,

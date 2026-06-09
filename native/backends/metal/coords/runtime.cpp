@@ -54,6 +54,19 @@ int voxel_reduce_op_id(VoxelReduceOp op) {
     }
 }
 
+bool is_identity_forward_relation(Triple stride, Triple padding) {
+    return stride == Triple{1, 1, 1} && padding == Triple{0, 0, 0};
+}
+
+#ifdef _METAL_
+template <typename Encoder, typename Kernel>
+void dispatch_1d(Encoder& encoder, Kernel* kernel, size_t elements) {
+    auto threads = std::max<size_t>(elements, 1);
+    auto group = std::min(threads, kernel->maxTotalThreadsPerThreadgroup());
+    encoder.dispatch_threads(MTL::Size(threads, 1, 1), MTL::Size(group, 1, 1));
+}
+#endif
+
 // MARK: - guards
 
 void require_f32_input(const mx::array& input, const char* name) {
@@ -318,6 +331,7 @@ void eval_generic_kernel_relation(
     int kernel_count,
     Triple stride, // NOLINT(bugprone-easily-swappable-parameters)
     Triple padding,
+    bool direct,
     const mx::Stream& stream,
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
@@ -331,6 +345,88 @@ void eval_generic_kernel_relation(
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
     auto& encoder = mx::metal::get_command_encoder(stream);
+
+    if (op == CoordRelationOp::Forward &&
+        is_identity_forward_relation(stride, padding) &&
+        outputs.size() > RelationOutputCount) {
+        auto clear = device.get_kernel("relation_hash_clear_i32", library);
+        encoder.set_compute_pipeline_state(clear);
+        encoder.set_output_array(outputs[RelationOutputCount], 0);
+        encoder.set_output_array(outputs[RelationCounts], 1);
+        auto table_capacity =
+            static_cast<int>(outputs[RelationOutputCount].shape(0));
+        encoder.set_bytes(table_capacity, 2);
+        dispatch_1d(encoder, clear, static_cast<size_t>(table_capacity));
+
+        auto insert = device.get_kernel("relation_hash_insert_i32", library);
+        encoder.set_compute_pipeline_state(insert);
+        encoder.set_input_array(inputs[0], 0);
+        encoder.set_input_array(inputs[2], 1);
+        encoder.set_output_array(outputs[RelationOutputCount], 2);
+        encoder.set_bytes(rows, 3);
+        encoder.set_bytes(table_capacity, 4);
+        dispatch_1d(encoder, insert, static_cast<size_t>(rows));
+
+        auto plan = device.get_kernel(
+            "build_identity_forward_relation_plan_i32", library
+        );
+        encoder.set_compute_pipeline_state(plan);
+        encoder.set_input_array(inputs[0], 0);
+        encoder.set_input_array(inputs[1], 1);
+        encoder.set_input_array(inputs[2], 2);
+        encoder.set_input_array(outputs[RelationOutputCount], 3);
+        encoder.set_output_array(outputs[RelationInRows], 4);
+        encoder.set_output_array(outputs[RelationOutCoords], 5);
+        encoder.set_bytes(rows, 6);
+        encoder.set_bytes(kernel_count, 7);
+        encoder.set_bytes(table_capacity, 8);
+        dispatch_1d(
+            encoder,
+            plan,
+            std::max(
+                static_cast<size_t>(rows) * 4,
+                static_cast<size_t>(rows) * static_cast<size_t>(kernel_count)
+            )
+        );
+
+        auto compact = device.get_kernel(
+            "build_identity_forward_relation_compact_i32", library
+        );
+        encoder.set_compute_pipeline_state(compact);
+        encoder.set_input_array(outputs[RelationInRows], 0);
+        encoder.set_output_array(outputs[RelationInRows], 1);
+        encoder.set_output_array(outputs[RelationOutRows], 2);
+        encoder.set_output_array(outputs[RelationKernelIds], 3);
+        encoder.set_output_array(outputs[RelationCounts], 4);
+        encoder.set_input_array(inputs[2], 5);
+        encoder.set_bytes(rows, 6);
+        encoder.set_bytes(kernel_count, 7);
+        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+        return;
+    }
+
+    if (op == CoordRelationOp::Transposed && direct) {
+        auto kernel =
+            device.get_kernel("build_transposed_direct_relation_i32", library);
+        encoder.set_compute_pipeline_state(kernel);
+        encoder.set_input_array(inputs[0], 0);
+        encoder.set_input_array(inputs[1], 1);
+        encoder.set_input_array(inputs[2], 2);
+        for (int i = 0; i < int(RelationOutputCount); ++i) {
+            encoder.set_output_array(outputs[i], i + 3);
+        }
+        encoder.set_bytes(rows, 8);
+        encoder.set_bytes(kernel_count, 9);
+        encoder.set_bytes(stride[0], 10);
+        encoder.set_bytes(stride[1], 11);
+        encoder.set_bytes(stride[2], 12);
+        encoder.set_bytes(padding[0], 13);
+        encoder.set_bytes(padding[1], 14);
+        encoder.set_bytes(padding[2], 15);
+        dispatch_1d(encoder, kernel, static_cast<size_t>(rows) * kernel_count);
+        return;
+    }
+
     auto kernel = device.get_kernel(relation_kernel_name(op), library);
 
     encoder.set_compute_pipeline_state(kernel);
@@ -355,6 +451,7 @@ void eval_generic_kernel_relation(
     (void)kernel_count;
     (void)stride;
     (void)padding;
+    (void)direct;
     (void)stream;
     (void)inputs;
     (void)outputs;

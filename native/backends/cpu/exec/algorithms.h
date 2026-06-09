@@ -6,36 +6,6 @@
 
 namespace mlx_lattice::exec::cpu {
 
-void eval_sparse_conv(
-    SparseMapOp op,
-    SparseConvShape shape,
-    Triple stride,
-    Triple padding,
-    const mx::Stream& stream,
-    const std::vector<mx::array>& inputs,
-    std::vector<mx::array>& outputs
-);
-
-void eval_sparse_conv_input_grad(
-    SparseMapOp op,
-    SparseConvShape shape,
-    Triple stride,
-    Triple padding,
-    const mx::Stream& stream,
-    const std::vector<mx::array>& inputs,
-    std::vector<mx::array>& outputs
-);
-
-void eval_sparse_conv_weight_grad(
-    SparseMapOp op,
-    SparseConvShape shape,
-    Triple stride,
-    Triple padding,
-    const mx::Stream& stream,
-    const std::vector<mx::array>& inputs,
-    std::vector<mx::array>& outputs
-);
-
 void eval_sparse_conv_features(
     SparseConvShape shape,
     const mx::Stream& stream,

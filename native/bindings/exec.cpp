@@ -32,60 +32,6 @@ nb::tuple sparse_tuple(const NativeSparseTensorOutput& output) {
 
 void register_exec(nb::module_& module) {
     module.def(
-        "sparse_conv",
-        [](const mx::array& coords,
-           const mx::array& active_rows,
-           const mx::array& feats,
-           const mx::array& weights,
-           const std::string& map,
-           const std::vector<int>& kernel_size,
-           const std::vector<int>& stride,
-           const std::vector<int>& padding,
-           const std::vector<int>& dilation) {
-            auto op = SparseMapOp::Forward;
-            if (map == "transposed") {
-                op = SparseMapOp::Transposed;
-            } else if (map == "generative") {
-                op = SparseMapOp::Generative;
-            } else if (map != "forward") {
-                throw std::invalid_argument(
-                    "map must be 'forward', 'transposed', or 'generative'."
-                );
-            }
-            return sparse_tuple(sparse_conv(
-                op,
-                coords,
-                active_rows,
-                feats,
-                weights,
-                triple_from_values(kernel_size, "kernel_size"),
-                triple_from_values(stride, "stride"),
-                triple_from_values(padding, "padding"),
-                triple_from_values(dilation, "dilation")
-            ));
-        },
-        "coords"_a,
-        "active_rows"_a,
-        "feats"_a,
-        "weights"_a,
-        "map"_a,
-        "kernel_size"_a,
-        "stride"_a,
-        "padding"_a,
-        "dilation"_a,
-        nb::sig(
-            "def sparse_conv(coords: mlx.core.array, "
-            "active_rows: mlx.core.array, feats: mlx.core.array, "
-            "weights: mlx.core.array, map: str, "
-            "kernel_size: collections.abc.Sequence[int], "
-            "stride: collections.abc.Sequence[int], "
-            "padding: collections.abc.Sequence[int], "
-            "dilation: collections.abc.Sequence[int]) -> "
-            "tuple[mlx.core.array, mlx.core.array, mlx.core.array]"
-        ),
-        "Run fused sparse convolution over native sparse coordinates."
-    );
-    module.def(
         "sparse_pool",
         [](const mx::array& coords,
            const mx::array& active_rows,

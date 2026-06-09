@@ -344,6 +344,183 @@ voxel_reduce_scale(int reduce, device const int* voxel_counts, int voxel_row) {
 
 // MARK: - generic relations
 
+[[kernel]] void relation_hash_clear_i32(
+    device int* table_rows [[buffer(0)]],
+    device int* counts [[buffer(1)]],
+    constant const int& table_capacity [[buffer(2)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem == 0) {
+        counts[0] = 0;
+        counts[1] = 0;
+    }
+    if (elem < uint(table_capacity)) {
+        table_rows[elem] = -1;
+    }
+}
+
+[[kernel]] void relation_hash_insert_i32(
+    device const int* coords [[buffer(0)]],
+    device const int* active_rows [[buffer(1)]],
+    device atomic_int* table_rows [[buffer(2)]],
+    constant const int& rows [[buffer(3)]],
+    constant const int& table_capacity [[buffer(4)]],
+    uint row [[thread_position_in_grid]]
+) {
+    int logical_rows = min(active_rows[0], rows);
+    if (row >= uint(logical_rows)) {
+        return;
+    }
+
+    int key = relation_coord_hash_i32(coords, int(row));
+    int slot = key & (table_capacity - 1);
+    for (int probe = 0; probe < table_capacity; ++probe) {
+        int expected = -1;
+        if (atomic_compare_exchange_weak_explicit(
+                &table_rows[slot],
+                &expected,
+                int(row),
+                memory_order_relaxed,
+                memory_order_relaxed
+            )) {
+            return;
+        }
+        if (expected >= 0 && coord_equal(coords, expected, coords, int(row))) {
+            return;
+        }
+        slot = (slot + 1) & (table_capacity - 1);
+    }
+}
+
+[[kernel]] void build_identity_forward_relation_plan_i32(
+    device const int* coords [[buffer(0)]],
+    device const int* kernel_offsets [[buffer(1)]],
+    device const int* active_rows [[buffer(2)]],
+    device const int* table_rows [[buffer(3)]],
+    device int* planned_in_rows [[buffer(4)]],
+    device int* out_coords [[buffer(5)]],
+    constant const int& rows [[buffer(6)]],
+    constant const int& kernel_count [[buffer(7)]],
+    constant const int& table_capacity [[buffer(8)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    int logical_rows = min(active_rows[0], rows);
+    int coord_total = rows * 4;
+    if (elem < uint(coord_total)) {
+        int row = int(elem) / 4;
+        out_coords[elem] = row < logical_rows ? coords[elem] : 0;
+    }
+
+    int relation_total = rows * kernel_count;
+    if (elem >= uint(relation_total)) {
+        return;
+    }
+    int kernel_id = int(elem) / rows;
+    int out_row = int(elem) - kernel_id * rows;
+    if (out_row >= logical_rows) {
+        planned_in_rows[elem] = -1;
+        return;
+    }
+
+    int out_base = out_row * 4;
+    int offset_base = kernel_id * 3;
+    int candidate[4] = {
+        coords[out_base],
+        coords[out_base + 1] + kernel_offsets[offset_base],
+        coords[out_base + 2] + kernel_offsets[offset_base + 1],
+        coords[out_base + 3] + kernel_offsets[offset_base + 2],
+    };
+    planned_in_rows[elem] =
+        lookup_relation_row_hash(coords, table_rows, table_capacity, candidate);
+}
+
+[[kernel]] void build_identity_forward_relation_compact_i32(
+    device const int* planned_in_rows [[buffer(0)]],
+    device int* in_rows [[buffer(1)]],
+    device int* out_rows [[buffer(2)]],
+    device int* kernel_ids [[buffer(3)]],
+    device int* counts [[buffer(4)]],
+    device const int* active_rows [[buffer(5)]],
+    constant const int& rows [[buffer(6)]],
+    constant const int& kernel_count [[buffer(7)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+
+    int edge_count = 0;
+    for (int kernel_id = 0; kernel_id < kernel_count; ++kernel_id) {
+        int kernel_base = kernel_id * rows;
+        for (int out_row = 0; out_row < rows; ++out_row) {
+            int in_row = planned_in_rows[kernel_base + out_row];
+            if (in_row < 0) {
+                continue;
+            }
+            write_edge(
+                in_rows,
+                out_rows,
+                kernel_ids,
+                edge_count,
+                in_row,
+                out_row,
+                kernel_id
+            );
+            edge_count += 1;
+        }
+    }
+    counts[0] = edge_count;
+    counts[1] = min(active_rows[0], rows);
+}
+
+[[kernel]] void build_transposed_direct_relation_i32(
+    device const int* coords [[buffer(0)]],
+    device const int* kernel_offsets [[buffer(1)]],
+    device const int* active_rows [[buffer(2)]],
+    device int* in_rows [[buffer(3)]],
+    device int* out_rows [[buffer(4)]],
+    device int* kernel_ids [[buffer(5)]],
+    device int* out_coords [[buffer(6)]],
+    device int* counts [[buffer(7)]],
+    constant const int& rows [[buffer(8)]],
+    constant const int& kernel_count [[buffer(9)]],
+    constant const int& stride_x [[buffer(10)]],
+    constant const int& stride_y [[buffer(11)]],
+    constant const int& stride_z [[buffer(12)]],
+    constant const int& pad_x [[buffer(13)]],
+    constant const int& pad_y [[buffer(14)]],
+    constant const int& pad_z [[buffer(15)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    int logical_rows = min(active_rows[0], rows);
+    int total = logical_rows * kernel_count;
+    if (elem == 0) {
+        counts[0] = total;
+        counts[1] = total;
+    }
+    if (elem >= uint(total)) {
+        return;
+    }
+
+    int out_row = int(elem);
+    int in_row = int(elem) / kernel_count;
+    int kernel_id = int(elem) - in_row * kernel_count;
+    int in_base = in_row * 4;
+    int out_base = out_row * 4;
+    int offset_base = kernel_id * 3;
+
+    in_rows[out_row] = in_row;
+    out_rows[out_row] = out_row;
+    kernel_ids[out_row] = kernel_id;
+    out_coords[out_base] = coords[in_base];
+    out_coords[out_base + 1] =
+        coords[in_base + 1] * stride_x + kernel_offsets[offset_base] - pad_x;
+    out_coords[out_base + 2] = coords[in_base + 2] * stride_y +
+                               kernel_offsets[offset_base + 1] - pad_y;
+    out_coords[out_base + 3] = coords[in_base + 3] * stride_z +
+                               kernel_offsets[offset_base + 2] - pad_z;
+}
+
 [[kernel]] void build_forward_kernel_relation_i32(
     device const int* coords [[buffer(0)]],
     device const int* kernel_offsets [[buffer(1)]],

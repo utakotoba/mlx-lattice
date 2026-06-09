@@ -1,5 +1,6 @@
 #include "ops/coords/factories.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <typeinfo>
@@ -45,14 +46,60 @@ relation_from_outputs(const std::vector<mx::array>& outputs) {
 RelationOutputSpec relation_output_spec(
     int edges,    // NOLINT(bugprone-easily-swappable-parameters)
     int out_rows, // NOLINT(bugprone-easily-swappable-parameters)
-    mx::Dtype coord_dtype
+    mx::Dtype coord_dtype,
+    int scratch_rows = 0
 ) {
     std::vector<mx::Shape> shapes(RelationOutputCount, mx::Shape{edges});
     std::vector<mx::Dtype> dtypes(RelationOutputCount, mx::int32);
     shapes[RelationOutCoords] = mx::Shape{out_rows, 4};
     shapes[RelationCounts] = mx::Shape{2};
     dtypes[RelationOutCoords] = coord_dtype;
+    if (scratch_rows > 0) {
+        shapes.push_back(mx::Shape{scratch_rows});
+        dtypes.push_back(mx::int32);
+    }
     return {shapes, dtypes};
+}
+
+bool is_gpu_device(const mx::Device& device) {
+    return device == mx::Device(mx::Device::gpu);
+}
+
+bool is_identity_forward_relation(Triple stride, Triple padding) {
+    return stride == Triple{1, 1, 1} && padding == Triple{0, 0, 0};
+}
+
+int next_power_of_two(int value) {
+    auto out = 1;
+    while (out < value) {
+        out <<= 1;
+    }
+    return out;
+}
+
+int relation_hash_capacity(int rows) {
+    return next_power_of_two(std::max(rows * 2, 1));
+}
+
+bool can_use_direct_transposed_relation(
+    const std::vector<Triple>& offsets,
+    Triple stride
+) {
+    if (offsets.empty()) {
+        return false;
+    }
+    for (int axis = 0; axis < 3; ++axis) {
+        auto min_value = offsets.front()[axis];
+        auto max_value = offsets.front()[axis];
+        for (auto offset : offsets) {
+            min_value = std::min(min_value, offset[axis]);
+            max_value = std::max(max_value, offset[axis]);
+        }
+        if (stride[axis] <= max_value - min_value) {
+            return false;
+        }
+    }
+    return true;
 }
 
 std::vector<mx::array> make_relation_outputs(
@@ -79,10 +126,12 @@ class GenericKernelRelation final : public mx::Primitive {
         int rows, // NOLINT(bugprone-easily-swappable-parameters)
         int kernel_count,
         Triple stride, // NOLINT(bugprone-easily-swappable-parameters)
-        Triple padding
+        Triple padding,
+        bool direct = false
     )
         : mx::Primitive(stream), op_(op), rows_(rows),
-          kernel_count_(kernel_count), stride_(stride), padding_(padding) {}
+          kernel_count_(kernel_count), stride_(stride), padding_(padding),
+          direct_(direct) {}
 
     void eval_cpu(
         const std::vector<mx::array>& inputs,
@@ -103,6 +152,7 @@ class GenericKernelRelation final : public mx::Primitive {
             kernel_count_,
             stride_,
             padding_,
+            direct_,
             stream(),
             inputs,
             outputs
@@ -120,7 +170,8 @@ class GenericKernelRelation final : public mx::Primitive {
         const auto& relation = static_cast<const GenericKernelRelation&>(other);
         return op_ == relation.op_ && rows_ == relation.rows_ &&
                kernel_count_ == relation.kernel_count_ &&
-               stride_ == relation.stride_ && padding_ == relation.padding_;
+               stride_ == relation.stride_ && padding_ == relation.padding_ &&
+               direct_ == relation.direct_;
     }
 
   private:
@@ -129,6 +180,7 @@ class GenericKernelRelation final : public mx::Primitive {
     int kernel_count_;
     Triple stride_;
     Triple padding_;
+    bool direct_;
 };
 
 class GenerativeKernelRelation final : public mx::Primitive {
@@ -198,8 +250,14 @@ NativeKernelRelation make_kernel_relation(
     auto max_out_rows = rows;
     auto max_edges = max_out_rows * kernel_count;
     auto device = coord_device();
+    auto scratch_rows =
+        is_gpu_device(device) && is_identity_forward_relation(stride, padding)
+            ? relation_hash_capacity(rows)
+            : 0;
     auto outputs = make_relation_outputs(
-        relation_output_spec(max_edges, max_out_rows, coords.dtype()),
+        relation_output_spec(
+            max_edges, max_out_rows, coords.dtype(), scratch_rows
+        ),
         std::make_shared<GenericKernelRelation>(
             coord_stream(device),
             CoordRelationOp::Forward,
@@ -255,6 +313,7 @@ NativeKernelRelation make_transposed_kernel_relation(
     auto kernel_count = int(offsets.size());
     auto max_edges = rows * kernel_count;
     auto device = coord_device();
+    auto direct = can_use_direct_transposed_relation(offsets, stride);
     auto outputs = make_relation_outputs(
         relation_output_spec(max_edges, max_edges, coords.dtype()),
         std::make_shared<GenericKernelRelation>(
@@ -263,7 +322,8 @@ NativeKernelRelation make_transposed_kernel_relation(
             rows,
             kernel_count,
             stride,
-            padding
+            padding,
+            direct
         ),
         coords,
         offset_values,
