@@ -4,6 +4,390 @@ using namespace metal;
 
 #include "native/backends/metal/exec/common.metal"
 
+[[kernel]] void sparse_conv_clear_f32_i32(
+    device int* out_coords [[buffer(0)]],
+    device float* out_feats [[buffer(1)]],
+    device int* counts [[buffer(2)]],
+    constant const int& coord_total [[buffer(3)]],
+    constant const int& feat_total [[buffer(4)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem == 0) {
+        counts[0] = 0;
+        counts[1] = 0;
+    }
+    if (elem < uint(coord_total)) {
+        out_coords[elem] = 0;
+    }
+    if (elem < uint(feat_total)) {
+        out_feats[elem] = 0.0f;
+    }
+}
+
+[[kernel]] void sparse_conv_forward_coords_i32(
+    device const int* coords [[buffer(0)]],
+    device const int* active_rows [[buffer(1)]],
+    device const int* offsets [[buffer(2)]],
+    device int* out_coords [[buffer(3)]],
+    device int* counts [[buffer(4)]],
+    constant const int& n_in_rows [[buffer(5)]],
+    constant const int& n_kernels [[buffer(6)]],
+    constant const int& stride_x [[buffer(7)]],
+    constant const int& stride_y [[buffer(8)]],
+    constant const int& stride_z [[buffer(9)]],
+    constant const int& pad_x [[buffer(10)]],
+    constant const int& pad_y [[buffer(11)]],
+    constant const int& pad_z [[buffer(12)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    int rows = min(active_rows[0], n_in_rows);
+    if (elem == 0) {
+        int out_count = 0;
+        int edge_count = 0;
+        for (int row = 0; row < rows; ++row) {
+            int candidate[4];
+            downsample_coord(
+                coords, row, stride_x, stride_y, stride_z, candidate
+            );
+            if (seen_forward_coord(
+                    coords, row, stride_x, stride_y, stride_z, candidate
+                )) {
+                continue;
+            }
+            out_count += 1;
+            for (int kernel_id = 0; kernel_id < n_kernels; ++kernel_id) {
+                int offset_base = kernel_id * 3;
+                int input_coord[4] = {
+                    candidate[0],
+                    candidate[1] * stride_x + offsets[offset_base] - pad_x,
+                    candidate[2] * stride_y + offsets[offset_base + 1] - pad_y,
+                    candidate[3] * stride_z + offsets[offset_base + 2] - pad_z,
+                };
+                int in_row = -1;
+                if (find_input_row(coords, rows, input_coord, in_row)) {
+                    edge_count += 1;
+                }
+            }
+        }
+        counts[0] = edge_count;
+        counts[1] = out_count;
+    }
+
+    if (elem >= uint(rows)) {
+        return;
+    }
+    int row = int(elem);
+    int candidate[4];
+    downsample_coord(coords, row, stride_x, stride_y, stride_z, candidate);
+    if (seen_forward_coord(
+            coords, row, stride_x, stride_y, stride_z, candidate
+        )) {
+        return;
+    }
+    int out_row = 0;
+    for (int prev = 0; prev < row; ++prev) {
+        int previous[4];
+        downsample_coord(coords, prev, stride_x, stride_y, stride_z, previous);
+        if (!seen_forward_coord(
+                coords, prev, stride_x, stride_y, stride_z, previous
+            )) {
+            out_row += 1;
+        }
+    }
+    write_coord(out_coords, out_row, candidate);
+}
+
+[[kernel]] void sparse_forward_identity_coords_i32(
+    device const int* coords [[buffer(0)]],
+    device const int* active_rows [[buffer(1)]],
+    device const int* offsets [[buffer(2)]],
+    device int* out_coords [[buffer(3)]],
+    device int* counts [[buffer(4)]],
+    constant const int& n_in_rows [[buffer(5)]],
+    constant const int& n_kernels [[buffer(6)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    int rows = min(active_rows[0], n_in_rows);
+    if (elem == 0) {
+        int edge_count = 0;
+        for (int out_row = 0; out_row < rows; ++out_row) {
+            int out_base = out_row * 4;
+            for (int kernel_id = 0; kernel_id < n_kernels; ++kernel_id) {
+                int offset_base = kernel_id * 3;
+                int input_coord[4] = {
+                    coords[out_base],
+                    coords[out_base + 1] + offsets[offset_base],
+                    coords[out_base + 2] + offsets[offset_base + 1],
+                    coords[out_base + 3] + offsets[offset_base + 2],
+                };
+                int in_row = -1;
+                if (find_input_row(coords, rows, input_coord, in_row)) {
+                    edge_count += 1;
+                }
+            }
+        }
+        counts[0] = edge_count;
+        counts[1] = rows;
+    }
+
+    int coord_total = n_in_rows * 4;
+    if (elem >= uint(coord_total)) {
+        return;
+    }
+    int row = int(elem) / 4;
+    out_coords[elem] = row < rows ? coords[elem] : 0;
+}
+
+[[kernel]] void sparse_conv_forward_gather_f32_i32(
+    device const int* coords [[buffer(0)]],
+    device const int* active_rows [[buffer(1)]],
+    device const float* feats [[buffer(2)]],
+    device const float* weights [[buffer(3)]],
+    device const int* offsets [[buffer(4)]],
+    device const int* out_coords [[buffer(5)]],
+    device const int* counts [[buffer(6)]],
+    device float* out_feats [[buffer(7)]],
+    constant const int& n_in_rows [[buffer(8)]],
+    constant const int& n_out_rows [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& in_channels [[buffer(11)]],
+    constant const int& out_channels [[buffer(12)]],
+    constant const int& stride_x [[buffer(13)]],
+    constant const int& stride_y [[buffer(14)]],
+    constant const int& stride_z [[buffer(15)]],
+    constant const int& pad_x [[buffer(16)]],
+    constant const int& pad_y [[buffer(17)]],
+    constant const int& pad_z [[buffer(18)]],
+    constant const int& feat_s0 [[buffer(19)]],
+    constant const int& feat_s1 [[buffer(20)]],
+    constant const int& weight_s0 [[buffer(21)]],
+    constant const int& weight_s1 [[buffer(22)]],
+    constant const int& weight_s2 [[buffer(23)]],
+    constant const int& weight_s3 [[buffer(24)]],
+    constant const int& weight_s4 [[buffer(25)]],
+    constant const int& weight_layout [[buffer(26)]],
+    constant const int& kernel_x [[buffer(27)]],
+    constant const int& kernel_y [[buffer(28)]],
+    constant const int& kernel_z [[buffer(29)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    int total = n_out_rows * out_channels;
+    if (elem >= uint(total)) {
+        return;
+    }
+    int out_row = int(elem) / out_channels;
+    int co = int(elem) - out_row * out_channels;
+    int out_count = counts[1];
+    int rows = min(active_rows[0], n_in_rows);
+    if (out_row >= out_count) {
+        return;
+    }
+
+    int out_base = out_row * 4;
+    float acc = 0.0f;
+    for (int kernel_id = 0; kernel_id < n_kernels; ++kernel_id) {
+        int offset_base = kernel_id * 3;
+        int input_coord[4] = {
+            out_coords[out_base],
+            out_coords[out_base + 1] * stride_x + offsets[offset_base] - pad_x,
+            out_coords[out_base + 2] * stride_y + offsets[offset_base + 1] -
+                pad_y,
+            out_coords[out_base + 3] * stride_z + offsets[offset_base + 2] -
+                pad_z,
+        };
+        int in_row = -1;
+        if (!find_input_row(coords, rows, input_coord, in_row)) {
+            continue;
+        }
+        for (int ci = 0; ci < in_channels; ++ci) {
+            acc +=
+                feats[in_row * feat_s0 + ci * feat_s1] * weights[weight_offset(
+                                                             kernel_id,
+                                                             ci,
+                                                             co,
+                                                             weight_layout,
+                                                             kernel_x,
+                                                             kernel_y,
+                                                             kernel_z,
+                                                             weight_s0,
+                                                             weight_s1,
+                                                             weight_s2,
+                                                             weight_s3,
+                                                             weight_s4
+                                                         )];
+        }
+    }
+    out_feats[elem] = acc;
+}
+
+[[kernel]] void sparse_conv_pointwise_f32_i32(
+    device const int* coords [[buffer(0)]],
+    device const int* active_rows [[buffer(1)]],
+    device const float* feats [[buffer(2)]],
+    device const float* weights [[buffer(3)]],
+    device int* out_coords [[buffer(4)]],
+    device float* out_feats [[buffer(5)]],
+    device int* counts [[buffer(6)]],
+    constant const int& n_in_rows [[buffer(7)]],
+    constant const int& n_out_rows [[buffer(8)]],
+    constant const int& in_channels [[buffer(9)]],
+    constant const int& out_channels [[buffer(10)]],
+    constant const int& feat_s0 [[buffer(11)]],
+    constant const int& feat_s1 [[buffer(12)]],
+    constant const int& weight_s0 [[buffer(13)]],
+    constant const int& weight_s1 [[buffer(14)]],
+    constant const int& weight_s2 [[buffer(15)]],
+    constant const int& weight_s3 [[buffer(16)]],
+    constant const int& weight_s4 [[buffer(17)]],
+    constant const int& weight_layout [[buffer(18)]],
+    constant const int& kernel_x [[buffer(19)]],
+    constant const int& kernel_y [[buffer(20)]],
+    constant const int& kernel_z [[buffer(21)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    int rows = min(active_rows[0], n_in_rows);
+    int coord_total = n_out_rows * 4;
+    int feat_total = n_out_rows * out_channels;
+
+    if (elem == 0) {
+        counts[0] = rows;
+        counts[1] = rows;
+    }
+
+    if (elem < uint(coord_total)) {
+        int row = int(elem) / 4;
+        int lane = int(elem) - row * 4;
+        out_coords[elem] = row < rows ? coords[row * 4 + lane] : 0;
+    }
+
+    if (elem >= uint(feat_total)) {
+        return;
+    }
+    int row = int(elem) / out_channels;
+    int co = int(elem) - row * out_channels;
+    if (row >= rows) {
+        out_feats[elem] = 0.0f;
+        return;
+    }
+
+    float acc = 0.0f;
+    for (int ci = 0; ci < in_channels; ++ci) {
+        acc += feats[row * feat_s0 + ci * feat_s1] * weights[weight_offset(
+                                                         0,
+                                                         ci,
+                                                         co,
+                                                         weight_layout,
+                                                         kernel_x,
+                                                         kernel_y,
+                                                         kernel_z,
+                                                         weight_s0,
+                                                         weight_s1,
+                                                         weight_s2,
+                                                         weight_s3,
+                                                         weight_s4
+                                                     )];
+    }
+    out_feats[elem] = acc;
+}
+
+[[kernel]] void sparse_conv_pointwise_input_grad_f32_i32(
+    device const float* cotangent [[buffer(0)]],
+    device const int* active_rows [[buffer(1)]],
+    device const float* weights [[buffer(2)]],
+    device float* grad [[buffer(3)]],
+    constant const int& n_in_rows [[buffer(4)]],
+    constant const int& in_channels [[buffer(5)]],
+    constant const int& out_channels [[buffer(6)]],
+    constant const int& cotangent_s0 [[buffer(7)]],
+    constant const int& cotangent_s1 [[buffer(8)]],
+    constant const int& weight_s0 [[buffer(9)]],
+    constant const int& weight_s1 [[buffer(10)]],
+    constant const int& weight_s2 [[buffer(11)]],
+    constant const int& weight_s3 [[buffer(12)]],
+    constant const int& weight_s4 [[buffer(13)]],
+    constant const int& weight_layout [[buffer(14)]],
+    constant const int& kernel_x [[buffer(15)]],
+    constant const int& kernel_y [[buffer(16)]],
+    constant const int& kernel_z [[buffer(17)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    int rows = min(active_rows[0], n_in_rows);
+    int total = n_in_rows * in_channels;
+    if (elem >= uint(total)) {
+        return;
+    }
+    int row = int(elem) / in_channels;
+    int ci = int(elem) - row * in_channels;
+    if (row >= rows) {
+        grad[elem] = 0.0f;
+        return;
+    }
+
+    float acc = 0.0f;
+    for (int co = 0; co < out_channels; ++co) {
+        acc += cotangent[row * cotangent_s0 + co * cotangent_s1] *
+               weights[weight_offset(
+                   0,
+                   ci,
+                   co,
+                   weight_layout,
+                   kernel_x,
+                   kernel_y,
+                   kernel_z,
+                   weight_s0,
+                   weight_s1,
+                   weight_s2,
+                   weight_s3,
+                   weight_s4
+               )];
+    }
+    grad[elem] = acc;
+}
+
+[[kernel]] void sparse_conv_pointwise_weight_grad_f32_i32(
+    device const float* feats [[buffer(0)]],
+    device const float* cotangent [[buffer(1)]],
+    device const int* active_rows [[buffer(2)]],
+    device float* grad [[buffer(3)]],
+    constant const int& n_in_rows [[buffer(4)]],
+    constant const int& in_channels [[buffer(5)]],
+    constant const int& out_channels [[buffer(6)]],
+    constant const int& feat_s0 [[buffer(7)]],
+    constant const int& feat_s1 [[buffer(8)]],
+    constant const int& cotangent_s0 [[buffer(9)]],
+    constant const int& cotangent_s1 [[buffer(10)]],
+    constant const int& weight_layout [[buffer(11)]],
+    constant const int& kernel_x [[buffer(12)]],
+    constant const int& kernel_y [[buffer(13)]],
+    constant const int& kernel_z [[buffer(14)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    int total = in_channels * out_channels;
+    if (elem >= uint(total)) {
+        return;
+    }
+    int ci = int(elem) / out_channels;
+    int co = int(elem) - ci * out_channels;
+    int rows = min(active_rows[0], n_in_rows);
+
+    float acc = 0.0f;
+    for (int row = 0; row < rows; ++row) {
+        acc += feats[row * feat_s0 + ci * feat_s1] *
+               cotangent[row * cotangent_s0 + co * cotangent_s1];
+    }
+    grad[dense_weight_offset(
+        0,
+        ci,
+        co,
+        weight_layout,
+        kernel_x,
+        kernel_y,
+        kernel_z,
+        in_channels,
+        out_channels
+    )] = acc;
+}
+
 [[kernel]] void sparse_conv_f32_i32_serial(
     device const int* coords [[buffer(0)]],
     device const int* active_rows [[buffer(1)]],
@@ -508,6 +892,96 @@ using namespace metal;
     }
     counts[0] = edge_count;
     counts[1] = out_count;
+}
+
+[[kernel]] void sparse_pool_clear_f32_i32(
+    device int* out_coords [[buffer(0)]],
+    device float* out_feats [[buffer(1)]],
+    device int* counts [[buffer(2)]],
+    constant const int& coord_total [[buffer(3)]],
+    constant const int& feat_total [[buffer(4)]],
+    constant const int& reduce [[buffer(5)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem == 0) {
+        counts[0] = 0;
+        counts[1] = 0;
+    }
+    if (elem < uint(coord_total)) {
+        out_coords[elem] = 0;
+    }
+    if (elem < uint(feat_total)) {
+        out_feats[elem] = reduce == 1 ? -INFINITY : 0.0f;
+    }
+}
+
+[[kernel]] void sparse_pool_forward_gather_f32_i32(
+    device const int* coords [[buffer(0)]],
+    device const int* active_rows [[buffer(1)]],
+    device const float* feats [[buffer(2)]],
+    device const int* offsets [[buffer(3)]],
+    device const int* out_coords [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device float* out_feats [[buffer(6)]],
+    constant const int& reduce [[buffer(7)]],
+    constant const int& n_in_rows [[buffer(8)]],
+    constant const int& n_out_rows [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& channels [[buffer(11)]],
+    constant const int& stride_x [[buffer(12)]],
+    constant const int& stride_y [[buffer(13)]],
+    constant const int& stride_z [[buffer(14)]],
+    constant const int& pad_x [[buffer(15)]],
+    constant const int& pad_y [[buffer(16)]],
+    constant const int& pad_z [[buffer(17)]],
+    constant const int& feat_s0 [[buffer(18)]],
+    constant const int& feat_s1 [[buffer(19)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    int total = n_out_rows * channels;
+    if (elem >= uint(total)) {
+        return;
+    }
+
+    int out_row = int(elem) / channels;
+    int channel = int(elem) - out_row * channels;
+    int out_count = counts[1];
+    int rows = min(active_rows[0], n_in_rows);
+    if (out_row >= out_count) {
+        return;
+    }
+
+    int out_base = out_row * 4;
+    float acc = reduce == 1 ? -INFINITY : 0.0f;
+    int degree = 0;
+    for (int kernel_id = 0; kernel_id < n_kernels; ++kernel_id) {
+        int offset_base = kernel_id * 3;
+        int input_coord[4] = {
+            out_coords[out_base],
+            out_coords[out_base + 1] * stride_x + offsets[offset_base] - pad_x,
+            out_coords[out_base + 2] * stride_y + offsets[offset_base + 1] -
+                pad_y,
+            out_coords[out_base + 3] * stride_z + offsets[offset_base + 2] -
+                pad_z,
+        };
+        int in_row = -1;
+        if (!find_input_row(coords, rows, input_coord, in_row)) {
+            continue;
+        }
+
+        float value = feats[in_row * feat_s0 + channel * feat_s1];
+        if (reduce == 1) {
+            acc = max(acc, value);
+        } else {
+            acc += value;
+        }
+        degree += 1;
+    }
+
+    if (reduce == 2) {
+        acc /= float(max(degree, 1));
+    }
+    out_feats[elem] = acc;
 }
 
 [[kernel]] void sparse_pool_grad_f32_i32_serial(
