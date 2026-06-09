@@ -30,6 +30,9 @@ build-backend = "scikit_build_core.build"
 
 # MARK: - deps
 
+[tool.uv.workspace]
+members = ["benchmarks"]
+
 [dependency-groups]
 dev = [
   "nanobind>=2",
@@ -70,6 +73,7 @@ sdist.exclude = [
 
 [tool.scikit-build.editable]
 rebuild = true
+verbose = false
 
 # MARK: - fmt + lint
 

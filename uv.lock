@@ -7,6 +7,12 @@ resolution-markers = [
     "sys_platform != 'darwin' and sys_platform != 'linux'",
 ]
 
+[manifest]
+members = [
+    "mlx-lattice",
+    "mlx-lattice-bench",
+]
+
 [[package]]
 name = "colorama"
 version = "0.4.6"
@@ -96,6 +102,17 @@ dev = [
     { name = "ruff", specifier = ">=0.15.15" },
     { name = "ty", specifier = ">=0.0.42" },
 ]
+
+[[package]]
+name = "mlx-lattice-bench"
+version = "0.1.0"
+source = { editable = "benchmarks" }
+dependencies = [
+    { name = "mlx-lattice" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "mlx-lattice", editable = "." }]
 
 [[package]]
 name = "mlx-metal"
