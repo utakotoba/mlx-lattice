@@ -473,6 +473,135 @@ voxel_reduce_scale(int reduce, device const int* voxel_counts, int voxel_row) {
     counts[1] = min(active_rows[0], rows);
 }
 
+[[kernel]] void build_strided_forward_output_coords_i32(
+    device const int* coords [[buffer(0)]],
+    device const int* active_rows [[buffer(1)]],
+    device int* table_rows [[buffer(2)]],
+    device int* out_coords [[buffer(3)]],
+    device int* counts [[buffer(4)]],
+    constant const int& rows [[buffer(5)]],
+    constant const int& table_capacity [[buffer(6)]],
+    constant const int& stride_x [[buffer(7)]],
+    constant const int& stride_y [[buffer(8)]],
+    constant const int& stride_z [[buffer(9)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+
+    int logical_rows = min(active_rows[0], rows);
+    int out_count = 0;
+    for (int row = 0; row < logical_rows; ++row) {
+        int base = row * 4;
+        int candidate[4] = {
+            coords[base],
+            floor_div_int(coords[base + 1], stride_x),
+            floor_div_int(coords[base + 2], stride_y),
+            floor_div_int(coords[base + 3], stride_z),
+        };
+        int slot = relation_coord_hash_i32(candidate) & (table_capacity - 1);
+        for (int probe = 0; probe < table_capacity; ++probe) {
+            int out_row = table_rows[slot];
+            if (out_row < 0) {
+                table_rows[slot] = out_count;
+                write_coord(out_coords, out_count, candidate);
+                out_count += 1;
+                break;
+            }
+            if (coord4_equal(candidate, out_coords, out_row)) {
+                break;
+            }
+            slot = (slot + 1) & (table_capacity - 1);
+        }
+    }
+    counts[1] = out_count;
+}
+
+[[kernel]] void build_strided_forward_relation_plan_i32(
+    device const int* coords [[buffer(0)]],
+    device const int* kernel_offsets [[buffer(1)]],
+    device const int* out_coords [[buffer(2)]],
+    device const int* counts [[buffer(3)]],
+    device const int* table_rows [[buffer(4)]],
+    device int* planned_in_rows [[buffer(5)]],
+    constant const int& rows [[buffer(6)]],
+    constant const int& kernel_count [[buffer(7)]],
+    constant const int& table_capacity [[buffer(8)]],
+    constant const int& stride_x [[buffer(9)]],
+    constant const int& stride_y [[buffer(10)]],
+    constant const int& stride_z [[buffer(11)]],
+    constant const int& pad_x [[buffer(12)]],
+    constant const int& pad_y [[buffer(13)]],
+    constant const int& pad_z [[buffer(14)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    int relation_total = rows * kernel_count;
+    if (elem >= uint(relation_total)) {
+        return;
+    }
+
+    int kernel_id = int(elem) / rows;
+    int out_row = int(elem) - kernel_id * rows;
+    int out_count = min(counts[1], rows);
+    if (out_row >= out_count) {
+        planned_in_rows[elem] = -1;
+        return;
+    }
+
+    int out_base = out_row * 4;
+    int offset_base = kernel_id * 3;
+    int candidate[4] = {
+        out_coords[out_base],
+        out_coords[out_base + 1] * stride_x + kernel_offsets[offset_base] -
+            pad_x,
+        out_coords[out_base + 2] * stride_y + kernel_offsets[offset_base + 1] -
+            pad_y,
+        out_coords[out_base + 3] * stride_z + kernel_offsets[offset_base + 2] -
+            pad_z,
+    };
+    planned_in_rows[elem] =
+        lookup_relation_row_hash(coords, table_rows, table_capacity, candidate);
+}
+
+[[kernel]] void build_strided_forward_relation_compact_i32(
+    device const int* planned_in_rows [[buffer(0)]],
+    device int* in_rows [[buffer(1)]],
+    device int* out_rows [[buffer(2)]],
+    device int* kernel_ids [[buffer(3)]],
+    device int* counts [[buffer(4)]],
+    constant const int& rows [[buffer(5)]],
+    constant const int& kernel_count [[buffer(6)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+
+    int edge_count = 0;
+    int out_count = min(counts[1], rows);
+    for (int kernel_id = 0; kernel_id < kernel_count; ++kernel_id) {
+        int kernel_base = kernel_id * rows;
+        for (int out_row = 0; out_row < out_count; ++out_row) {
+            int in_row = planned_in_rows[kernel_base + out_row];
+            if (in_row < 0) {
+                continue;
+            }
+            write_edge(
+                in_rows,
+                out_rows,
+                kernel_ids,
+                edge_count,
+                in_row,
+                out_row,
+                kernel_id
+            );
+            edge_count += 1;
+        }
+    }
+    counts[0] = edge_count;
+}
+
 [[kernel]] void build_transposed_direct_relation_i32(
     device const int* coords [[buffer(0)]],
     device const int* kernel_offsets [[buffer(1)]],
@@ -519,94 +648,6 @@ voxel_reduce_scale(int reduce, device const int* voxel_counts, int voxel_row) {
                                kernel_offsets[offset_base + 1] - pad_y;
     out_coords[out_base + 3] = coords[in_base + 3] * stride_z +
                                kernel_offsets[offset_base + 2] - pad_z;
-}
-
-[[kernel]] void build_forward_kernel_relation_i32(
-    device const int* coords [[buffer(0)]],
-    device const int* kernel_offsets [[buffer(1)]],
-    device const int* active_rows [[buffer(2)]],
-    device int* in_rows [[buffer(3)]],
-    device int* out_rows [[buffer(4)]],
-    device int* kernel_ids [[buffer(5)]],
-    device int* out_coords [[buffer(6)]],
-    device int* counts [[buffer(7)]],
-    constant const int& rows [[buffer(8)]],
-    constant const int& kernel_count [[buffer(9)]],
-    constant const int& stride_x [[buffer(10)]],
-    constant const int& stride_y [[buffer(11)]],
-    constant const int& stride_z [[buffer(12)]],
-    constant const int& pad_x [[buffer(13)]],
-    constant const int& pad_y [[buffer(14)]],
-    constant const int& pad_z [[buffer(15)]],
-    uint elem [[thread_position_in_grid]]
-) {
-    if (elem != 0) {
-        return;
-    }
-
-    int logical_rows = min(active_rows[0], rows);
-    int out_count = 0;
-    bool identity_out = stride_x == 1 && stride_y == 1 && stride_z == 1 &&
-                        pad_x == 0 && pad_y == 0 && pad_z == 0;
-
-    for (int row = 0; row < logical_rows; ++row) {
-        int base = row * 4;
-        int candidate[4] = {
-            coords[base],
-            identity_out ? coords[base + 1]
-                         : floor_div_int(coords[base + 1], stride_x),
-            identity_out ? coords[base + 2]
-                         : floor_div_int(coords[base + 2], stride_y),
-            identity_out ? coords[base + 3]
-                         : floor_div_int(coords[base + 3], stride_z),
-        };
-        bool seen = false;
-        for (int prev = 0; prev < out_count; ++prev) {
-            if (coord4_equal(candidate, out_coords, prev)) {
-                seen = true;
-                break;
-            }
-        }
-        if (!seen) {
-            write_coord(out_coords, out_count, candidate);
-            out_count += 1;
-        }
-    }
-
-    int edge_count = 0;
-    for (int kernel_id = 0; kernel_id < kernel_count; ++kernel_id) {
-        int offset_base = kernel_id * 3;
-        for (int out_row = 0; out_row < out_count; ++out_row) {
-            int out_base = out_row * 4;
-            int candidate[4] = {
-                out_coords[out_base],
-                out_coords[out_base + 1] * stride_x +
-                    kernel_offsets[offset_base] - pad_x,
-                out_coords[out_base + 2] * stride_y +
-                    kernel_offsets[offset_base + 1] - pad_y,
-                out_coords[out_base + 3] * stride_z +
-                    kernel_offsets[offset_base + 2] - pad_z,
-            };
-            for (int in_row = 0; in_row < logical_rows; ++in_row) {
-                if (coord4_equal(candidate, coords, in_row)) {
-                    write_edge(
-                        in_rows,
-                        out_rows,
-                        kernel_ids,
-                        edge_count,
-                        in_row,
-                        out_row,
-                        kernel_id
-                    );
-                    edge_count += 1;
-                    break;
-                }
-            }
-        }
-    }
-
-    counts[0] = edge_count;
-    counts[1] = out_count;
 }
 
 [[kernel]] void build_transposed_kernel_relation_i32(

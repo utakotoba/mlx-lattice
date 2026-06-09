@@ -65,10 +65,6 @@ bool is_gpu_device(const mx::Device& device) {
     return device == mx::Device(mx::Device::gpu);
 }
 
-bool is_identity_forward_relation(Triple stride, Triple padding) {
-    return stride == Triple{1, 1, 1} && padding == Triple{0, 0, 0};
-}
-
 int next_power_of_two(int value) {
     auto out = 1;
     while (out < value) {
@@ -251,9 +247,7 @@ NativeKernelRelation make_kernel_relation(
     auto max_edges = max_out_rows * kernel_count;
     auto device = coord_device();
     auto scratch_rows =
-        is_gpu_device(device) && is_identity_forward_relation(stride, padding)
-            ? relation_hash_capacity(rows)
-            : 0;
+        is_gpu_device(device) ? relation_hash_capacity(rows) : 0;
     auto outputs = make_relation_outputs(
         relation_output_spec(
             max_edges, max_out_rows, coords.dtype(), scratch_rows

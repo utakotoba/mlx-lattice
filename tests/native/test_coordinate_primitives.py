@@ -349,6 +349,48 @@ def test_metal_coordinate_primitives_match_cpu_contract_when_available() -> (
     )
 
 
+def test_metal_strided_relation_preserves_stable_edge_contract() -> None:
+    def run() -> tuple[
+        list[list[int]],
+        list[int],
+        list[int],
+        list[int],
+        list[int],
+    ]:
+        coords = mx.array(
+            [[0, row, 0, 0] for row in range(6)],
+            dtype=mx.int32,
+        )
+        relation = build_kernel_relation(
+            coords,
+            kernel_size=(3, 1, 1),
+            stride=(2, 1, 1),
+        )
+        assert relation.out_coords is not None
+        mx.eval(
+            relation.out_coords,
+            relation.edges.in_rows,
+            relation.edges.out_rows,
+            relation.edges.kernel_ids,
+            relation.counts,
+        )
+        return (
+            _active_coords(relation.out_coords, relation.out_count),
+            _active_rows(relation.edges.in_rows, relation.edge_count),
+            _active_rows(relation.edges.out_rows, relation.edge_count),
+            _active_rows(relation.edges.kernel_ids, relation.edge_count),
+            cast('list[int]', relation.counts.tolist()),
+        )
+
+    assert run_with_gpu_default(run) == (
+        [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
+        [1, 3, 0, 2, 4, 1, 3, 5],
+        [1, 2, 0, 1, 2, 0, 1, 2],
+        [0, 0, 1, 1, 1, 2, 2, 2],
+        [8, 3],
+    )
+
+
 def test_metal_neighbor_relations_match_cpu_contract_when_available() -> (
     None
 ):
