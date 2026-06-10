@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <numeric>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -20,6 +21,8 @@ namespace {
 
 using Coord = std::array<int64_t, 4>;
 using Edge = std::array<int32_t, 3>;
+
+constexpr int kParallelCompactThreshold = 4096;
 
 struct NeighborCandidate {
     int32_t source_row;
@@ -695,7 +698,11 @@ void write_kernel_relation(
         }
     }
 
-    write_map(outputs, edges, out_values, coords.dtype(), true);
+    write_map_rows(outputs, edges, int(out_values.size()));
+    write_coords(outputs[RelationOutCoords], out_values, coords.dtype());
+    write_count(
+        outputs[RelationCounts], int(edges.size()), int(out_values.size())
+    );
 }
 
 void write_target_kernel_relation(
@@ -733,24 +740,8 @@ void write_target_kernel_relation(
         }
     }
 
-    auto row_major_edges = edges;
-    std::stable_sort(
-        row_major_edges.begin(),
-        row_major_edges.end(),
-        [](const Edge& lhs, const Edge& rhs) {
-            if (lhs[1] != rhs[1]) {
-                return lhs[1] < rhs[1];
-            }
-            if (lhs[2] != rhs[2]) {
-                return lhs[2] < rhs[2];
-            }
-            return lhs[0] < rhs[0];
-        }
-    );
-    write_map_rows(outputs, row_major_edges, int(target_values.size()));
-    write_count(
-        outputs[RelationCounts], int(row_major_edges.size()), target_active
-    );
+    write_map_rows(outputs, edges, int(target_values.size()));
+    write_count(outputs[RelationCounts], int(edges.size()), target_active);
 }
 
 void write_generative_relation(
@@ -786,7 +777,11 @@ void write_generative_relation(
         }
     }
 
-    write_map(outputs, edges, out_values, coords.dtype(), true);
+    write_map_rows(outputs, edges, int(out_values.size()));
+    write_coords(outputs[RelationOutCoords], out_values, coords.dtype());
+    write_count(
+        outputs[RelationCounts], int(edges.size()), int(out_values.size())
+    );
 }
 
 void write_transposed_kernel_relation(
@@ -795,10 +790,42 @@ void write_transposed_kernel_relation(
     int active_rows,
     const std::vector<Triple>& offsets,
     Triple stride,
-    Triple padding
+    Triple padding,
+    bool direct
 ) {
     auto values = read_coords(coords);
     values.resize(std::min(active_rows, int(values.size())));
+
+    if (direct) {
+        std::vector<Edge> edges;
+        std::vector<Coord> out_values;
+        edges.reserve(values.size() * offsets.size());
+        out_values.reserve(values.size() * offsets.size());
+        for (int in_row = 0; in_row < int(values.size()); ++in_row) {
+            auto coord = values[in_row];
+            for (int kernel = 0; kernel < int(offsets.size()); ++kernel) {
+                auto out_row = in_row * int(offsets.size()) + kernel;
+                out_values.push_back({
+                    coord[0],
+                    coord[1] * stride[0] + offsets[kernel][0] - padding[0],
+                    coord[2] * stride[1] + offsets[kernel][1] - padding[1],
+                    coord[3] * stride[2] + offsets[kernel][2] - padding[2],
+                });
+                edges.push_back({
+                    static_cast<int32_t>(in_row),
+                    static_cast<int32_t>(out_row),
+                    static_cast<int32_t>(kernel),
+                });
+            }
+        }
+        write_map_rows(outputs, edges, int(out_values.size()));
+        write_coords(outputs[RelationOutCoords], out_values, coords.dtype());
+        write_count(
+            outputs[RelationCounts], int(edges.size()), int(out_values.size())
+        );
+        return;
+    }
+
     std::vector<Edge> edges;
     std::vector<Coord> out_values;
     std::unordered_map<Coord, int32_t, CoordHash> out_rows;
@@ -985,6 +1012,7 @@ void eval_generic_kernel_relation(
     CoordRelationOp op,
     Triple stride,
     Triple padding,
+    bool direct,
     const mx::Stream& stream,
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
@@ -994,7 +1022,7 @@ void eval_generic_kernel_relation(
         stream,
         inputs,
         outputs,
-        [op, stride, padding](
+        [op, stride, padding, direct](
             const std::vector<mx::array>& task_inputs,
             std::vector<mx::array>& task_outputs
         ) {
@@ -1019,7 +1047,8 @@ void eval_generic_kernel_relation(
                     active_rows,
                     offsets,
                     stride,
-                    padding
+                    padding,
+                    direct
                 );
                 break;
             }

@@ -161,7 +161,7 @@ class GenericKernelRelation final : public mx::Primitive {
         std::vector<mx::array>& outputs
     ) override {
         coords::cpu::eval_generic_kernel_relation(
-            op_, stride_, padding_, stream(), inputs, outputs
+            op_, stride_, padding_, direct_, stream(), inputs, outputs
         );
     }
 
