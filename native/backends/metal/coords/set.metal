@@ -45,6 +45,66 @@ inline int lookup_downsample_row_hash(
     return -1;
 }
 
+[[kernel]] void scan_coord_set_selected_blocks_i32(
+    device const int* selected [[buffer(0)]],
+    device int* local_offsets [[buffer(1)]],
+    device int* block_offsets [[buffer(2)]],
+    constant const int& rows [[buffer(3)]],
+    uint block [[threadgroup_position_in_grid]],
+    uint tid [[thread_index_in_threadgroup]]
+) {
+    threadgroup int scan[256];
+    uint row = block * 256 + tid;
+    scan[tid] = row < uint(rows) && selected[row] != 0 ? 1 : 0;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    for (uint offset = 1; offset < 256; offset <<= 1) {
+        uint index = (tid + 1) * offset * 2 - 1;
+        if (index < 256) {
+            scan[index] += scan[index - offset];
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    if (tid == 0) {
+        block_offsets[block] = scan[255];
+        scan[255] = 0;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    for (uint offset = 128; offset > 0; offset >>= 1) {
+        uint index = (tid + 1) * offset * 2 - 1;
+        if (index < 256) {
+            int value = scan[index - offset];
+            scan[index - offset] = scan[index];
+            scan[index] += value;
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    if (row < uint(rows)) {
+        local_offsets[row] = scan[tid];
+    }
+}
+
+[[kernel]] void prefix_coord_set_selected_blocks_i32(
+    device int* block_offsets [[buffer(0)]],
+    device int* count [[buffer(1)]],
+    constant const int& blocks [[buffer(2)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+    int total = 0;
+    for (int block = 0; block < blocks; ++block) {
+        int block_count = block_offsets[block];
+        block_offsets[block] = total;
+        total += block_count;
+    }
+    count[0] = total;
+}
+
 [[kernel]] void build_downsample_coord_hash_i32(
     device const int* coords [[buffer(0)]],
     device atomic_int* table_rows [[buffer(1)]],
@@ -139,6 +199,27 @@ inline int lookup_downsample_row_hash(
         write_coord(out_coords, out_count++, candidate);
     }
     count[0] = out_count;
+}
+
+[[kernel]] void scatter_downsample_coord_set_i32(
+    device const int* coords [[buffer(0)]],
+    device const int* selected [[buffer(1)]],
+    device const int* local_offsets [[buffer(2)]],
+    device const int* block_offsets [[buffer(3)]],
+    device int* out_coords [[buffer(4)]],
+    constant const int& rows [[buffer(5)]],
+    constant const int& stride_x [[buffer(6)]],
+    constant const int& stride_y [[buffer(7)]],
+    constant const int& stride_z [[buffer(8)]],
+    uint row [[thread_position_in_grid]]
+) {
+    if (row >= uint(rows) || selected[row] == 0) {
+        return;
+    }
+    int candidate[4];
+    downsample_coord(coords, int(row), stride_x, stride_y, stride_z, candidate);
+    int out_row = block_offsets[row / 256] + local_offsets[row];
+    write_coord(out_coords, out_row, candidate);
 }
 
 [[kernel]] void compact_strided_relation_output_coords_i32(
@@ -319,6 +400,34 @@ inline int lookup_downsample_row_hash(
     count[0] = out_count;
 }
 
+[[kernel]] void scatter_union_coord_set_i32(
+    device const int* lhs [[buffer(0)]],
+    device const int* rhs [[buffer(1)]],
+    device const int* selected [[buffer(2)]],
+    device const int* local_offsets [[buffer(3)]],
+    device const int* block_offsets [[buffer(4)]],
+    device int* out_coords [[buffer(5)]],
+    constant const int& lhs_rows [[buffer(6)]],
+    constant const int& rhs_rows [[buffer(7)]],
+    uint row [[thread_position_in_grid]]
+) {
+    int total_rows = lhs_rows + rhs_rows;
+    if (row >= uint(total_rows) || selected[row] == 0) {
+        return;
+    }
+    device const int* source = row < uint(lhs_rows) ? lhs : rhs;
+    int source_row = row < uint(lhs_rows) ? int(row) : int(row) - lhs_rows;
+    int base = source_row * 4;
+    int candidate[4] = {
+        source[base],
+        source[base + 1],
+        source[base + 2],
+        source[base + 3],
+    };
+    int out_row = block_offsets[row / 256] + local_offsets[row];
+    write_coord(out_coords, out_row, candidate);
+}
+
 [[kernel]] void plan_intersection_coord_set_i32(
     device const int* lhs [[buffer(0)]],
     device const int* rhs [[buffer(1)]],
@@ -374,6 +483,29 @@ inline int lookup_downsample_row_hash(
         write_coord(out_coords, out_count++, candidate);
     }
     count[0] = out_count;
+}
+
+[[kernel]] void scatter_intersection_coord_set_i32(
+    device const int* lhs [[buffer(0)]],
+    device const int* selected [[buffer(1)]],
+    device const int* local_offsets [[buffer(2)]],
+    device const int* block_offsets [[buffer(3)]],
+    device int* out_coords [[buffer(4)]],
+    constant const int& lhs_rows [[buffer(5)]],
+    uint row [[thread_position_in_grid]]
+) {
+    if (row >= uint(lhs_rows) || selected[row] == 0) {
+        return;
+    }
+    int base = int(row) * 4;
+    int candidate[4] = {
+        lhs[base],
+        lhs[base + 1],
+        lhs[base + 2],
+        lhs[base + 3],
+    };
+    int out_row = block_offsets[row / 256] + local_offsets[row];
+    write_coord(out_coords, out_row, candidate);
 }
 
 [[kernel]] void lookup_coords_hash_i32(

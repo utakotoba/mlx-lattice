@@ -77,11 +77,63 @@ struct RelationSlotShape {
     int kernel_count;
 };
 
+struct StableCompactBuffers {
+    mx::array local_offsets;
+    mx::array block_offsets;
+    int blocks;
+};
+
+constexpr int kStableCompactBlockSize = 256;
+constexpr int kParallelCompactThreshold = 4096;
+
 template <typename Encoder, typename Kernel>
 void dispatch_1d(Encoder& encoder, Kernel* kernel, size_t elements) {
     auto threads = std::max<size_t>(elements, 1);
     auto group = std::min(threads, kernel->maxTotalThreadsPerThreadgroup());
     encoder.dispatch_threads(MTL::Size(threads, 1, 1), MTL::Size(group, 1, 1));
+}
+
+StableCompactBuffers make_stable_compact_buffers(int rows) {
+    auto blocks = std::max(
+        (rows + kStableCompactBlockSize - 1) / kStableCompactBlockSize, 1
+    );
+    return {
+        make_int32_temp(rows),
+        make_int32_temp(blocks),
+        blocks,
+    };
+}
+
+template <typename Device, typename Library, typename Encoder>
+void encode_stable_compact_offsets(
+    Device& device,
+    Library& library,
+    Encoder& encoder,
+    const mx::array& selected,
+    mx::array& count,
+    StableCompactBuffers& buffers,
+    int rows
+) {
+    encoder.add_temporaries({buffers.local_offsets, buffers.block_offsets});
+    auto scan =
+        device.get_kernel("scan_coord_set_selected_blocks_i32", library);
+    encoder.set_compute_pipeline_state(scan);
+    encoder.set_input_array(selected, 0);
+    encoder.set_output_array(buffers.local_offsets, 1);
+    encoder.set_output_array(buffers.block_offsets, 2);
+    encoder.set_bytes(rows, 3);
+    encoder.dispatch_threadgroups(
+        MTL::Size(static_cast<size_t>(buffers.blocks), 1, 1),
+        MTL::Size(kStableCompactBlockSize, 1, 1)
+    );
+
+    auto prefix =
+        device.get_kernel("prefix_coord_set_selected_blocks_i32", library);
+    encoder.set_compute_pipeline_state(prefix);
+    encoder.set_output_array(buffers.block_offsets, 0);
+    encoder.set_output_array(count, 1);
+    encoder.set_bytes(buffers.blocks, 2);
+    encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
 }
 
 template <typename Device, typename Library, typename Encoder>
@@ -318,8 +370,36 @@ void eval_set_coords(
         encoder.set_bytes(stride[2], 7);
         dispatch_1d(encoder, plan, static_cast<size_t>(shape.lhs_rows));
 
-        auto compact =
-            device.get_kernel("compact_downsample_coord_set_i32", library);
+        auto compact = device.get_kernel(
+            shape.lhs_rows >= kParallelCompactThreshold
+                ? "scatter_downsample_coord_set_i32"
+                : "compact_downsample_coord_set_i32",
+            library
+        );
+        if (shape.lhs_rows >= kParallelCompactThreshold) {
+            auto buffers = make_stable_compact_buffers(shape.lhs_rows);
+            encode_stable_compact_offsets(
+                device,
+                library,
+                encoder,
+                selected,
+                count,
+                buffers,
+                shape.lhs_rows
+            );
+            encoder.set_compute_pipeline_state(compact);
+            encoder.set_input_array(inputs[0], 0);
+            encoder.set_input_array(selected, 1);
+            encoder.set_input_array(buffers.local_offsets, 2);
+            encoder.set_input_array(buffers.block_offsets, 3);
+            encoder.set_output_array(out_coords, 4);
+            encoder.set_bytes(shape.lhs_rows, 5);
+            encoder.set_bytes(stride[0], 6);
+            encoder.set_bytes(stride[1], 7);
+            encoder.set_bytes(stride[2], 8);
+            dispatch_1d(encoder, compact, static_cast<size_t>(shape.lhs_rows));
+            return;
+        }
         encoder.set_compute_pipeline_state(compact);
         encoder.set_input_array(inputs[0], 0);
         encoder.set_input_array(selected, 1);
@@ -329,6 +409,7 @@ void eval_set_coords(
         encoder.set_bytes(stride[0], 5);
         encoder.set_bytes(stride[1], 6);
         encoder.set_bytes(stride[2], 7);
+        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
     } else if (op == CoordSetOp::Union) {
         auto total_rows = shape.lhs_rows + shape.rhs_rows;
         auto lhs_table_capacity = coord_hash_capacity(shape.lhs_rows);
@@ -373,8 +454,29 @@ void eval_set_coords(
         encoder.set_bytes(rhs_table_capacity, 8);
         dispatch_1d(encoder, plan, static_cast<size_t>(total_rows));
 
-        auto compact =
-            device.get_kernel("compact_union_coord_set_i32", library);
+        auto compact = device.get_kernel(
+            total_rows >= kParallelCompactThreshold
+                ? "scatter_union_coord_set_i32"
+                : "compact_union_coord_set_i32",
+            library
+        );
+        if (total_rows >= kParallelCompactThreshold) {
+            auto buffers = make_stable_compact_buffers(total_rows);
+            encode_stable_compact_offsets(
+                device, library, encoder, selected, count, buffers, total_rows
+            );
+            encoder.set_compute_pipeline_state(compact);
+            encoder.set_input_array(inputs[0], 0);
+            encoder.set_input_array(inputs[1], 1);
+            encoder.set_input_array(selected, 2);
+            encoder.set_input_array(buffers.local_offsets, 3);
+            encoder.set_input_array(buffers.block_offsets, 4);
+            encoder.set_output_array(out_coords, 5);
+            encoder.set_bytes(shape.lhs_rows, 6);
+            encoder.set_bytes(shape.rhs_rows, 7);
+            dispatch_1d(encoder, compact, static_cast<size_t>(total_rows));
+            return;
+        }
         encoder.set_compute_pipeline_state(compact);
         encoder.set_input_array(inputs[0], 0);
         encoder.set_input_array(inputs[1], 1);
@@ -383,6 +485,7 @@ void eval_set_coords(
         encoder.set_output_array(count, 4);
         encoder.set_bytes(shape.lhs_rows, 5);
         encoder.set_bytes(shape.rhs_rows, 6);
+        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
     } else {
         auto rhs_table_capacity = coord_hash_capacity(shape.rhs_rows);
         auto lhs_table_capacity = coord_hash_capacity(shape.lhs_rows);
@@ -425,16 +528,41 @@ void eval_set_coords(
         encoder.set_bytes(lhs_table_capacity, 7);
         dispatch_1d(encoder, plan, static_cast<size_t>(shape.lhs_rows));
 
-        auto compact =
-            device.get_kernel("compact_intersection_coord_set_i32", library);
+        auto compact = device.get_kernel(
+            shape.lhs_rows >= kParallelCompactThreshold
+                ? "scatter_intersection_coord_set_i32"
+                : "compact_intersection_coord_set_i32",
+            library
+        );
+        if (shape.lhs_rows >= kParallelCompactThreshold) {
+            auto buffers = make_stable_compact_buffers(shape.lhs_rows);
+            encode_stable_compact_offsets(
+                device,
+                library,
+                encoder,
+                selected,
+                count,
+                buffers,
+                shape.lhs_rows
+            );
+            encoder.set_compute_pipeline_state(compact);
+            encoder.set_input_array(inputs[0], 0);
+            encoder.set_input_array(selected, 1);
+            encoder.set_input_array(buffers.local_offsets, 2);
+            encoder.set_input_array(buffers.block_offsets, 3);
+            encoder.set_output_array(out_coords, 4);
+            encoder.set_bytes(shape.lhs_rows, 5);
+            dispatch_1d(encoder, compact, static_cast<size_t>(shape.lhs_rows));
+            return;
+        }
         encoder.set_compute_pipeline_state(compact);
         encoder.set_input_array(inputs[0], 0);
         encoder.set_input_array(selected, 1);
         encoder.set_output_array(out_coords, 2);
         encoder.set_output_array(count, 3);
         encoder.set_bytes(shape.lhs_rows, 4);
+        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
     }
-    encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
 #else
     (void)op;
     (void)stride;
