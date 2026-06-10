@@ -746,9 +746,6 @@ void write_target_kernel_relation(
         }
     );
     write_map_rows(outputs, row_major_edges, int(target_values.size()));
-    write_coords(
-        outputs[RelationOutCoords], target_values, target_coords.dtype()
-    );
     write_count(
         outputs[RelationCounts], int(row_major_edges.size()), target_active
     );

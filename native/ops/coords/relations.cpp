@@ -50,6 +50,25 @@ NativeKernelRelation relation_from_outputs(
     };
 }
 
+NativeKernelRelation target_relation_from_outputs(
+    const std::vector<mx::array>& outputs,
+    const mx::array& target_coords,
+    const NativeKernelRelationViews& views
+) {
+    return {
+        outputs[RelationInRows],
+        outputs[RelationOutRows],
+        outputs[RelationKernelIds],
+        outputs[RelationRowOffsets],
+        target_coords,
+        outputs[RelationCounts],
+        views.in_row_offsets,
+        views.in_edge_ids,
+        views.kernel_row_offsets,
+        views.kernel_edge_ids,
+    };
+}
+
 RelationOutputSpec relation_output_spec(
     int edges, // NOLINT(bugprone-easily-swappable-parameters)
     int out_rows,
@@ -573,6 +592,7 @@ NativeKernelRelation make_target_kernel_relation(
     auto spec = relation_output_spec(
         max_edges, target_rows, target_coords.dtype(), scratch_rows
     );
+    spec.shapes[RelationOutCoords] = mx::Shape{1, 4};
     auto inputs = std::vector<mx::array>{
         mx::contiguous(coords, false, device),
         mx::contiguous(offset_values, false, device),
@@ -600,7 +620,7 @@ NativeKernelRelation make_target_kernel_relation(
         rows,
         kernel_count
     );
-    return relation_from_outputs(outputs, views);
+    return target_relation_from_outputs(outputs, target_coords, views);
 }
 
 } // namespace mlx_lattice

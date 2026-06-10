@@ -1381,23 +1381,21 @@ void eval_target_kernel_relation(
     encoder.set_output_array(slot_out_rows, 6);
     encoder.set_output_array(slot_kernel_ids, 7);
     encoder.set_output_array(outputs[RelationRowOffsets], 8);
-    encoder.set_output_array(outputs[RelationOutCoords], 9);
-    encoder.set_output_array(outputs[RelationCounts], 10);
-    encoder.set_bytes(target_rows, 11);
-    encoder.set_bytes(kernel_count, 12);
-    encoder.set_bytes(table_capacity, 13);
-    encoder.set_bytes(stride[0], 14);
-    encoder.set_bytes(stride[1], 15);
-    encoder.set_bytes(stride[2], 16);
-    encoder.set_bytes(padding[0], 17);
-    encoder.set_bytes(padding[1], 18);
-    encoder.set_bytes(padding[2], 19);
+    encoder.set_output_array(outputs[RelationCounts], 9);
+    encoder.set_bytes(target_rows, 10);
+    encoder.set_bytes(kernel_count, 11);
+    encoder.set_bytes(table_capacity, 12);
+    encoder.set_bytes(stride[0], 13);
+    encoder.set_bytes(stride[1], 14);
+    encoder.set_bytes(stride[2], 15);
+    encoder.set_bytes(padding[0], 16);
+    encoder.set_bytes(padding[1], 17);
+    encoder.set_bytes(padding[2], 18);
     dispatch_1d(
         encoder,
         slots,
         std::max(
             {static_cast<size_t>(target_rows + 1),
-             static_cast<size_t>(target_rows) * 4,
              static_cast<size_t>(target_rows) *
                  static_cast<size_t>(kernel_count)}
         )

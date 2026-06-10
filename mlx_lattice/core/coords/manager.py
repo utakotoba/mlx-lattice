@@ -39,6 +39,9 @@ class CoordinateManager:
     _identity_keys: dict[tuple[int, int, Triple], CoordinateMapKey] = field(
         default_factory=dict
     )
+    _default_identity_keys: dict[tuple[int, Triple], CoordinateMapKey] = (
+        field(default_factory=dict)
+    )
     _active_rows: dict[CoordinateMapKey, mx.array] = field(
         default_factory=dict
     )
@@ -56,11 +59,13 @@ class CoordinateManager:
         """Register a coordinate array by object identity and stride."""
         validate_coords(coords)
         normalized = triple(stride, name='stride')
-        active = (
-            mx.array([coords.shape[0]], dtype=mx.int32)
-            if active_rows is None
-            else active_rows
-        )
+        if active_rows is None:
+            default_key = (id(coords), normalized)
+            if default_key in self._default_identity_keys:
+                return self._default_identity_keys[default_key]
+            active = mx.array([coords.shape[0]], dtype=mx.int32)
+        else:
+            active = active_rows
         cache_key = (id(coords), id(active), normalized)
         if cache_key in self._identity_keys:
             return self._identity_keys[cache_key]
@@ -70,6 +75,8 @@ class CoordinateManager:
         self._coords[key] = coords
         self._active_rows[key] = active
         self._identity_keys[cache_key] = key
+        if active_rows is None:
+            self._default_identity_keys[(id(coords), normalized)] = key
         return key
 
     def owns(self, key: CoordinateMapKey) -> bool:

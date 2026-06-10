@@ -41,13 +41,15 @@ def conv3d(
 
     if coordinates is not None:
         target_key = _target_key(x, coordinates, output_stride)
+        reuse_input = target_key == x.coord_key
         return _relation_conv(
             x,
             _target_weight(weight, spec),
             bias,
             spec,
-            map_kind='target',
+            map_kind='forward' if reuse_input else 'target',
             output_stride=target_key.stride,
+            reuse_input_coords=reuse_input,
             target_key=target_key,
         )
 
@@ -175,6 +177,15 @@ def _relation_conv(
         return x.replace(feats=_with_bias(feats, bias))
     if relation.out_coords is None:
         raise ValueError('kernel relation is missing output coordinates.')
+    if target_key is not None and map_kind == 'target':
+        return SparseTensor(
+            x.coord_manager.coords(target_key),
+            _with_bias(feats, bias),
+            stride=output_stride,
+            coord_key=target_key,
+            coord_manager=x.coord_manager,
+            active_rows=x.coord_manager.active_rows(target_key),
+        )
     return SparseTensor(
         relation.out_coords,
         _with_bias(feats, bias),

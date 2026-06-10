@@ -80,6 +80,35 @@ def test_conv3d_target_coordinates_match_sparse_reference() -> None:
     assert active_feats(out).tolist() == [[14.0], [3.0]]
     assert out.stride == x.stride
     assert out.coord_manager is x.coord_manager
+    assert out.coord_key == target_tensor.coord_key
+
+
+def test_conv3d_target_same_reuses_input_coordinate_identity() -> None:
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
+        dtype=mx.int32,
+    )
+    feats = mx.array([[1.0], [2.0], [3.0]], dtype=mx.float32)
+    x = SparseTensor(coords, feats)
+    target = SparseTensor(
+        coords,
+        mx.zeros_like(feats),
+        coord_manager=x.coord_manager,
+    )
+    weight = mx.array([1.0, 2.0, 3.0], dtype=mx.float32).reshape(
+        1, 3, 1, 1, 1
+    )
+
+    out = conv3d(
+        x,
+        weight,
+        kernel_size=(3, 1, 1),
+        coordinates=target,
+    )
+
+    assert target.coord_key == x.coord_key
+    assert out.coord_key == x.coord_key
+    assert active_feats(out).tolist() == [[8.0], [14.0], [8.0]]
 
 
 def test_conv3d_pointwise_target_coordinates_use_sparse_relation() -> None:

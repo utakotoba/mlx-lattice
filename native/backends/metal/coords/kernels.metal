@@ -179,17 +179,16 @@ using namespace metal;
     device int* out_rows [[buffer(6)]],
     device int* kernel_ids [[buffer(7)]],
     device int* row_offsets [[buffer(8)]],
-    device int* out_coords [[buffer(9)]],
-    device int* counts [[buffer(10)]],
-    constant const int& target_rows [[buffer(11)]],
-    constant const int& kernel_count [[buffer(12)]],
-    constant const int& table_capacity [[buffer(13)]],
-    constant const int& stride_x [[buffer(14)]],
-    constant const int& stride_y [[buffer(15)]],
-    constant const int& stride_z [[buffer(16)]],
-    constant const int& pad_x [[buffer(17)]],
-    constant const int& pad_y [[buffer(18)]],
-    constant const int& pad_z [[buffer(19)]],
+    device int* counts [[buffer(9)]],
+    constant const int& target_rows [[buffer(10)]],
+    constant const int& kernel_count [[buffer(11)]],
+    constant const int& table_capacity [[buffer(12)]],
+    constant const int& stride_x [[buffer(13)]],
+    constant const int& stride_y [[buffer(14)]],
+    constant const int& stride_z [[buffer(15)]],
+    constant const int& pad_x [[buffer(16)]],
+    constant const int& pad_y [[buffer(17)]],
+    constant const int& pad_z [[buffer(18)]],
     uint elem [[thread_position_in_grid]]
 ) {
     int out_count = min(target_active_rows[0], target_rows);
@@ -203,11 +202,6 @@ using namespace metal;
     if (elem <= uint(target_rows)) {
         int row = int(elem);
         row_offsets[row] = min(row, out_count) * kernel_count;
-    }
-
-    int coord_total = target_rows * 4;
-    if (elem < uint(coord_total)) {
-        out_coords[elem] = target_coords[elem];
     }
 
     if (elem >= uint(edge_count)) {

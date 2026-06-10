@@ -35,13 +35,14 @@ class SparseTensor:
         active_rows: mx.array | None = None,
     ) -> None:
         normalized_stride = triple(stride, name='stride')
-        normalized_active = _active_rows(active_rows, coords.shape[0])
-        manager, key, owned_coords = _resolve_coordinate_identity(
-            coords,
-            normalized_stride,
-            normalized_active,
-            coord_key=coord_key,
-            coord_manager=coord_manager,
+        manager, key, owned_coords, normalized_active = (
+            _resolve_coordinate_identity(
+                coords,
+                normalized_stride,
+                active_rows,
+                coord_key=coord_key,
+                coord_manager=coord_manager,
+            )
         )
         if feats.ndim != 2:
             raise ValueError('feats must have shape (N, C).')
@@ -174,21 +175,18 @@ class SparseTensor:
 def _resolve_coordinate_identity(
     coords: mx.array,
     stride: Triple,
-    active_rows: mx.array,
+    active_rows: mx.array | None,
     *,
     coord_key: CoordinateMapKey | None,
     coord_manager: CoordinateManager | None,
-) -> tuple[CoordinateManager, CoordinateMapKey, mx.array]:
+) -> tuple[CoordinateManager, CoordinateMapKey, mx.array, mx.array]:
     validate_coords(coords)
     if coord_key is None:
         manager = (
             CoordinateManager() if coord_manager is None else coord_manager
         )
-        return (
-            manager,
-            manager.insert_coords(coords, stride, active_rows),
-            coords,
-        )
+        key = manager.insert_coords(coords, stride, active_rows)
+        return (manager, key, coords, manager.active_rows(key))
 
     if coord_manager is None:
         raise ValueError('coord_manager is required when coord_key is set.')
@@ -202,7 +200,14 @@ def _resolve_coordinate_identity(
         raise ValueError(
             'coords must be the manager-owned array for coord_key.'
         )
-    return coord_manager, coord_key, owned_coords
+    return (
+        coord_manager,
+        coord_key,
+        owned_coords,
+        coord_manager.active_rows(coord_key)
+        if active_rows is None
+        else _active_rows(active_rows, coords.shape[0]),
+    )
 
 
 def _batch_counts(
