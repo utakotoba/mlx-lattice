@@ -6,6 +6,7 @@
 
 #include "backends/cpu/conv/algorithms.h"
 #include "backends/metal/conv/runtime.h"
+#include "mlx/device.h"
 #include "mlx/ops.h"
 #include "ops/coords/factories.h"
 #include "ops/exec/primitive.h"
@@ -137,6 +138,23 @@ class SparseConvFeatures final : public SparsePrimitive {
                     shape_
                 ));
             } else if (argnum == 1) {
+                if (stream().device == mx::Device(mx::Device::gpu) &&
+                    shape_.n_kernels < 16) {
+                    grads.push_back(make_sparse_conv_features_weight_grad(
+                        primals[0],
+                        cotangents[0],
+                        primals[2],
+                        primals[3],
+                        primals[4],
+                        primals[5],
+                        primals[6],
+                        primals[6],
+                        primals[2],
+                        primals[1].shape(),
+                        shape_
+                    ));
+                    continue;
+                }
                 auto view = make_relation_grouped_view(
                     primals[4], primals[5], shape_.n_kernels
                 );
