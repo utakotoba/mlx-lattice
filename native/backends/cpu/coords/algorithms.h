@@ -52,6 +52,14 @@ void eval_generic_kernel_relation(
     std::vector<mx::array>& outputs
 );
 
+void eval_target_kernel_relation(
+    Triple stride,
+    Triple padding,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
 void eval_generative_kernel_relation(
     Triple stride,
     const mx::Stream& stream,

@@ -5,7 +5,7 @@ from collections.abc import Sequence
 import mlx.core as mx
 
 from mlx_lattice._native import ext
-from mlx_lattice.core import KernelSpec, SparseTensor
+from mlx_lattice.core import CoordinateMapKey, KernelSpec, SparseTensor
 from mlx_lattice.core.types import Triple
 
 __all__ = [
@@ -25,6 +25,7 @@ def conv3d(
     stride: int | Sequence[int] = 1,
     padding: int | Sequence[int] = 0,
     dilation: int | Sequence[int] = 1,
+    coordinates: SparseTensor | CoordinateMapKey | mx.array | None = None,
 ) -> SparseTensor:
     spec = KernelSpec(
         size=kernel_size,
@@ -32,9 +33,22 @@ def conv3d(
         padding=padding,
         dilation=dilation,
     )
-    if spec.is_pointwise:
+    output_stride = _mul_stride(x.stride, spec.stride)
+    if coordinates is None and spec.is_pointwise:
         return x.replace(
             feats=_with_bias(_pointwise_features(x, weight), bias)
+        )
+
+    if coordinates is not None:
+        target_key = _target_key(x, coordinates, output_stride)
+        return _relation_conv(
+            x,
+            _target_weight(weight, spec),
+            bias,
+            spec,
+            map_kind='target',
+            output_stride=target_key.stride,
+            target_key=target_key,
         )
 
     return _relation_conv(
@@ -43,7 +57,7 @@ def conv3d(
         bias,
         spec,
         map_kind='forward',
-        output_stride=_mul_stride(x.stride, spec.stride),
+        output_stride=output_stride,
     )
 
 
@@ -135,11 +149,12 @@ def _relation_conv(
     map_kind: str,
     output_stride: Triple,
     reuse_input_coords: bool = False,
+    target_key: CoordinateMapKey | None = None,
 ) -> SparseTensor:
     _validate_feature_dtype(x.feats, weight)
     _validate_metal_coord_dtype(x)
     _validate_weight_for_kernel(x, weight, spec.volume)
-    relation = _kernel_relation(x, spec, map_kind)
+    relation = _kernel_relation(x, spec, map_kind, target_key=target_key)
     if relation.n_out_capacity is None or relation.n_kernels is None:
         raise ValueError(
             'kernel relation is missing static shape metadata.'
@@ -173,6 +188,8 @@ def _kernel_relation(
     x: SparseTensor,
     spec: KernelSpec,
     map_kind: str,
+    *,
+    target_key: CoordinateMapKey | None = None,
 ):
     if map_kind == 'forward':
         return x.coord_manager.kernel_relation(
@@ -196,15 +213,62 @@ def _kernel_relation(
             kernel_size=spec.size,
             stride=spec.stride,
         )
+    if map_kind == 'target':
+        if target_key is None:
+            raise ValueError('target_key is required for target relations.')
+        return x.coord_manager.target_kernel_relation(
+            x.coord_key,
+            target_key,
+            kernel_size=spec.size,
+            stride=spec.stride,
+            padding=spec.padding,
+            dilation=spec.dilation,
+        )
     raise ValueError(
-        "map_kind must be 'forward', 'transposed', or 'generative'."
+        "map_kind must be 'forward', 'transposed', 'generative', or 'target'."
     )
+
+
+def _target_key(
+    x: SparseTensor,
+    coordinates: SparseTensor | CoordinateMapKey | mx.array,
+    output_stride: Triple,
+) -> CoordinateMapKey:
+    if isinstance(coordinates, SparseTensor):
+        if coordinates.stride != output_stride:
+            raise ValueError(
+                'target coordinates must use the convolution output stride.'
+            )
+        if coordinates.coord_manager is x.coord_manager:
+            return coordinates.coord_key
+        return x.coord_manager.insert_coords(
+            coordinates.coords,
+            coordinates.stride,
+            coordinates.active_rows,
+        )
+    if isinstance(coordinates, CoordinateMapKey):
+        if not x.coord_manager.owns(coordinates):
+            raise ValueError(
+                'target coordinate key must belong to x.coord_manager.'
+            )
+        if coordinates.stride != output_stride:
+            raise ValueError(
+                'target coordinate key must use the convolution output stride.'
+            )
+        return coordinates
+    return x.coord_manager.insert_coords(coordinates, output_stride)
 
 
 def _pointwise_features(x: SparseTensor, weight: mx.array) -> mx.array:
     _validate_feature_dtype(x.feats, weight)
     matrix = _pointwise_weight_matrix(x, weight)
     return x.feats @ matrix.T
+
+
+def _target_weight(weight: mx.array, spec: KernelSpec) -> mx.array:
+    if not spec.is_pointwise or weight.ndim != 2:
+        return weight
+    return mx.expand_dims(weight.T, axis=0)
 
 
 # MARK: - validation

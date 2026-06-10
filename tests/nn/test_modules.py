@@ -122,6 +122,26 @@ def test_convolution_modules_use_mlx_weight_layout_and_public_ops() -> None:
     assert subm_out.feats.tolist() == active_feats(out).tolist()
 
 
+def test_conv3d_module_accepts_target_coordinates() -> None:
+    x = SparseTensor(
+        mx.array(
+            [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
+            dtype=mx.int32,
+        ),
+        mx.array([[1.0], [2.0], [3.0]], dtype=mx.float32),
+    )
+    target = mx.array([[0, 1, 0, 0], [0, 3, 0, 0]], dtype=mx.int32)
+    conv = lnn.Conv3d(1, 1, kernel_size=(3, 1, 1), bias=False)
+    conv.weight = mx.array([1.0, 2.0, 3.0], dtype=mx.float32).reshape(
+        1, 3, 1, 1, 1
+    )
+
+    out = conv(x, coordinates=target)
+
+    assert active_coords(out) == target.tolist()
+    assert active_feats(out).tolist() == [[14.0], [3.0]]
+
+
 def test_sparse_operator_modules_are_autogradable() -> None:
     coords = mx.array(
         [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],

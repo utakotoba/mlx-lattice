@@ -9,6 +9,7 @@ import mlx.core as mx
 from mlx_lattice.core.coords.builders import (
     build_generative_relation,
     build_kernel_relation,
+    build_target_kernel_relation,
     build_transposed_kernel_relation,
 )
 from mlx_lattice.core.coords.set_ops import inverse_map
@@ -42,7 +43,8 @@ class CoordinateManager:
         default_factory=dict
     )
     _kernel_relations: dict[
-        tuple[CoordinateMapKey, KernelSpec, str], KernelRelation
+        tuple[CoordinateMapKey, CoordinateMapKey | None, KernelSpec, str],
+        KernelRelation,
     ] = field(default_factory=dict)
 
     def insert_coords(
@@ -109,7 +111,7 @@ class CoordinateManager:
             padding=padding,
             dilation=dilation,
         )
-        cache_key = (key, spec, 'forward')
+        cache_key = (key, None, spec, 'forward')
         if cache_key not in self._kernel_relations:
             self._kernel_relations[cache_key] = build_kernel_relation(
                 self.coords(key),
@@ -129,7 +131,7 @@ class CoordinateManager:
         stride: int | Sequence[int] = 2,
     ) -> KernelRelation:
         spec = KernelSpec(size=kernel_size, stride=stride)
-        cache_key = (key, spec, 'generative')
+        cache_key = (key, None, spec, 'generative')
         if cache_key not in self._kernel_relations:
             self._kernel_relations[cache_key] = build_generative_relation(
                 self.coords(key),
@@ -154,12 +156,48 @@ class CoordinateManager:
             padding=padding,
             dilation=dilation,
         )
-        cache_key = (key, spec, 'transpose')
+        cache_key = (key, None, spec, 'transpose')
         if cache_key not in self._kernel_relations:
             self._kernel_relations[cache_key] = (
                 build_transposed_kernel_relation(
                     self.coords(key),
                     active_rows=self.active_rows(key),
+                    kernel_size=spec.size,
+                    stride=spec.stride,
+                    padding=spec.padding,
+                    dilation=spec.dilation,
+                )
+            )
+        return self._kernel_relations[cache_key]
+
+    def target_kernel_relation(
+        self,
+        key: CoordinateMapKey,
+        target_key: CoordinateMapKey,
+        *,
+        kernel_size: int | Sequence[int] = 3,
+        stride: int | Sequence[int] = 1,
+        padding: int | Sequence[int] = 0,
+        dilation: int | Sequence[int] = 1,
+    ) -> KernelRelation:
+        if not self.owns(key) or not self.owns(target_key):
+            raise ValueError(
+                'input and target coordinate keys must belong to this manager.'
+            )
+        spec = KernelSpec(
+            size=kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+        )
+        cache_key = (key, target_key, spec, 'target')
+        if cache_key not in self._kernel_relations:
+            self._kernel_relations[cache_key] = (
+                build_target_kernel_relation(
+                    self.coords(key),
+                    self.coords(target_key),
+                    active_rows=self.active_rows(key),
+                    target_active_rows=self.active_rows(target_key),
                     kernel_size=spec.size,
                     stride=spec.stride,
                     padding=spec.padding,

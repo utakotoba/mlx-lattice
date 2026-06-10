@@ -7,6 +7,7 @@ from mlx_lattice.core.coords.builders import (
     build_kernel_relation,
     build_knn_relation,
     build_radius_relation,
+    build_target_kernel_relation,
     build_transposed_kernel_relation,
     kernel_offsets,
 )
@@ -18,12 +19,14 @@ __all__ = [
     'build_kernel_relation',
     'build_knn_relation',
     'build_radius_relation',
+    'build_target_kernel_relation',
     'build_transposed_kernel_relation',
     'generative_kernel_relation',
     'kernel_offsets',
     'kernel_relation',
     'knn_relation',
     'radius_relation',
+    'target_kernel_relation',
     'transposed_kernel_relation',
 ]
 
@@ -68,6 +71,31 @@ def transposed_kernel_relation(
 ) -> KernelRelation:
     return x.coord_manager.transposed_kernel_relation(
         x.coord_key,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+    )
+
+
+def target_kernel_relation(
+    x: SparseTensor,
+    target: SparseTensor,
+    *,
+    kernel_size: int | Sequence[int] = 3,
+    stride: int | Sequence[int] = 1,
+    padding: int | Sequence[int] = 0,
+    dilation: int | Sequence[int] = 1,
+) -> KernelRelation:
+    if x.coord_manager is not target.coord_manager:
+        target_key = x.coord_manager.insert_coords(
+            target.coords, target.stride, target.active_rows
+        )
+    else:
+        target_key = target.coord_key
+    return x.coord_manager.target_kernel_relation(
+        x.coord_key,
+        target_key,
         kernel_size=kernel_size,
         stride=stride,
         padding=padding,

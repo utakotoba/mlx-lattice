@@ -6,7 +6,7 @@ from collections.abc import Sequence
 import mlx.core as mx
 import mlx.nn as mxnn
 
-from mlx_lattice.core import KernelSpec, SparseTensor
+from mlx_lattice.core import CoordinateMapKey, KernelSpec, SparseTensor
 from mlx_lattice.ops import (
     conv3d,
     conv_transpose3d,
@@ -45,7 +45,15 @@ class Conv3d(mxnn.Module):
             self, in_channels, out_channels, self.spec, bias
         )
 
-    def __call__(self, x: SparseTensor) -> SparseTensor:
+    def __call__(
+        self,
+        x: SparseTensor,
+        *,
+        coordinates: SparseTensor
+        | CoordinateMapKey
+        | mx.array
+        | None = None,
+    ) -> SparseTensor:
         return conv3d(
             x,
             self.weight,
@@ -54,6 +62,7 @@ class Conv3d(mxnn.Module):
             stride=self.spec.stride,
             padding=self.spec.padding,
             dilation=self.spec.dilation,
+            coordinates=coordinates,
         )
 
 

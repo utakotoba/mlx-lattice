@@ -52,6 +52,84 @@ def test_conv3d_generic_matches_fused_native_reference() -> None:
     assert out.coord_manager.owns(out.coord_key)
 
 
+def test_conv3d_target_coordinates_match_sparse_reference() -> None:
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
+        dtype=mx.int32,
+    )
+    target = mx.array([[0, 1, 0, 0], [0, 3, 0, 0]], dtype=mx.int32)
+    feats = mx.array([[1.0], [2.0], [3.0]], dtype=mx.float32)
+    x = SparseTensor(coords, feats)
+    target_tensor = SparseTensor(
+        target,
+        mx.zeros((2, 1), dtype=mx.float32),
+        coord_manager=x.coord_manager,
+    )
+    weight = mx.array([1.0, 2.0, 3.0], dtype=mx.float32).reshape(
+        1, 3, 1, 1, 1
+    )
+
+    out = conv3d(
+        x,
+        weight,
+        kernel_size=(3, 1, 1),
+        coordinates=target_tensor,
+    )
+
+    assert active_coords(out) == target.tolist()
+    assert active_feats(out).tolist() == [[14.0], [3.0]]
+    assert out.stride == x.stride
+    assert out.coord_manager is x.coord_manager
+
+
+def test_conv3d_pointwise_target_coordinates_use_sparse_relation() -> None:
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
+        dtype=mx.int32,
+    )
+    target = mx.array([[0, 1, 0, 0], [0, 3, 0, 0]], dtype=mx.int32)
+    feats = mx.array([[1.0], [2.0], [3.0]], dtype=mx.float32)
+    x = SparseTensor(coords, feats)
+    weight = mx.array([[2.0]], dtype=mx.float32)
+
+    out = conv3d(x, weight, kernel_size=1, coordinates=target)
+
+    assert active_coords(out) == target.tolist()
+    assert active_feats(out).tolist() == [[4.0], [0.0]]
+
+
+def test_conv3d_target_path_is_autogradable() -> None:
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
+        dtype=mx.int32,
+    )
+    target = mx.array([[0, 1, 0, 0], [0, 3, 0, 0]], dtype=mx.int32)
+    feats = mx.array([[1.0], [2.0], [3.0]], dtype=mx.float32)
+    weight = mx.array([1.0, 2.0, 3.0], dtype=mx.float32).reshape(
+        1,
+        3,
+        1,
+        1,
+        1,
+    )
+
+    def loss(feats_arg: mx.array, weight_arg: mx.array) -> mx.array:
+        x = SparseTensor(coords, feats_arg)
+        return mx.sum(
+            conv3d(
+                x,
+                weight_arg,
+                kernel_size=(3, 1, 1),
+                coordinates=target,
+            ).feats
+        )
+
+    grad_feats, grad_weight = mx.grad(loss, argnums=(0, 1))(feats, weight)
+
+    assert grad_feats.tolist() == [[1.0], [2.0], [4.0]]
+    assert grad_weight.tolist() == [[[[[4.0]]], [[[2.0]]], [[[3.0]]]]]
+
+
 def test_conv3d_generic_path_is_autogradable_for_features_and_weights() -> (
     None
 ):

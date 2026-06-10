@@ -54,6 +54,17 @@ NativeKernelRelation build_transposed_kernel_relation(
     Triple dilation
 );
 
+NativeKernelRelation build_target_kernel_relation(
+    const mx::array& coords,
+    const mx::array& active_rows,
+    const mx::array& target_coords,
+    const mx::array& target_active_rows,
+    Triple kernel_size,
+    Triple stride,
+    Triple padding,
+    Triple dilation
+);
+
 NativeNeighborRelation build_knn_relation(
     const mx::array& source_coords,
     const mx::array& source_active_rows,

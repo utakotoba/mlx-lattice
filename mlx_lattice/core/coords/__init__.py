@@ -5,6 +5,7 @@ from mlx_lattice.core.coords.builders import (
     build_kernel_relation,
     build_knn_relation,
     build_radius_relation,
+    build_target_kernel_relation,
     build_transposed_kernel_relation,
     kernel_offsets,
 )
@@ -36,6 +37,7 @@ __all__ = [
     'build_kernel_relation',
     'build_knn_relation',
     'build_radius_relation',
+    'build_target_kernel_relation',
     'build_transposed_kernel_relation',
     'contains_coords',
     'downsample_coords',

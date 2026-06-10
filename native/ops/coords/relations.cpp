@@ -237,6 +237,67 @@ class GenerativeKernelRelation final : public mx::Primitive {
     Triple stride_;
 };
 
+class TargetKernelRelation final : public mx::Primitive {
+  public:
+    TargetKernelRelation(
+        mx::Stream stream,
+        int rows, // NOLINT(bugprone-easily-swappable-parameters)
+        int target_rows,
+        int kernel_count,
+        Triple stride, // NOLINT(bugprone-easily-swappable-parameters)
+        Triple padding
+    )
+        : mx::Primitive(stream), rows_(rows), target_rows_(target_rows),
+          kernel_count_(kernel_count), stride_(stride), padding_(padding) {}
+
+    void eval_cpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        coords::cpu::eval_target_kernel_relation(
+            stride_, padding_, stream(), inputs, outputs
+        );
+    }
+
+    void eval_gpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        coords::metal::eval_target_kernel_relation(
+            rows_,
+            target_rows_,
+            kernel_count_,
+            stride_,
+            padding_,
+            stream(),
+            inputs,
+            outputs
+        );
+    }
+
+    const char* name() const override {
+        return "lattice::TargetKernelRelation";
+    }
+
+    bool is_equivalent(const mx::Primitive& other) const override {
+        if (typeid(other) != typeid(TargetKernelRelation)) {
+            return false;
+        }
+        const auto& relation = static_cast<const TargetKernelRelation&>(other);
+        return rows_ == relation.rows_ &&
+               target_rows_ == relation.target_rows_ &&
+               kernel_count_ == relation.kernel_count_ &&
+               stride_ == relation.stride_ && padding_ == relation.padding_;
+    }
+
+  private:
+    int rows_;
+    int target_rows_;
+    int kernel_count_;
+    Triple stride_;
+    Triple padding_;
+};
+
 class RelationGroupedView final : public mx::Primitive {
   public:
     RelationGroupedView(mx::Stream stream, RelationGroupedViewShape shape)
@@ -480,6 +541,57 @@ NativeKernelRelation make_transposed_kernel_relation(
         offset_values,
         active_rows,
         device
+    );
+    auto views = make_kernel_relation_views(
+        outputs[RelationInRows],
+        outputs[RelationKernelIds],
+        outputs[RelationCounts],
+        rows,
+        kernel_count
+    );
+    return relation_from_outputs(outputs, views);
+}
+
+NativeKernelRelation make_target_kernel_relation(
+    const mx::array& coords,
+    const mx::array& active_rows,
+    const mx::array& target_coords,
+    const mx::array& target_active_rows,
+    Triple kernel_size, // NOLINT(bugprone-easily-swappable-parameters)
+    Triple stride,
+    Triple padding, // NOLINT(bugprone-easily-swappable-parameters)
+    Triple dilation
+) {
+    auto offsets = kernel_offsets(kernel_size, dilation);
+    auto offset_values = make_offsets_array(offsets);
+    auto rows = coords.shape(0);
+    auto target_rows = target_coords.shape(0);
+    auto kernel_count = int(offsets.size());
+    auto max_edges = target_rows * kernel_count;
+    auto device = coord_device();
+    auto scratch_rows = is_gpu_device(device) ? coord_hash_capacity(rows) : 0;
+    auto spec = relation_output_spec(
+        max_edges, target_rows, target_coords.dtype(), scratch_rows
+    );
+    auto inputs = std::vector<mx::array>{
+        mx::contiguous(coords, false, device),
+        mx::contiguous(offset_values, false, device),
+        mx::contiguous(active_rows, false, device),
+        mx::contiguous(target_coords, false, device),
+        mx::contiguous(target_active_rows, false, device),
+    };
+    auto outputs = mx::array::make_arrays(
+        spec.shapes,
+        spec.dtypes,
+        std::make_shared<TargetKernelRelation>(
+            coord_stream(device),
+            rows,
+            target_rows,
+            kernel_count,
+            stride,
+            padding
+        ),
+        inputs
     );
     auto views = make_kernel_relation_views(
         outputs[RelationInRows],

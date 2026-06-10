@@ -1318,6 +1318,115 @@ void eval_generic_kernel_relation(
 #endif
 }
 
+void eval_target_kernel_relation(
+    int rows, // NOLINT(bugprone-easily-swappable-parameters)
+    int target_rows,
+    int kernel_count,
+    Triple stride, // NOLINT(bugprone-easily-swappable-parameters)
+    Triple padding,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    require_i32_inputs(
+        inputs,
+        {"coords",
+         "kernel offsets",
+         "active rows",
+         "target coords",
+         "target active rows"}
+    );
+
+#ifdef _METAL_
+    backend::allocate_all(outputs);
+
+    auto& device = mx::metal::device(stream.device);
+    auto library =
+        device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
+    auto& encoder = mx::metal::get_command_encoder(stream);
+    auto table_capacity =
+        static_cast<int>(outputs[RelationBaseOutputCount].shape(0));
+    clear_coord_hash(
+        device,
+        library,
+        encoder,
+        outputs[RelationBaseOutputCount],
+        table_capacity
+    );
+
+    auto insert =
+        device.get_kernel("coord_hash_insert_active_rows_i32", library);
+    encoder.set_compute_pipeline_state(insert);
+    encoder.set_input_array(inputs[0], 0);
+    encoder.set_input_array(inputs[2], 1);
+    encoder.set_output_array(outputs[RelationBaseOutputCount], 2);
+    encoder.set_bytes(rows, 3);
+    encoder.set_bytes(table_capacity, 4);
+    dispatch_1d(encoder, insert, static_cast<size_t>(rows));
+
+    auto slot_in_rows = make_int32_temp(target_rows * kernel_count);
+    auto slot_out_rows = make_int32_temp(target_rows * kernel_count);
+    auto slot_kernel_ids = make_int32_temp(target_rows * kernel_count);
+    encoder.add_temporaries({slot_in_rows, slot_out_rows, slot_kernel_ids});
+
+    auto slots =
+        device.get_kernel("build_target_forward_relation_slots_i32", library);
+    encoder.set_compute_pipeline_state(slots);
+    encoder.set_input_array(inputs[0], 0);
+    encoder.set_input_array(inputs[1], 1);
+    encoder.set_input_array(inputs[3], 2);
+    encoder.set_input_array(inputs[4], 3);
+    encoder.set_input_array(outputs[RelationBaseOutputCount], 4);
+    encoder.set_output_array(slot_in_rows, 5);
+    encoder.set_output_array(slot_out_rows, 6);
+    encoder.set_output_array(slot_kernel_ids, 7);
+    encoder.set_output_array(outputs[RelationRowOffsets], 8);
+    encoder.set_output_array(outputs[RelationOutCoords], 9);
+    encoder.set_output_array(outputs[RelationCounts], 10);
+    encoder.set_bytes(target_rows, 11);
+    encoder.set_bytes(kernel_count, 12);
+    encoder.set_bytes(table_capacity, 13);
+    encoder.set_bytes(stride[0], 14);
+    encoder.set_bytes(stride[1], 15);
+    encoder.set_bytes(stride[2], 16);
+    encoder.set_bytes(padding[0], 17);
+    encoder.set_bytes(padding[1], 18);
+    encoder.set_bytes(padding[2], 19);
+    dispatch_1d(
+        encoder,
+        slots,
+        std::max(
+            {static_cast<size_t>(target_rows + 1),
+             static_cast<size_t>(target_rows) * 4,
+             static_cast<size_t>(target_rows) *
+                 static_cast<size_t>(kernel_count)}
+        )
+    );
+    compact_forward_relation_slots(
+        device,
+        library,
+        encoder,
+        ForwardRelationSlotArrays{
+            .in_rows = slot_in_rows,
+            .out_rows = slot_out_rows,
+            .kernel_ids = slot_kernel_ids,
+        },
+        outputs,
+        RelationSlotShape{.rows = target_rows, .kernel_count = kernel_count}
+    );
+#else
+    (void)rows;
+    (void)target_rows;
+    (void)kernel_count;
+    (void)stride;
+    (void)padding;
+    (void)stream;
+    (void)inputs;
+    (void)outputs;
+    throw std::runtime_error("Metal support is not available.");
+#endif
+}
+
 void eval_generative_kernel_relation(
     int rows, // NOLINT(bugprone-easily-swappable-parameters)
     int kernel_count,

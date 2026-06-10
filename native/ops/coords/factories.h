@@ -50,6 +50,17 @@ NativeKernelRelation make_transposed_kernel_relation(
     Triple dilation
 );
 
+NativeKernelRelation make_target_kernel_relation(
+    const mx::array& coords,
+    const mx::array& active_rows,
+    const mx::array& target_coords,
+    const mx::array& target_active_rows,
+    Triple kernel_size,
+    Triple stride,
+    Triple padding,
+    Triple dilation
+);
+
 NativeKernelRelationViews make_kernel_relation_views(
     const mx::array& in_rows,
     const mx::array& kernel_ids,

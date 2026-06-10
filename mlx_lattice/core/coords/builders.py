@@ -36,6 +36,44 @@ type NativeNeighborRelation = tuple[
 ]
 
 
+def build_target_kernel_relation(
+    coords: mx.array,
+    target_coords: mx.array,
+    *,
+    active_rows: mx.array | None = None,
+    target_active_rows: mx.array | None = None,
+    kernel_size: int | Sequence[int] = 3,
+    stride: int | Sequence[int] = 1,
+    padding: int | Sequence[int] = 0,
+    dilation: int | Sequence[int] = 1,
+) -> KernelRelation:
+    validate_coords(coords)
+    validate_coords(target_coords)
+    _require_matching_coord_dtype(coords, target_coords)
+    spec = KernelSpec(
+        size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+    )
+    offsets = kernel_offsets(spec.size, spec.dilation)
+    native = ext.build_target_kernel_relation(
+        coords,
+        _active_rows(active_rows, coords),
+        target_coords,
+        _active_rows(target_active_rows, target_coords),
+        spec.size,
+        spec.stride,
+        spec.padding,
+        spec.dilation,
+    )
+    return _kernel_relation_from_native(
+        native,
+        offsets=offsets,
+        in_capacity=int(coords.shape[0]),
+    )
+
+
 def kernel_offsets(
     kernel_size: int | Sequence[int],
     dilation: int | Sequence[int] = 1,

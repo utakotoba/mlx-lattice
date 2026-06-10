@@ -10,6 +10,7 @@ from mlx_lattice.ops import (
     build_kernel_relation,
     build_knn_relation,
     build_radius_relation,
+    build_target_kernel_relation,
     build_transposed_kernel_relation,
     downsample_coords,
     intersection_coords,
@@ -142,6 +143,48 @@ def test_kernel_offsets_and_relation_builders_emit_expected_edges() -> None:
         1,
         4,
     ]
+
+
+def test_target_kernel_relation_uses_explicit_output_coordinates() -> None:
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
+        dtype=mx.int32,
+    )
+    target = mx.array([[0, 1, 0, 0], [0, 3, 0, 0]], dtype=mx.int32)
+
+    relation = build_target_kernel_relation(
+        coords,
+        target,
+        kernel_size=(3, 1, 1),
+    )
+
+    assert relation.out_coords is not None
+    assert _active_coords(relation.out_coords, relation.out_count) == [
+        [0, 1, 0, 0],
+        [0, 3, 0, 0],
+    ]
+    assert relation.counts.tolist() == [4, 2]
+    assert _active_rows(relation.edges.in_rows, relation.edge_count) == [
+        0,
+        1,
+        2,
+        2,
+    ]
+    assert _active_rows(relation.edges.out_rows, relation.edge_count) == [
+        0,
+        0,
+        0,
+        1,
+    ]
+    assert _active_rows(relation.edges.kernel_ids, relation.edge_count) == [
+        0,
+        1,
+        2,
+        0,
+    ]
+    assert _active_row_offsets(
+        relation.row_offsets, relation.out_count
+    ) == [0, 3, 4]
 
 
 def test_strided_and_transposed_relations_define_output_policy() -> None:
@@ -353,6 +396,24 @@ def test_coordinate_manager_caches_tensor_kernel_relations() -> None:
     assert tensor_relation.kernel_offsets == first.kernel_offsets
 
 
+def test_coordinate_manager_caches_target_kernel_relations() -> None:
+    coords = mx.array([[0, 0, 0, 0], [0, 1, 0, 0]], dtype=mx.int32)
+    target = mx.array([[0, 1, 0, 0]], dtype=mx.int32)
+    manager = CoordinateManager()
+    key = manager.insert_coords(coords)
+    target_key = manager.insert_coords(target)
+
+    first = manager.target_kernel_relation(
+        key, target_key, kernel_size=(3, 1, 1)
+    )
+    second = manager.target_kernel_relation(
+        key, target_key, kernel_size=(3, 1, 1)
+    )
+
+    assert first is second
+    assert first.counts.tolist() == [2, 1]
+
+
 def test_metal_coordinate_primitives_match_cpu_contract_when_available() -> (
     None
 ):
@@ -394,6 +455,55 @@ def test_metal_coordinate_primitives_match_cpu_contract_when_available() -> (
         [1, 2, 0, 1, 2, 0, 1],
         [0, 2, 5, 7],
         [7, 3],
+    )
+
+
+def test_metal_target_relation_matches_cpu_contract_when_available() -> (
+    None
+):
+    def run() -> tuple[
+        list[list[int]],
+        list[int],
+        list[int],
+        list[int],
+        list[int],
+        list[int],
+    ]:
+        coords = mx.array(
+            [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
+            dtype=mx.int32,
+        )
+        target = mx.array([[0, 1, 0, 0], [0, 3, 0, 0]], dtype=mx.int32)
+        relation = build_target_kernel_relation(
+            coords,
+            target,
+            kernel_size=(3, 1, 1),
+        )
+        mx.eval(
+            relation.out_coords,
+            relation.edges.in_rows,
+            relation.edges.out_rows,
+            relation.edges.kernel_ids,
+            relation.row_offsets,
+            relation.counts,
+        )
+        assert relation.out_coords is not None
+        return (
+            _active_coords(relation.out_coords, relation.out_count),
+            _active_rows(relation.edges.in_rows, relation.edge_count),
+            _active_rows(relation.edges.out_rows, relation.edge_count),
+            _active_rows(relation.edges.kernel_ids, relation.edge_count),
+            _active_row_offsets(relation.row_offsets, relation.out_count),
+            cast('list[int]', relation.counts.tolist()),
+        )
+
+    assert run_with_gpu_default(run) == (
+        [[0, 1, 0, 0], [0, 3, 0, 0]],
+        [0, 1, 2, 2],
+        [0, 0, 0, 1],
+        [0, 1, 2, 0],
+        [0, 3, 4],
+        [4, 2],
     )
 
 

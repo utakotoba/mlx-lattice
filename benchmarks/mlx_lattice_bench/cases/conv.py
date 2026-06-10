@@ -25,6 +25,9 @@ type ConvKind = Literal[
     'pointwise',
     'generic',
     'subm',
+    'target_same',
+    'target_subset',
+    'target_superset',
     'transpose',
     'generative_transpose',
 ]
@@ -34,6 +37,8 @@ type ConvGradTarget = Literal['features', 'weight', 'both']
 @dataclass(frozen=True, slots=True)
 class ConvFixture:
     arrays: SparseArrays
+    target_subset_coords: mx.array
+    target_superset_coords: mx.array
     pointwise_weight: mx.array
     kernel3_weight: mx.array
     kernel2_weight: mx.array
@@ -42,6 +47,9 @@ class ConvFixture:
 @dataclass(frozen=True, slots=True)
 class ConvInputs:
     x: SparseTensor
+    target_same: SparseTensor
+    target_subset: SparseTensor
+    target_superset: SparseTensor
     transposed: SparseTensor
     pointwise_weight: mx.array
     kernel3_weight: mx.array
@@ -60,6 +68,9 @@ def cases(
         ('conv3d_pointwise', 'pointwise'),
         ('conv3d_generic', 'generic'),
         ('subm_conv3d', 'subm'),
+        ('conv3d_target_same', 'target_same'),
+        ('conv3d_target_subset', 'target_subset'),
+        ('conv3d_target_superset', 'target_superset'),
         ('conv_transpose3d', 'transpose'),
         ('generative_conv_transpose3d', 'generative_transpose'),
     )
@@ -119,8 +130,15 @@ def _setup(params: Mapping[str, Any]) -> ConvFixture:
         channels=channels,
         batches=int(params['batches']),
     )
+    superset = sparse_arrays(
+        rows=benchmark_n(params) + max(1, benchmark_n(params) // 4),
+        channels=channels,
+        batches=int(params['batches']),
+    )
     return ConvFixture(
         arrays=arrays,
+        target_subset_coords=arrays.coords[::2],
+        target_superset_coords=superset.coords,
         pointwise_weight=dense_weight((channels, 1, 1, 1, channels)),
         kernel3_weight=dense_weight((channels, 3, 3, 3, channels)),
         kernel2_weight=dense_weight((channels, 2, 2, 2, channels)),
@@ -128,8 +146,30 @@ def _setup(params: Mapping[str, Any]) -> ConvFixture:
 
 
 def _prepare(fixture: ConvFixture) -> ConvInputs:
+    x = fixture.arrays.tensor()
     return ConvInputs(
-        x=fixture.arrays.tensor(),
+        x=x,
+        target_same=SparseTensor(
+            fixture.arrays.coords,
+            mx.zeros_like(fixture.arrays.feats),
+            coord_manager=x.coord_manager,
+        ),
+        target_subset=SparseTensor(
+            fixture.target_subset_coords,
+            mx.zeros(
+                (fixture.target_subset_coords.shape[0], x.channels),
+                dtype=x.dtype,
+            ),
+            coord_manager=x.coord_manager,
+        ),
+        target_superset=SparseTensor(
+            fixture.target_superset_coords,
+            mx.zeros(
+                (fixture.target_superset_coords.shape[0], x.channels),
+                dtype=x.dtype,
+            ),
+            coord_manager=x.coord_manager,
+        ),
         transposed=fixture.arrays.tensor(stride=2),
         pointwise_weight=fixture.pointwise_weight,
         kernel3_weight=fixture.kernel3_weight,
@@ -144,6 +184,27 @@ def _run(kind: ConvKind, inputs: ConvInputs) -> SparseTensor:
         return conv3d(inputs.x, inputs.kernel3_weight, kernel_size=3)
     if kind == 'subm':
         return subm_conv3d(inputs.x, inputs.kernel3_weight, kernel_size=3)
+    if kind == 'target_same':
+        return conv3d(
+            inputs.x,
+            inputs.kernel3_weight,
+            kernel_size=3,
+            coordinates=inputs.target_same,
+        )
+    if kind == 'target_subset':
+        return conv3d(
+            inputs.x,
+            inputs.kernel3_weight,
+            kernel_size=3,
+            coordinates=inputs.target_subset,
+        )
+    if kind == 'target_superset':
+        return conv3d(
+            inputs.x,
+            inputs.kernel3_weight,
+            kernel_size=3,
+            coordinates=inputs.target_superset,
+        )
     if kind == 'transpose':
         return conv_transpose3d(
             inputs.transposed,
@@ -173,7 +234,9 @@ def _compiled(
                 stride=stride,
                 batch_counts=fixture.arrays.batch_counts,
             )
-            return _run(kind, _compiled_inputs(kind, x, weight_arg)).feats
+            return _run(
+                kind, _compiled_inputs(kind, x, weight_arg, fixture)
+            ).feats
 
         return fn, (fixture.arrays.feats, weight)
 
@@ -192,7 +255,9 @@ def _backward(
         def loss(feats: mx.array, weight_arg: mx.array) -> mx.array:
             x = base.replace(feats=feats)
             return mx.sum(
-                _run(kind, _compiled_inputs(kind, x, weight_arg)).feats
+                _run(
+                    kind, _compiled_inputs(kind, x, weight_arg, fixture)
+                ).feats
             )
 
         return mx.grad(loss, argnums=_argnums_for(target)), (
@@ -215,13 +280,37 @@ def _compiled_inputs(
     kind: ConvKind,
     x: SparseTensor,
     weight: mx.array,
+    fixture: ConvFixture | None = None,
 ) -> ConvInputs:
     empty = mx.array([], dtype=mx.float32)
+    target_same = _target_tensor(x, x.coords)
+    target_subset = (
+        target_same
+        if fixture is None
+        else _target_tensor(x, fixture.target_subset_coords)
+    )
+    target_superset = (
+        target_same
+        if fixture is None
+        else _target_tensor(x, fixture.target_superset_coords)
+    )
     return ConvInputs(
         x=x,
+        target_same=target_same,
+        target_subset=target_subset,
+        target_superset=target_superset,
         transposed=x,
         pointwise_weight=weight if kind == 'pointwise' else empty,
-        kernel3_weight=weight if kind in ('generic', 'subm') else empty,
+        kernel3_weight=weight
+        if kind
+        in (
+            'generic',
+            'subm',
+            'target_same',
+            'target_subset',
+            'target_superset',
+        )
+        else empty,
         kernel2_weight=weight
         if kind in ('transpose', 'generative_transpose')
         else empty,
@@ -231,6 +320,20 @@ def _compiled_inputs(
 def _weight_for(kind: ConvKind, fixture: ConvFixture) -> mx.array:
     if kind == 'pointwise':
         return fixture.pointwise_weight
-    if kind in ('generic', 'subm'):
+    if kind in (
+        'generic',
+        'subm',
+        'target_same',
+        'target_subset',
+        'target_superset',
+    ):
         return fixture.kernel3_weight
     return fixture.kernel2_weight
+
+
+def _target_tensor(x: SparseTensor, coords: mx.array) -> SparseTensor:
+    return SparseTensor(
+        coords,
+        mx.zeros((coords.shape[0], x.channels), dtype=x.dtype),
+        coord_manager=x.coord_manager,
+    )

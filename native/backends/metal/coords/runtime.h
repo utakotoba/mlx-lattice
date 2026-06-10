@@ -59,6 +59,17 @@ void eval_generic_kernel_relation(
     std::vector<mx::array>& outputs
 );
 
+void eval_target_kernel_relation(
+    int rows,
+    int target_rows,
+    int kernel_count,
+    Triple stride, // NOLINT(bugprone-easily-swappable-parameters)
+    Triple padding,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
 void eval_generative_kernel_relation(
     int rows,
     int kernel_count,

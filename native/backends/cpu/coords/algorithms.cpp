@@ -696,6 +696,64 @@ void write_kernel_relation(
     write_map(outputs, edges, out_values, coords.dtype(), true);
 }
 
+void write_target_kernel_relation(
+    std::vector<mx::array>& outputs,
+    const mx::array& coords,
+    int active_rows,
+    const mx::array& target_coords,
+    int target_active_rows,
+    const std::vector<Triple>& offsets,
+    Triple stride,
+    Triple padding
+) {
+    auto values = read_coords(coords);
+    values.resize(std::min(active_rows, int(values.size())));
+    auto target_values = read_coords(target_coords);
+    auto target_active =
+        std::min(target_active_rows, int(target_values.size()));
+    auto rows = first_row_map(values);
+
+    std::vector<Edge> edges;
+    edges.reserve(static_cast<std::size_t>(target_active) * offsets.size());
+    for (int out_row = 0; out_row < target_active; ++out_row) {
+        for (int kernel = 0; kernel < int(offsets.size()); ++kernel) {
+            auto candidate = kernel_input_coord(
+                target_values[out_row], offsets[kernel], stride, padding
+            );
+            auto match = rows.find(candidate);
+            if (match != rows.end()) {
+                edges.push_back({
+                    match->second,
+                    static_cast<int32_t>(out_row),
+                    static_cast<int32_t>(kernel),
+                });
+            }
+        }
+    }
+
+    auto row_major_edges = edges;
+    std::stable_sort(
+        row_major_edges.begin(),
+        row_major_edges.end(),
+        [](const Edge& lhs, const Edge& rhs) {
+            if (lhs[1] != rhs[1]) {
+                return lhs[1] < rhs[1];
+            }
+            if (lhs[2] != rhs[2]) {
+                return lhs[2] < rhs[2];
+            }
+            return lhs[0] < rhs[0];
+        }
+    );
+    write_map_rows(outputs, row_major_edges, int(target_values.size()));
+    write_coords(
+        outputs[RelationOutCoords], target_values, target_coords.dtype()
+    );
+    write_count(
+        outputs[RelationCounts], int(row_major_edges.size()), target_active
+    );
+}
+
 void write_generative_relation(
     std::vector<mx::array>& outputs,
     const mx::array& coords,
@@ -966,6 +1024,36 @@ void eval_generic_kernel_relation(
                 );
                 break;
             }
+        }
+    );
+}
+
+void eval_target_kernel_relation(
+    Triple stride,
+    Triple padding,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    backend::allocate_all(outputs);
+    backend::schedule_cpu(
+        stream,
+        inputs,
+        outputs,
+        [stride, padding](
+            const std::vector<mx::array>& task_inputs,
+            std::vector<mx::array>& task_outputs
+        ) {
+            write_target_kernel_relation(
+                task_outputs,
+                task_inputs[0],
+                read_scalar_i32(task_inputs[2]),
+                task_inputs[3],
+                read_scalar_i32(task_inputs[4]),
+                read_offsets(task_inputs[1]),
+                stride,
+                padding
+            );
         }
     );
 }

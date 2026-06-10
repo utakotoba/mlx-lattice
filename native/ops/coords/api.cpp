@@ -114,6 +114,35 @@ NativeKernelRelation build_transposed_kernel_relation(
     );
 }
 
+NativeKernelRelation build_target_kernel_relation(
+    const mx::array& coords,
+    const mx::array& active_rows,
+    const mx::array& target_coords,
+    const mx::array& target_active_rows,
+    Triple kernel_size,
+    Triple stride,
+    Triple padding,
+    Triple dilation
+) {
+    validate_coord_pair(coords, target_coords);
+    validate_active_rows(active_rows);
+    validate_active_rows(target_active_rows);
+    validate_positive(kernel_size, "kernel_size");
+    validate_positive(stride, "stride");
+    validate_nonnegative(padding, "padding");
+    validate_positive(dilation, "dilation");
+    return make_target_kernel_relation(
+        coords,
+        active_rows,
+        target_coords,
+        target_active_rows,
+        kernel_size,
+        stride,
+        padding,
+        dilation
+    );
+}
+
 NativeNeighborRelation build_knn_relation(
     const mx::array& source_coords,
     const mx::array& source_active_rows,
