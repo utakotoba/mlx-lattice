@@ -240,8 +240,8 @@ void eval_weight_grad(
             const auto& in_rows = ready[2];
             const auto& out_rows = ready[3];
             const auto& kernel_ids = ready[4];
-            const auto& kernel_row_offsets = ready[9];
-            const auto& kernel_edge_ids = ready[10];
+            const auto& kernel_row_offsets = ready[7];
+            const auto& kernel_edge_ids = ready[8];
 
             auto& grad = task_outputs[0];
             fill_zero(grad);

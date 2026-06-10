@@ -137,6 +137,38 @@ void encode_stable_compact_offsets(
 }
 
 template <typename Device, typename Library, typename Encoder>
+void encode_relation_compact_offsets(
+    Device& device,
+    Library& library,
+    Encoder& encoder,
+    const mx::array& selected,
+    mx::array& counts,
+    StableCompactBuffers& buffers,
+    int rows
+) {
+    encoder.add_temporaries({buffers.local_offsets, buffers.block_offsets});
+    auto scan =
+        device.get_kernel("scan_coord_set_selected_blocks_i32", library);
+    encoder.set_compute_pipeline_state(scan);
+    encoder.set_input_array(selected, 0);
+    encoder.set_output_array(buffers.local_offsets, 1);
+    encoder.set_output_array(buffers.block_offsets, 2);
+    encoder.set_bytes(rows, 3);
+    encoder.dispatch_threadgroups(
+        MTL::Size(static_cast<size_t>(buffers.blocks), 1, 1),
+        MTL::Size(kStableCompactBlockSize, 1, 1)
+    );
+
+    auto prefix =
+        device.get_kernel("prefix_relation_selected_blocks_i32", library);
+    encoder.set_compute_pipeline_state(prefix);
+    encoder.set_output_array(buffers.block_offsets, 0);
+    encoder.set_output_array(counts, 1);
+    encoder.set_bytes(buffers.blocks, 2);
+    encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+}
+
+template <typename Device, typename Library, typename Encoder>
 void clear_coord_hash(
     Device& device,
     Library& library,
@@ -170,72 +202,119 @@ void insert_coord_hash(
 }
 
 template <typename Device, typename Library, typename Encoder>
-void build_kernel_relation_views(
+void encode_relation_grouped_view(
     Device& device,
     Library& library,
     Encoder& encoder,
+    const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs,
-    int in_capacity,
-    int kernel_count
+    RelationGroupedViewShape shape
 ) {
-    auto edge_capacity = static_cast<int>(outputs[RelationInRows].shape(0));
-    auto in_cursors = make_int32_temp(in_capacity + 1);
-    auto kernel_cursors = make_int32_temp(kernel_count + 1);
-    encoder.add_temporaries({in_cursors, kernel_cursors});
+    auto cursors = make_int32_temp(shape.group_count + 1);
+    encoder.add_temporaries({cursors});
 
-    auto clear = device.get_kernel("clear_kernel_relation_views_i32", library);
+    auto clear = device.get_kernel("clear_relation_grouped_view_i32", library);
     encoder.set_compute_pipeline_state(clear);
-    encoder.set_output_array(outputs[RelationInRowOffsets], 0);
-    encoder.set_output_array(outputs[RelationInEdgeIds], 1);
-    encoder.set_output_array(outputs[RelationKernelRowOffsets], 2);
-    encoder.set_output_array(outputs[RelationKernelEdgeIds], 3);
-    encoder.set_bytes(edge_capacity, 4);
-    encoder.set_bytes(in_capacity, 5);
-    encoder.set_bytes(kernel_count, 6);
+    encoder.set_output_array(outputs[RelationViewRowOffsets], 0);
+    encoder.set_bytes(shape.group_count, 1);
     dispatch_1d(
-        encoder,
-        clear,
-        static_cast<size_t>(
-            std::max({edge_capacity, in_capacity + 1, kernel_count + 1})
-        )
+        encoder, clear, static_cast<size_t>(shape.group_count) + size_t{1}
     );
 
-    auto count = device.get_kernel("count_kernel_relation_views_i32", library);
+    auto count = device.get_kernel("count_relation_grouped_view_i32", library);
     encoder.set_compute_pipeline_state(count);
-    encoder.set_input_array(outputs[RelationInRows], 0);
-    encoder.set_input_array(outputs[RelationKernelIds], 1);
-    encoder.set_input_array(outputs[RelationCounts], 2);
-    encoder.set_output_array(outputs[RelationInRowOffsets], 3);
-    encoder.set_output_array(outputs[RelationKernelRowOffsets], 4);
-    encoder.set_bytes(edge_capacity, 5);
-    encoder.set_bytes(in_capacity, 6);
-    encoder.set_bytes(kernel_count, 7);
-    dispatch_1d(encoder, count, static_cast<size_t>(edge_capacity));
+    encoder.set_input_array(inputs[0], 0);
+    encoder.set_input_array(inputs[1], 1);
+    encoder.set_output_array(outputs[RelationViewRowOffsets], 2);
+    encoder.set_bytes(shape.edge_capacity, 3);
+    encoder.set_bytes(shape.group_count, 4);
+    dispatch_1d(encoder, count, static_cast<size_t>(shape.edge_capacity));
 
-    auto prefix =
-        device.get_kernel("prefix_kernel_relation_views_i32", library);
-    encoder.set_compute_pipeline_state(prefix);
-    encoder.set_output_array(outputs[RelationInRowOffsets], 0);
-    encoder.set_output_array(in_cursors, 1);
-    encoder.set_output_array(outputs[RelationKernelRowOffsets], 2);
-    encoder.set_output_array(kernel_cursors, 3);
-    encoder.set_bytes(in_capacity, 4);
-    encoder.set_bytes(kernel_count, 5);
-    encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+    if (shape.group_count >= kParallelCompactThreshold) {
+        auto buffers = make_stable_compact_buffers(shape.group_count);
+        auto total_count = make_int32_temp(1);
+        encoder.add_temporaries(
+            {buffers.local_offsets, buffers.block_offsets, total_count}
+        );
 
-    auto fill = device.get_kernel("fill_kernel_relation_views_i32", library);
+        auto scan =
+            device.get_kernel("scan_relation_grouped_view_blocks_i32", library);
+        encoder.set_compute_pipeline_state(scan);
+        encoder.set_input_array(outputs[RelationViewRowOffsets], 0);
+        encoder.set_output_array(buffers.local_offsets, 1);
+        encoder.set_output_array(buffers.block_offsets, 2);
+        encoder.set_bytes(shape.group_count, 3);
+        encoder.dispatch_threadgroups(
+            MTL::Size(static_cast<size_t>(buffers.blocks), 1, 1),
+            MTL::Size(kStableCompactBlockSize, 1, 1)
+        );
+
+        auto prefix =
+            device.get_kernel("prefix_coord_set_selected_blocks_i32", library);
+        encoder.set_compute_pipeline_state(prefix);
+        encoder.set_output_array(buffers.block_offsets, 0);
+        encoder.set_output_array(total_count, 1);
+        encoder.set_bytes(buffers.blocks, 2);
+        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+
+        auto finalize =
+            device.get_kernel("finalize_relation_grouped_view_i32", library);
+        encoder.set_compute_pipeline_state(finalize);
+        encoder.set_input_array(buffers.local_offsets, 0);
+        encoder.set_input_array(buffers.block_offsets, 1);
+        encoder.set_input_array(total_count, 2);
+        encoder.set_output_array(outputs[RelationViewRowOffsets], 3);
+        encoder.set_output_array(cursors, 4);
+        encoder.set_bytes(shape.group_count, 5);
+        dispatch_1d(
+            encoder,
+            finalize,
+            static_cast<size_t>(shape.group_count) + size_t{1}
+        );
+    } else {
+        auto prefix =
+            device.get_kernel("prefix_relation_grouped_view_i32", library);
+        encoder.set_compute_pipeline_state(prefix);
+        encoder.set_output_array(outputs[RelationViewRowOffsets], 0);
+        encoder.set_output_array(cursors, 1);
+        encoder.set_bytes(shape.group_count, 2);
+        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+    }
+
+    auto fill = device.get_kernel("fill_relation_grouped_view_i32", library);
     encoder.set_compute_pipeline_state(fill);
-    encoder.set_input_array(outputs[RelationInRows], 0);
-    encoder.set_input_array(outputs[RelationKernelIds], 1);
-    encoder.set_input_array(outputs[RelationCounts], 2);
-    encoder.set_input_array(in_cursors, 3);
-    encoder.set_input_array(kernel_cursors, 4);
-    encoder.set_output_array(outputs[RelationInEdgeIds], 5);
-    encoder.set_output_array(outputs[RelationKernelEdgeIds], 6);
-    encoder.set_bytes(edge_capacity, 7);
-    encoder.set_bytes(in_capacity, 8);
-    encoder.set_bytes(kernel_count, 9);
-    dispatch_1d(encoder, fill, static_cast<size_t>(edge_capacity));
+    encoder.set_input_array(inputs[0], 0);
+    encoder.set_input_array(inputs[1], 1);
+    encoder.set_input_array(cursors, 2);
+    encoder.set_output_array(outputs[RelationViewEdgeIds], 3);
+    encoder.set_bytes(shape.edge_capacity, 4);
+    encoder.set_bytes(shape.group_count, 5);
+    dispatch_1d(encoder, fill, static_cast<size_t>(shape.edge_capacity));
+}
+
+template <typename Device, typename Library, typename Encoder>
+void encode_relation_direct_view(
+    Device& device,
+    Library& library,
+    Encoder& encoder,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs,
+    RelationGroupedViewShape shape
+) {
+    auto clear = device.get_kernel("clear_relation_direct_view_i32", library);
+    encoder.set_compute_pipeline_state(clear);
+    encoder.set_output_array(outputs[0], 0);
+    encoder.set_bytes(shape.group_count, 1);
+    dispatch_1d(encoder, clear, static_cast<size_t>(shape.group_count));
+
+    auto fill = device.get_kernel("fill_relation_direct_view_i32", library);
+    encoder.set_compute_pipeline_state(fill);
+    encoder.set_input_array(inputs[0], 0);
+    encoder.set_input_array(inputs[1], 1);
+    encoder.set_output_array(outputs[0], 2);
+    encoder.set_bytes(shape.edge_capacity, 3);
+    encoder.set_bytes(shape.group_count, 4);
+    dispatch_1d(encoder, fill, static_cast<size_t>(shape.edge_capacity));
 }
 
 template <typename Device, typename Library, typename Encoder>
@@ -247,24 +326,77 @@ void compact_forward_relation_slots(
     std::vector<mx::array>& outputs,
     RelationSlotShape shape
 ) {
-    auto count =
-        device.get_kernel("count_forward_relation_slot_rows_i32", library);
-    encoder.set_compute_pipeline_state(count);
-    encoder.set_input_array(slots.in_rows, 0);
-    encoder.set_input_array(slots.kernel_ids, 1);
-    encoder.set_output_array(outputs[RelationRowOffsets], 2);
-    encoder.set_input_array(outputs[RelationCounts], 3);
-    encoder.set_bytes(shape.rows, 4);
-    encoder.set_bytes(shape.kernel_count, 5);
-    dispatch_1d(encoder, count, static_cast<size_t>(shape.rows));
+    if (shape.rows >= kParallelCompactThreshold) {
+        auto row_degrees = make_int32_temp(shape.rows);
+        auto buffers = make_stable_compact_buffers(shape.rows);
+        encoder.add_temporaries(
+            {row_degrees, buffers.local_offsets, buffers.block_offsets}
+        );
 
-    auto prefix =
-        device.get_kernel("prefix_forward_relation_slot_rows_i32", library);
-    encoder.set_compute_pipeline_state(prefix);
-    encoder.set_output_array(outputs[RelationRowOffsets], 0);
-    encoder.set_output_array(outputs[RelationCounts], 1);
-    encoder.set_bytes(shape.rows, 2);
-    encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+        auto count = device.get_kernel(
+            "count_forward_relation_slot_degrees_i32", library
+        );
+        encoder.set_compute_pipeline_state(count);
+        encoder.set_input_array(slots.in_rows, 0);
+        encoder.set_input_array(slots.kernel_ids, 1);
+        encoder.set_input_array(outputs[RelationCounts], 2);
+        encoder.set_output_array(row_degrees, 3);
+        encoder.set_bytes(shape.rows, 4);
+        encoder.set_bytes(shape.kernel_count, 5);
+        dispatch_1d(encoder, count, static_cast<size_t>(shape.rows));
+
+        auto scan =
+            device.get_kernel("scan_relation_row_degrees_blocks_i32", library);
+        encoder.set_compute_pipeline_state(scan);
+        encoder.set_input_array(row_degrees, 0);
+        encoder.set_output_array(buffers.local_offsets, 1);
+        encoder.set_output_array(buffers.block_offsets, 2);
+        encoder.set_bytes(shape.rows, 3);
+        encoder.dispatch_threadgroups(
+            MTL::Size(static_cast<size_t>(buffers.blocks), 1, 1),
+            MTL::Size(kStableCompactBlockSize, 1, 1)
+        );
+
+        auto prefix =
+            device.get_kernel("prefix_coord_set_selected_blocks_i32", library);
+        encoder.set_compute_pipeline_state(prefix);
+        encoder.set_output_array(buffers.block_offsets, 0);
+        encoder.set_output_array(outputs[RelationCounts], 1);
+        encoder.set_bytes(buffers.blocks, 2);
+        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+
+        auto finalize = device.get_kernel(
+            "finalize_forward_relation_row_offsets_i32", library
+        );
+        encoder.set_compute_pipeline_state(finalize);
+        encoder.set_input_array(buffers.local_offsets, 0);
+        encoder.set_input_array(buffers.block_offsets, 1);
+        encoder.set_output_array(outputs[RelationRowOffsets], 2);
+        encoder.set_input_array(outputs[RelationCounts], 3);
+        encoder.set_bytes(shape.rows, 4);
+        dispatch_1d(
+            encoder, finalize, static_cast<size_t>(shape.rows) + size_t{1}
+        );
+    } else {
+        auto count =
+            device.get_kernel("count_forward_relation_slot_rows_i32", library);
+        encoder.set_compute_pipeline_state(count);
+        encoder.set_input_array(slots.in_rows, 0);
+        encoder.set_input_array(slots.kernel_ids, 1);
+        encoder.set_output_array(outputs[RelationRowOffsets], 2);
+        encoder.set_input_array(outputs[RelationCounts], 3);
+        encoder.set_bytes(shape.rows, 4);
+        encoder.set_bytes(shape.kernel_count, 5);
+        dispatch_1d(encoder, count, static_cast<size_t>(shape.rows));
+
+        auto prefix =
+            device.get_kernel("prefix_forward_relation_slot_rows_i32", library);
+        encoder.set_compute_pipeline_state(prefix);
+        encoder.set_output_array(outputs[RelationRowOffsets], 0);
+        encoder.set_output_array(outputs[RelationCounts], 1);
+        encoder.set_bytes(shape.rows, 2);
+        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+    }
 
     auto compact =
         device.get_kernel("compact_forward_relation_slots_i32", library);
@@ -867,14 +999,14 @@ void eval_generic_kernel_relation(
     auto& encoder = mx::metal::get_command_encoder(stream);
 
     if (op == CoordRelationOp::Forward &&
-        outputs.size() > RelationOutputCount) {
+        outputs.size() > RelationBaseOutputCount) {
         auto table_capacity =
-            static_cast<int>(outputs[RelationOutputCount].shape(0));
+            static_cast<int>(outputs[RelationBaseOutputCount].shape(0));
         clear_coord_hash(
             device,
             library,
             encoder,
-            outputs[RelationOutputCount],
+            outputs[RelationBaseOutputCount],
             table_capacity
         );
 
@@ -883,7 +1015,7 @@ void eval_generic_kernel_relation(
         encoder.set_compute_pipeline_state(insert);
         encoder.set_input_array(inputs[0], 0);
         encoder.set_input_array(inputs[2], 1);
-        encoder.set_output_array(outputs[RelationOutputCount], 2);
+        encoder.set_output_array(outputs[RelationBaseOutputCount], 2);
         encoder.set_bytes(rows, 3);
         encoder.set_bytes(table_capacity, 4);
         dispatch_1d(encoder, insert, static_cast<size_t>(rows));
@@ -925,19 +1057,50 @@ void eval_generic_kernel_relation(
             encoder.set_bytes(stride[2], 8);
             dispatch_1d(encoder, plan_outputs, static_cast<size_t>(rows));
 
-            auto compact_outputs = device.get_kernel(
-                "compact_strided_relation_output_coords_i32", library
-            );
-            encoder.set_compute_pipeline_state(compact_outputs);
-            encoder.set_input_array(inputs[0], 0);
-            encoder.set_input_array(selected, 1);
-            encoder.set_output_array(outputs[RelationOutCoords], 2);
-            encoder.set_output_array(outputs[RelationCounts], 3);
-            encoder.set_bytes(rows, 4);
-            encoder.set_bytes(stride[0], 5);
-            encoder.set_bytes(stride[1], 6);
-            encoder.set_bytes(stride[2], 7);
-            encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+            if (rows >= kParallelCompactThreshold) {
+                auto buffers = make_stable_compact_buffers(rows);
+                encode_relation_compact_offsets(
+                    device,
+                    library,
+                    encoder,
+                    selected,
+                    outputs[RelationCounts],
+                    buffers,
+                    rows
+                );
+                auto compact_outputs = device.get_kernel(
+                    "scatter_downsample_coord_set_i32", library
+                );
+                encoder.set_compute_pipeline_state(compact_outputs);
+                encoder.set_input_array(inputs[0], 0);
+                encoder.set_input_array(selected, 1);
+                encoder.set_input_array(buffers.local_offsets, 2);
+                encoder.set_input_array(buffers.block_offsets, 3);
+                encoder.set_output_array(outputs[RelationOutCoords], 4);
+                encoder.set_bytes(rows, 5);
+                encoder.set_bytes(stride[0], 6);
+                encoder.set_bytes(stride[1], 7);
+                encoder.set_bytes(stride[2], 8);
+                dispatch_1d(
+                    encoder, compact_outputs, static_cast<size_t>(rows)
+                );
+            } else {
+                auto compact_outputs = device.get_kernel(
+                    "compact_strided_relation_output_coords_i32", library
+                );
+                encoder.set_compute_pipeline_state(compact_outputs);
+                encoder.set_input_array(inputs[0], 0);
+                encoder.set_input_array(selected, 1);
+                encoder.set_output_array(outputs[RelationOutCoords], 2);
+                encoder.set_output_array(outputs[RelationCounts], 3);
+                encoder.set_bytes(rows, 4);
+                encoder.set_bytes(stride[0], 5);
+                encoder.set_bytes(stride[1], 6);
+                encoder.set_bytes(stride[2], 7);
+                encoder.dispatch_threads(
+                    MTL::Size(1, 1, 1), MTL::Size(1, 1, 1)
+                );
+            }
 
             auto slot_in_rows = make_int32_temp(rows * kernel_count);
             auto slot_out_rows = make_int32_temp(rows * kernel_count);
@@ -954,7 +1117,7 @@ void eval_generic_kernel_relation(
             encoder.set_input_array(inputs[1], 1);
             encoder.set_input_array(outputs[RelationOutCoords], 2);
             encoder.set_output_array(outputs[RelationCounts], 3);
-            encoder.set_input_array(outputs[RelationOutputCount], 4);
+            encoder.set_input_array(outputs[RelationBaseOutputCount], 4);
             encoder.set_output_array(slot_in_rows, 5);
             encoder.set_output_array(slot_out_rows, 6);
             encoder.set_output_array(slot_kernel_ids, 7);
@@ -989,9 +1152,6 @@ void eval_generic_kernel_relation(
                 outputs,
                 RelationSlotShape{.rows = rows, .kernel_count = kernel_count}
             );
-            build_kernel_relation_views(
-                device, library, encoder, outputs, rows, kernel_count
-            );
             return;
         }
 
@@ -1007,7 +1167,7 @@ void eval_generic_kernel_relation(
         encoder.set_input_array(inputs[0], 0);
         encoder.set_input_array(inputs[1], 1);
         encoder.set_input_array(inputs[2], 2);
-        encoder.set_input_array(outputs[RelationOutputCount], 3);
+        encoder.set_input_array(outputs[RelationBaseOutputCount], 3);
         encoder.set_output_array(slot_in_rows, 4);
         encoder.set_output_array(slot_out_rows, 5);
         encoder.set_output_array(slot_kernel_ids, 6);
@@ -1038,9 +1198,6 @@ void eval_generic_kernel_relation(
             outputs,
             RelationSlotShape{.rows = rows, .kernel_count = kernel_count}
         );
-        build_kernel_relation_views(
-            device, library, encoder, outputs, rows, kernel_count
-        );
         return;
     }
 
@@ -1051,7 +1208,7 @@ void eval_generic_kernel_relation(
         encoder.set_input_array(inputs[0], 0);
         encoder.set_input_array(inputs[1], 1);
         encoder.set_input_array(inputs[2], 2);
-        for (int i = 0; i < int(RelationInRowOffsets); ++i) {
+        for (int i = 0; i < int(RelationBaseOutputCount); ++i) {
             encoder.set_output_array(outputs[i], i + 3);
         }
         encoder.set_bytes(rows, 9);
@@ -1063,9 +1220,6 @@ void eval_generic_kernel_relation(
         encoder.set_bytes(padding[1], 15);
         encoder.set_bytes(padding[2], 16);
         dispatch_1d(encoder, kernel, static_cast<size_t>(rows) * kernel_count);
-        build_kernel_relation_views(
-            device, library, encoder, outputs, rows, kernel_count
-        );
         return;
     }
 
@@ -1081,7 +1235,7 @@ void eval_generic_kernel_relation(
     encoder.set_input_array(inputs[0], 0);
     encoder.set_input_array(inputs[1], 1);
     encoder.set_input_array(inputs[2], 2);
-    for (int i = 0; i < int(RelationInRowOffsets); ++i) {
+    for (int i = 0; i < int(RelationBaseOutputCount); ++i) {
         encoder.set_output_array(outputs[i], i + 3);
     }
     encoder.set_bytes(rows, 9);
@@ -1093,9 +1247,6 @@ void eval_generic_kernel_relation(
     encoder.set_bytes(padding[1], 15);
     encoder.set_bytes(padding[2], 16);
     encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
-    build_kernel_relation_views(
-        device, library, encoder, outputs, rows, kernel_count
-    );
 #else
     (void)op;
     (void)rows;
@@ -1140,7 +1291,7 @@ void eval_generative_kernel_relation(
     encoder.set_input_array(inputs[0], 0);
     encoder.set_input_array(inputs[1], 1);
     encoder.set_input_array(inputs[2], 2);
-    for (int i = 0; i < int(RelationInRowOffsets); ++i) {
+    for (int i = 0; i < int(RelationBaseOutputCount); ++i) {
         encoder.set_output_array(outputs[i], i + 3);
     }
     encoder.set_bytes(rows, 9);
@@ -1152,13 +1303,62 @@ void eval_generative_kernel_relation(
         MTL::Size(static_cast<size_t>(thread_count), 1, 1),
         MTL::Size(group, 1, 1)
     );
-    build_kernel_relation_views(
-        device, library, encoder, outputs, rows, kernel_count
-    );
 #else
     (void)rows;
     (void)kernel_count;
     (void)stride;
+    (void)stream;
+    (void)inputs;
+    (void)outputs;
+    throw std::runtime_error("Metal support is not available.");
+#endif
+}
+
+void eval_relation_grouped_view(
+    RelationGroupedViewShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    require_i32_inputs(inputs, {"group ids", "counts"});
+
+#ifdef _METAL_
+    backend::allocate_all(outputs);
+    auto& device = mx::metal::device(stream.device);
+    auto library =
+        device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
+    auto& encoder = mx::metal::get_command_encoder(stream);
+    encode_relation_grouped_view(
+        device, library, encoder, inputs, outputs, shape
+    );
+#else
+    (void)shape;
+    (void)stream;
+    (void)inputs;
+    (void)outputs;
+    throw std::runtime_error("Metal support is not available.");
+#endif
+}
+
+void eval_relation_direct_view(
+    RelationGroupedViewShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    require_i32_inputs(inputs, {"group ids", "counts"});
+
+#ifdef _METAL_
+    backend::allocate_all(outputs);
+    auto& device = mx::metal::device(stream.device);
+    auto library =
+        device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
+    auto& encoder = mx::metal::get_command_encoder(stream);
+    encode_relation_direct_view(
+        device, library, encoder, inputs, outputs, shape
+    );
+#else
+    (void)shape;
     (void)stream;
     (void)inputs;
     (void)outputs;

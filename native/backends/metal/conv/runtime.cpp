@@ -166,15 +166,15 @@ void eval_input_grad(
     for (int index = 0; index < int(inputs.size()); ++index) {
         encoder.set_input_array(inputs[index], index);
     }
-    encoder.set_output_array(out, 11);
-    encoder.set_bytes(static_cast<int>(inputs[2].shape(0)), 12);
-    encoder.set_bytes(shape.out_capacity, 13);
-    encoder.set_bytes(shape.in_capacity, 14);
-    encoder.set_bytes(shape.in_channels, 15);
-    encoder.set_bytes(shape.out_channels, 16);
-    encoder.set_bytes(stride_at(inputs[0], 0), 17);
-    encoder.set_bytes(stride_at(inputs[0], 1), 18);
-    bind_weight_shape(encoder, inputs[1], shape, 19);
+    encoder.set_output_array(out, 9);
+    encoder.set_bytes(static_cast<int>(inputs[2].shape(0)), 10);
+    encoder.set_bytes(shape.out_capacity, 11);
+    encoder.set_bytes(shape.in_capacity, 12);
+    encoder.set_bytes(shape.in_channels, 13);
+    encoder.set_bytes(shape.out_channels, 14);
+    encoder.set_bytes(stride_at(inputs[0], 0), 15);
+    encoder.set_bytes(stride_at(inputs[0], 1), 16);
+    bind_weight_shape(encoder, inputs[1], shape, 17);
     dispatch_1d(
         encoder,
         kernel,
@@ -229,20 +229,20 @@ void eval_weight_grad(
     for (int index = 0; index < int(inputs.size()); ++index) {
         encoder.set_input_array(inputs[index], index);
     }
-    encoder.set_output_array(out, 11);
-    encoder.set_bytes(static_cast<int>(inputs[2].shape(0)), 12);
-    encoder.set_bytes(shape.out_capacity, 13);
-    encoder.set_bytes(shape.n_kernels, 14);
-    encoder.set_bytes(shape.in_channels, 15);
-    encoder.set_bytes(shape.out_channels, 16);
-    encoder.set_bytes(stride_at(inputs[0], 0), 17);
-    encoder.set_bytes(stride_at(inputs[0], 1), 18);
-    encoder.set_bytes(stride_at(inputs[1], 0), 19);
-    encoder.set_bytes(stride_at(inputs[1], 1), 20);
-    encoder.set_bytes(shape.weight_layout, 21);
-    encoder.set_bytes(shape.kernel_x, 22);
-    encoder.set_bytes(shape.kernel_y, 23);
-    encoder.set_bytes(shape.kernel_z, 24);
+    encoder.set_output_array(out, 9);
+    encoder.set_bytes(static_cast<int>(inputs[2].shape(0)), 10);
+    encoder.set_bytes(shape.out_capacity, 11);
+    encoder.set_bytes(shape.n_kernels, 12);
+    encoder.set_bytes(shape.in_channels, 13);
+    encoder.set_bytes(shape.out_channels, 14);
+    encoder.set_bytes(stride_at(inputs[0], 0), 15);
+    encoder.set_bytes(stride_at(inputs[0], 1), 16);
+    encoder.set_bytes(stride_at(inputs[1], 0), 17);
+    encoder.set_bytes(stride_at(inputs[1], 1), 18);
+    encoder.set_bytes(shape.weight_layout, 19);
+    encoder.set_bytes(shape.kernel_x, 20);
+    encoder.set_bytes(shape.kernel_y, 21);
+    encoder.set_bytes(shape.kernel_z, 22);
     if (use_block4) {
         auto total_tiles = static_cast<size_t>(shape.n_kernels) *
                            static_cast<size_t>(shape.in_channels / 4);

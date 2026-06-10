@@ -31,11 +31,13 @@ enum CoordRelationOutputSlot : std::size_t {
     RelationRowOffsets,
     RelationOutCoords,
     RelationCounts,
-    RelationInRowOffsets,
-    RelationInEdgeIds,
-    RelationKernelRowOffsets,
-    RelationKernelEdgeIds,
-    RelationOutputCount,
+    RelationBaseOutputCount,
+};
+
+enum RelationGroupedViewOutputSlot : std::size_t {
+    RelationViewRowOffsets = 0,
+    RelationViewEdgeIds,
+    RelationGroupedViewOutputCount,
 };
 
 enum class NeighborRelationOp : std::uint8_t {
@@ -59,8 +61,8 @@ enum NeighborRelationOutputSlot : std::size_t {
 };
 
 struct NativeKernelRelation {
-    // Baseline edge-COO diagnostics plus the first native execution view.
-    // Edges are ordered by output row and row_offsets is CSR-style metadata.
+    // Edges are ordered by output row. Other execution views stay lazy until
+    // a backward path or diagnostic consumer requests them.
     mx::array in_rows;
     mx::array out_rows;
     mx::array kernel_ids;
@@ -71,6 +73,22 @@ struct NativeKernelRelation {
     mx::array in_edge_ids;
     mx::array kernel_row_offsets;
     mx::array kernel_edge_ids;
+};
+
+struct NativeKernelRelationViews {
+    mx::array in_row_offsets;
+    mx::array in_edge_ids;
+    mx::array kernel_row_offsets;
+    mx::array kernel_edge_ids;
+};
+
+struct NativeRelationGroupedView {
+    mx::array row_offsets;
+    mx::array edge_ids;
+};
+
+struct NativeRelationDirectView {
+    mx::array edge_ids;
 };
 
 struct NativeNeighborRelation {
@@ -113,6 +131,11 @@ struct NeighborRelationShape {
     int source_rows;
     int query_rows;
     int max_neighbors;
+};
+
+struct RelationGroupedViewShape {
+    int edge_capacity;
+    int group_count;
 };
 
 struct VoxelFeatureShape {

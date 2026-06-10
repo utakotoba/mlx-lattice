@@ -32,8 +32,10 @@ mx::array make_offsets_array(const std::vector<Triple>& offsets) {
     );
 }
 
-NativeKernelRelation
-relation_from_outputs(const std::vector<mx::array>& outputs) {
+NativeKernelRelation relation_from_outputs(
+    const std::vector<mx::array>& outputs,
+    const NativeKernelRelationViews& views
+) {
     return {
         outputs[RelationInRows],
         outputs[RelationOutRows],
@@ -41,28 +43,24 @@ relation_from_outputs(const std::vector<mx::array>& outputs) {
         outputs[RelationRowOffsets],
         outputs[RelationOutCoords],
         outputs[RelationCounts],
-        outputs[RelationInRowOffsets],
-        outputs[RelationInEdgeIds],
-        outputs[RelationKernelRowOffsets],
-        outputs[RelationKernelEdgeIds],
+        views.in_row_offsets,
+        views.in_edge_ids,
+        views.kernel_row_offsets,
+        views.kernel_edge_ids,
     };
 }
 
 RelationOutputSpec relation_output_spec(
-    int edges,    // NOLINT(bugprone-easily-swappable-parameters)
-    int in_rows,  // NOLINT(bugprone-easily-swappable-parameters)
-    int out_rows, // NOLINT(bugprone-easily-swappable-parameters)
-    int kernels,
+    int edges, // NOLINT(bugprone-easily-swappable-parameters)
+    int out_rows,
     mx::Dtype coord_dtype,
     int scratch_rows = 0
 ) {
-    std::vector<mx::Shape> shapes(RelationOutputCount, mx::Shape{edges});
-    std::vector<mx::Dtype> dtypes(RelationOutputCount, mx::int32);
+    std::vector<mx::Shape> shapes(RelationBaseOutputCount, mx::Shape{edges});
+    std::vector<mx::Dtype> dtypes(RelationBaseOutputCount, mx::int32);
     shapes[RelationRowOffsets] = mx::Shape{out_rows + 1};
     shapes[RelationOutCoords] = mx::Shape{out_rows, 4};
     shapes[RelationCounts] = mx::Shape{2};
-    shapes[RelationInRowOffsets] = mx::Shape{in_rows + 1};
-    shapes[RelationKernelRowOffsets] = mx::Shape{kernels + 1};
     dtypes[RelationOutCoords] = coord_dtype;
     if (scratch_rows > 0) {
         shapes.push_back(mx::Shape{scratch_rows});
@@ -239,7 +237,143 @@ class GenerativeKernelRelation final : public mx::Primitive {
     Triple stride_;
 };
 
+class RelationGroupedView final : public mx::Primitive {
+  public:
+    RelationGroupedView(mx::Stream stream, RelationGroupedViewShape shape)
+        : mx::Primitive(stream), shape_(shape) {}
+
+    void eval_cpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        coords::cpu::eval_relation_grouped_view(
+            shape_, stream(), inputs, outputs
+        );
+    }
+
+    void eval_gpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        coords::metal::eval_relation_grouped_view(
+            shape_, stream(), inputs, outputs
+        );
+    }
+
+    const char* name() const override { return "lattice::RelationGroupedView"; }
+
+    bool is_equivalent(const mx::Primitive& other) const override {
+        if (typeid(other) != typeid(RelationGroupedView)) {
+            return false;
+        }
+        const auto& views = static_cast<const RelationGroupedView&>(other);
+        return shape_.edge_capacity == views.shape_.edge_capacity &&
+               shape_.group_count == views.shape_.group_count;
+    }
+
+  private:
+    RelationGroupedViewShape shape_;
+};
+
+class RelationDirectView final : public mx::Primitive {
+  public:
+    RelationDirectView(mx::Stream stream, RelationGroupedViewShape shape)
+        : mx::Primitive(stream), shape_(shape) {}
+
+    void eval_cpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        coords::cpu::eval_relation_direct_view(
+            shape_, stream(), inputs, outputs
+        );
+    }
+
+    void eval_gpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        coords::metal::eval_relation_direct_view(
+            shape_, stream(), inputs, outputs
+        );
+    }
+
+    const char* name() const override { return "lattice::RelationDirectView"; }
+
+    bool is_equivalent(const mx::Primitive& other) const override {
+        if (typeid(other) != typeid(RelationDirectView)) {
+            return false;
+        }
+        const auto& view = static_cast<const RelationDirectView&>(other);
+        return shape_.edge_capacity == view.shape_.edge_capacity &&
+               shape_.group_count == view.shape_.group_count;
+    }
+
+  private:
+    RelationGroupedViewShape shape_;
+};
+
 } // namespace
+
+NativeRelationGroupedView make_relation_grouped_view(
+    const mx::array& group_ids,
+    const mx::array& counts,
+    int group_count
+) {
+    auto shape = RelationGroupedViewShape{
+        group_ids.shape(0),
+        group_count,
+    };
+    auto device = coord_device();
+    auto outputs = mx::array::make_arrays(
+        {mx::Shape{group_count + 1}, mx::Shape{shape.edge_capacity}},
+        {mx::int32, mx::int32},
+        std::make_shared<RelationGroupedView>(coord_stream(device), shape),
+        {mx::contiguous(group_ids, false, device),
+         mx::contiguous(counts, false, device)}
+    );
+    return {
+        outputs[RelationViewRowOffsets],
+        outputs[RelationViewEdgeIds],
+    };
+}
+
+NativeKernelRelationViews make_kernel_relation_views(
+    const mx::array& in_rows,
+    const mx::array& kernel_ids,
+    const mx::array& counts,
+    int in_capacity,
+    int kernel_count
+) {
+    auto input = make_relation_grouped_view(in_rows, counts, in_capacity);
+    auto kernel = make_relation_grouped_view(kernel_ids, counts, kernel_count);
+    return {
+        input.row_offsets,
+        input.edge_ids,
+        kernel.row_offsets,
+        kernel.edge_ids,
+    };
+}
+
+NativeRelationDirectView make_relation_direct_view(
+    const mx::array& group_ids,
+    const mx::array& counts,
+    int group_count
+) {
+    auto shape = RelationGroupedViewShape{
+        group_ids.shape(0),
+        group_count,
+    };
+    auto device = coord_device();
+    auto outputs = mx::array::make_arrays(
+        {mx::Shape{group_count}},
+        {mx::int32},
+        std::make_shared<RelationDirectView>(coord_stream(device), shape),
+        {mx::contiguous(group_ids, false, device),
+         mx::contiguous(counts, false, device)}
+    );
+    return {outputs[0]};
+}
 
 NativeKernelRelation make_kernel_relation(
     const mx::array& coords,
@@ -259,12 +393,7 @@ NativeKernelRelation make_kernel_relation(
     auto scratch_rows = is_gpu_device(device) ? coord_hash_capacity(rows) : 0;
     auto outputs = make_relation_outputs(
         relation_output_spec(
-            max_edges,
-            rows,
-            max_out_rows,
-            kernel_count,
-            coords.dtype(),
-            scratch_rows
+            max_edges, max_out_rows, coords.dtype(), scratch_rows
         ),
         std::make_shared<GenericKernelRelation>(
             coord_stream(device),
@@ -279,7 +408,14 @@ NativeKernelRelation make_kernel_relation(
         active_rows,
         device
     );
-    return relation_from_outputs(outputs);
+    auto views = make_kernel_relation_views(
+        outputs[RelationInRows],
+        outputs[RelationKernelIds],
+        outputs[RelationCounts],
+        rows,
+        kernel_count
+    );
+    return relation_from_outputs(outputs, views);
 }
 
 NativeKernelRelation make_generative_relation(
@@ -295,9 +431,7 @@ NativeKernelRelation make_generative_relation(
     auto pair_count = rows * kernel_count;
     auto device = coord_device();
     auto outputs = make_relation_outputs(
-        relation_output_spec(
-            pair_count, rows, pair_count, kernel_count, coords.dtype()
-        ),
+        relation_output_spec(pair_count, pair_count, coords.dtype()),
         std::make_shared<GenerativeKernelRelation>(
             coord_stream(device), rows, kernel_count, stride
         ),
@@ -306,7 +440,14 @@ NativeKernelRelation make_generative_relation(
         active_rows,
         device
     );
-    return relation_from_outputs(outputs);
+    auto views = make_kernel_relation_views(
+        outputs[RelationInRows],
+        outputs[RelationKernelIds],
+        outputs[RelationCounts],
+        rows,
+        kernel_count
+    );
+    return relation_from_outputs(outputs, views);
 }
 
 NativeKernelRelation make_transposed_kernel_relation(
@@ -325,9 +466,7 @@ NativeKernelRelation make_transposed_kernel_relation(
     auto device = coord_device();
     auto direct = can_use_direct_transposed_relation(offsets, stride);
     auto outputs = make_relation_outputs(
-        relation_output_spec(
-            max_edges, rows, max_edges, kernel_count, coords.dtype()
-        ),
+        relation_output_spec(max_edges, max_edges, coords.dtype()),
         std::make_shared<GenericKernelRelation>(
             coord_stream(device),
             CoordRelationOp::Transposed,
@@ -342,7 +481,14 @@ NativeKernelRelation make_transposed_kernel_relation(
         active_rows,
         device
     );
-    return relation_from_outputs(outputs);
+    auto views = make_kernel_relation_views(
+        outputs[RelationInRows],
+        outputs[RelationKernelIds],
+        outputs[RelationCounts],
+        rows,
+        kernel_count
+    );
+    return relation_from_outputs(outputs, views);
 }
 
 } // namespace mlx_lattice

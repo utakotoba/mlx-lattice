@@ -105,6 +105,25 @@ inline int lookup_downsample_row_hash(
     count[0] = total;
 }
 
+[[kernel]] void prefix_relation_selected_blocks_i32(
+    device int* block_offsets [[buffer(0)]],
+    device int* counts [[buffer(1)]],
+    constant const int& blocks [[buffer(2)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem != 0) {
+        return;
+    }
+    int total = 0;
+    for (int block = 0; block < blocks; ++block) {
+        int block_count = block_offsets[block];
+        block_offsets[block] = total;
+        total += block_count;
+    }
+    counts[0] = 0;
+    counts[1] = total;
+}
+
 [[kernel]] void build_downsample_coord_hash_i32(
     device const int* coords [[buffer(0)]],
     device atomic_int* table_rows [[buffer(1)]],

@@ -50,6 +50,26 @@ NativeKernelRelation make_transposed_kernel_relation(
     Triple dilation
 );
 
+NativeKernelRelationViews make_kernel_relation_views(
+    const mx::array& in_rows,
+    const mx::array& kernel_ids,
+    const mx::array& counts,
+    int in_capacity,
+    int kernel_count
+);
+
+NativeRelationGroupedView make_relation_grouped_view(
+    const mx::array& group_ids,
+    const mx::array& counts,
+    int group_count
+);
+
+NativeRelationDirectView make_relation_direct_view(
+    const mx::array& group_ids,
+    const mx::array& counts,
+    int group_count
+);
+
 NativeNeighborRelation make_knn_relation(
     const mx::array& source_coords,
     const mx::array& source_active_rows,

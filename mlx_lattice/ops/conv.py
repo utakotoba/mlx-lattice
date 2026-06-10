@@ -153,10 +153,6 @@ def _relation_conv(
         relation.edges.kernel_ids,
         relation.counts,
         relation.row_offsets,
-        relation.in_row_offsets,
-        relation.in_edge_ids,
-        relation.kernel_row_offsets,
-        relation.kernel_edge_ids,
         relation.n_out_capacity,
         relation.n_kernels,
     )

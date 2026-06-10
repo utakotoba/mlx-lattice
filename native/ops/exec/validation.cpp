@@ -11,8 +11,6 @@ void validate_sparse_pool_features(
     const mx::array& kernel_ids,
     const mx::array& row_offsets,
     const mx::array& counts,
-    const mx::array& in_row_offsets,
-    const mx::array& in_edge_ids,
     int out_capacity,
     int n_kernels
 ) {
@@ -46,13 +44,6 @@ void validate_sparse_pool_features(
             "row_offsets must have shape (N_out + 1,) and int32 dtype."
         );
     }
-    if (in_row_offsets.ndim() != 1 || in_edge_ids.ndim() != 1 ||
-        in_row_offsets.dtype() != mx::int32 ||
-        in_edge_ids.dtype() != mx::int32) {
-        throw std::invalid_argument(
-            "input-row relation views must be one-dimensional int32 arrays."
-        );
-    }
     if (counts.shape() != mx::Shape{2} || counts.dtype() != mx::int32) {
         throw std::invalid_argument(
             "counts must have shape (2,) and int32 dtype."
@@ -66,16 +57,6 @@ void validate_sparse_pool_features(
     if (row_offsets.shape(0) != out_capacity + 1) {
         throw std::invalid_argument(
             "row_offsets length must match out_capacity + 1."
-        );
-    }
-    if (in_row_offsets.shape(0) != feats.shape(0) + 1) {
-        throw std::invalid_argument(
-            "in_row_offsets length must match input capacity + 1."
-        );
-    }
-    if (in_edge_ids.shape(0) != in_rows.shape(0)) {
-        throw std::invalid_argument(
-            "in_edge_ids length must match edge capacity."
         );
     }
 }

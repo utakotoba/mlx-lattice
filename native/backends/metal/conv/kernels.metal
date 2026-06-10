@@ -598,25 +598,23 @@ using namespace metal;
     device const int* row_offsets [[buffer(6)]],
     device const int* in_row_offsets [[buffer(7)]],
     device const int* in_edge_ids [[buffer(8)]],
-    device const int* kernel_row_offsets [[buffer(9)]],
-    device const int* kernel_edge_ids [[buffer(10)]],
-    device float* grad [[buffer(11)]],
-    constant const int& edge_capacity [[buffer(12)]],
-    constant const int& out_capacity [[buffer(13)]],
-    constant const int& in_capacity [[buffer(14)]],
-    constant const int& in_channels [[buffer(15)]],
-    constant const int& out_channels [[buffer(16)]],
-    constant const int& cotangent_s0 [[buffer(17)]],
-    constant const int& cotangent_s1 [[buffer(18)]],
-    constant const int& weight_s0 [[buffer(19)]],
-    constant const int& weight_s1 [[buffer(20)]],
-    constant const int& weight_s2 [[buffer(21)]],
-    constant const int& weight_s3 [[buffer(22)]],
-    constant const int& weight_s4 [[buffer(23)]],
-    constant const int& weight_layout [[buffer(24)]],
-    constant const int& kernel_x [[buffer(25)]],
-    constant const int& kernel_y [[buffer(26)]],
-    constant const int& kernel_z [[buffer(27)]],
+    device float* grad [[buffer(9)]],
+    constant const int& edge_capacity [[buffer(10)]],
+    constant const int& out_capacity [[buffer(11)]],
+    constant const int& in_capacity [[buffer(12)]],
+    constant const int& in_channels [[buffer(13)]],
+    constant const int& out_channels [[buffer(14)]],
+    constant const int& cotangent_s0 [[buffer(15)]],
+    constant const int& cotangent_s1 [[buffer(16)]],
+    constant const int& weight_s0 [[buffer(17)]],
+    constant const int& weight_s1 [[buffer(18)]],
+    constant const int& weight_s2 [[buffer(19)]],
+    constant const int& weight_s3 [[buffer(20)]],
+    constant const int& weight_s4 [[buffer(21)]],
+    constant const int& weight_layout [[buffer(22)]],
+    constant const int& kernel_x [[buffer(23)]],
+    constant const int& kernel_y [[buffer(24)]],
+    constant const int& kernel_z [[buffer(25)]],
     uint elem [[thread_position_in_grid]]
 ) {
     int total = in_capacity * in_channels;
@@ -661,8 +659,6 @@ using namespace metal;
     grad[in_row * in_channels + ci] = acc;
     (void)in_rows;
     (void)row_offsets;
-    (void)kernel_row_offsets;
-    (void)kernel_edge_ids;
 }
 
 [[kernel]] void sparse_relation_conv_input_grad_f32_i32_vec4(
@@ -675,25 +671,23 @@ using namespace metal;
     device const int* row_offsets [[buffer(6)]],
     device const int* in_row_offsets [[buffer(7)]],
     device const int* in_edge_ids [[buffer(8)]],
-    device const int* kernel_row_offsets [[buffer(9)]],
-    device const int* kernel_edge_ids [[buffer(10)]],
-    device float* grad [[buffer(11)]],
-    constant const int& edge_capacity [[buffer(12)]],
-    constant const int& out_capacity [[buffer(13)]],
-    constant const int& in_capacity [[buffer(14)]],
-    constant const int& in_channels [[buffer(15)]],
-    constant const int& out_channels [[buffer(16)]],
-    constant const int& cotangent_s0 [[buffer(17)]],
-    constant const int& cotangent_s1 [[buffer(18)]],
-    constant const int& weight_s0 [[buffer(19)]],
-    constant const int& weight_s1 [[buffer(20)]],
-    constant const int& weight_s2 [[buffer(21)]],
-    constant const int& weight_s3 [[buffer(22)]],
-    constant const int& weight_s4 [[buffer(23)]],
-    constant const int& weight_layout [[buffer(24)]],
-    constant const int& kernel_x [[buffer(25)]],
-    constant const int& kernel_y [[buffer(26)]],
-    constant const int& kernel_z [[buffer(27)]],
+    device float* grad [[buffer(9)]],
+    constant const int& edge_capacity [[buffer(10)]],
+    constant const int& out_capacity [[buffer(11)]],
+    constant const int& in_capacity [[buffer(12)]],
+    constant const int& in_channels [[buffer(13)]],
+    constant const int& out_channels [[buffer(14)]],
+    constant const int& cotangent_s0 [[buffer(15)]],
+    constant const int& cotangent_s1 [[buffer(16)]],
+    constant const int& weight_s0 [[buffer(17)]],
+    constant const int& weight_s1 [[buffer(18)]],
+    constant const int& weight_s2 [[buffer(19)]],
+    constant const int& weight_s3 [[buffer(20)]],
+    constant const int& weight_s4 [[buffer(21)]],
+    constant const int& weight_layout [[buffer(22)]],
+    constant const int& kernel_x [[buffer(23)]],
+    constant const int& kernel_y [[buffer(24)]],
+    constant const int& kernel_z [[buffer(25)]],
     uint elem [[thread_position_in_grid]]
 ) {
     int blocks = in_channels / 4;
@@ -787,8 +781,6 @@ using namespace metal;
     grad[grad_base + 3] = acc.w;
     (void)in_rows;
     (void)row_offsets;
-    (void)kernel_row_offsets;
-    (void)kernel_edge_ids;
 }
 
 [[kernel]] void sparse_relation_conv_input_grad_f32_i32_cin16(
@@ -801,25 +793,23 @@ using namespace metal;
     device const int* row_offsets [[buffer(6)]],
     device const int* in_row_offsets [[buffer(7)]],
     device const int* in_edge_ids [[buffer(8)]],
-    device const int* kernel_row_offsets [[buffer(9)]],
-    device const int* kernel_edge_ids [[buffer(10)]],
-    device float* grad [[buffer(11)]],
-    constant const int& edge_capacity [[buffer(12)]],
-    constant const int& out_capacity [[buffer(13)]],
-    constant const int& in_capacity [[buffer(14)]],
-    constant const int& in_channels [[buffer(15)]],
-    constant const int& out_channels [[buffer(16)]],
-    constant const int& cotangent_s0 [[buffer(17)]],
-    constant const int& cotangent_s1 [[buffer(18)]],
-    constant const int& weight_s0 [[buffer(19)]],
-    constant const int& weight_s1 [[buffer(20)]],
-    constant const int& weight_s2 [[buffer(21)]],
-    constant const int& weight_s3 [[buffer(22)]],
-    constant const int& weight_s4 [[buffer(23)]],
-    constant const int& weight_layout [[buffer(24)]],
-    constant const int& kernel_x [[buffer(25)]],
-    constant const int& kernel_y [[buffer(26)]],
-    constant const int& kernel_z [[buffer(27)]],
+    device float* grad [[buffer(9)]],
+    constant const int& edge_capacity [[buffer(10)]],
+    constant const int& out_capacity [[buffer(11)]],
+    constant const int& in_capacity [[buffer(12)]],
+    constant const int& in_channels [[buffer(13)]],
+    constant const int& out_channels [[buffer(14)]],
+    constant const int& cotangent_s0 [[buffer(15)]],
+    constant const int& cotangent_s1 [[buffer(16)]],
+    constant const int& weight_s0 [[buffer(17)]],
+    constant const int& weight_s1 [[buffer(18)]],
+    constant const int& weight_s2 [[buffer(19)]],
+    constant const int& weight_s3 [[buffer(20)]],
+    constant const int& weight_s4 [[buffer(21)]],
+    constant const int& weight_layout [[buffer(22)]],
+    constant const int& kernel_x [[buffer(23)]],
+    constant const int& kernel_y [[buffer(24)]],
+    constant const int& kernel_z [[buffer(25)]],
     uint in_row_id [[thread_position_in_grid]]
 ) {
     if (in_row_id >= uint(in_capacity)) {
@@ -1099,8 +1089,6 @@ using namespace metal;
     grad[grad_base + 15] = acc3.w;
     (void)in_rows;
     (void)row_offsets;
-    (void)kernel_row_offsets;
-    (void)kernel_edge_ids;
     (void)in_channels;
 }
 
@@ -1112,24 +1100,22 @@ using namespace metal;
     device const int* kernel_ids [[buffer(4)]],
     device const int* counts [[buffer(5)]],
     device const int* row_offsets [[buffer(6)]],
-    device const int* in_row_offsets [[buffer(7)]],
-    device const int* in_edge_ids [[buffer(8)]],
-    device const int* kernel_row_offsets [[buffer(9)]],
-    device const int* kernel_edge_ids [[buffer(10)]],
-    device float* grad [[buffer(11)]],
-    constant const int& edge_capacity [[buffer(12)]],
-    constant const int& out_capacity [[buffer(13)]],
-    constant const int& n_kernels [[buffer(14)]],
-    constant const int& in_channels [[buffer(15)]],
-    constant const int& out_channels [[buffer(16)]],
-    constant const int& feat_s0 [[buffer(17)]],
-    constant const int& feat_s1 [[buffer(18)]],
-    constant const int& cotangent_s0 [[buffer(19)]],
-    constant const int& cotangent_s1 [[buffer(20)]],
-    constant const int& weight_layout [[buffer(21)]],
-    constant const int& kernel_x [[buffer(22)]],
-    constant const int& kernel_y [[buffer(23)]],
-    constant const int& kernel_z [[buffer(24)]],
+    device const int* kernel_row_offsets [[buffer(7)]],
+    device const int* kernel_edge_ids [[buffer(8)]],
+    device float* grad [[buffer(9)]],
+    constant const int& edge_capacity [[buffer(10)]],
+    constant const int& out_capacity [[buffer(11)]],
+    constant const int& n_kernels [[buffer(12)]],
+    constant const int& in_channels [[buffer(13)]],
+    constant const int& out_channels [[buffer(14)]],
+    constant const int& feat_s0 [[buffer(15)]],
+    constant const int& feat_s1 [[buffer(16)]],
+    constant const int& cotangent_s0 [[buffer(17)]],
+    constant const int& cotangent_s1 [[buffer(18)]],
+    constant const int& weight_layout [[buffer(19)]],
+    constant const int& kernel_x [[buffer(20)]],
+    constant const int& kernel_y [[buffer(21)]],
+    constant const int& kernel_z [[buffer(22)]],
     uint elem [[thread_position_in_grid]]
 ) {
     int edge_count = min(counts[0], edge_capacity);
@@ -1172,8 +1158,6 @@ using namespace metal;
     )] = acc;
     (void)kernel_ids;
     (void)row_offsets;
-    (void)in_row_offsets;
-    (void)in_edge_ids;
 }
 
 [[kernel]] void sparse_relation_conv_weight_grad_cout16_f32_i32(
@@ -1184,24 +1168,22 @@ using namespace metal;
     device const int* kernel_ids [[buffer(4)]],
     device const int* counts [[buffer(5)]],
     device const int* row_offsets [[buffer(6)]],
-    device const int* in_row_offsets [[buffer(7)]],
-    device const int* in_edge_ids [[buffer(8)]],
-    device const int* kernel_row_offsets [[buffer(9)]],
-    device const int* kernel_edge_ids [[buffer(10)]],
-    device float* grad [[buffer(11)]],
-    constant const int& edge_capacity [[buffer(12)]],
-    constant const int& out_capacity [[buffer(13)]],
-    constant const int& n_kernels [[buffer(14)]],
-    constant const int& in_channels [[buffer(15)]],
-    constant const int& out_channels [[buffer(16)]],
-    constant const int& feat_s0 [[buffer(17)]],
-    constant const int& feat_s1 [[buffer(18)]],
-    constant const int& cotangent_s0 [[buffer(19)]],
-    constant const int& cotangent_s1 [[buffer(20)]],
-    constant const int& weight_layout [[buffer(21)]],
-    constant const int& kernel_x [[buffer(22)]],
-    constant const int& kernel_y [[buffer(23)]],
-    constant const int& kernel_z [[buffer(24)]],
+    device const int* kernel_row_offsets [[buffer(7)]],
+    device const int* kernel_edge_ids [[buffer(8)]],
+    device float* grad [[buffer(9)]],
+    constant const int& edge_capacity [[buffer(10)]],
+    constant const int& out_capacity [[buffer(11)]],
+    constant const int& n_kernels [[buffer(12)]],
+    constant const int& in_channels [[buffer(13)]],
+    constant const int& out_channels [[buffer(14)]],
+    constant const int& feat_s0 [[buffer(15)]],
+    constant const int& feat_s1 [[buffer(16)]],
+    constant const int& cotangent_s0 [[buffer(17)]],
+    constant const int& cotangent_s1 [[buffer(18)]],
+    constant const int& weight_layout [[buffer(19)]],
+    constant const int& kernel_x [[buffer(20)]],
+    constant const int& kernel_y [[buffer(21)]],
+    constant const int& kernel_z [[buffer(22)]],
     uint pair_id [[threadgroup_position_in_grid]],
     uint tid [[thread_index_in_threadgroup]]
 ) {
@@ -1305,8 +1287,6 @@ using namespace metal;
     }
     (void)kernel_ids;
     (void)row_offsets;
-    (void)in_row_offsets;
-    (void)in_edge_ids;
 }
 
 [[kernel]] void sparse_relation_conv_weight_grad_block4_f32_i32(
@@ -1317,24 +1297,22 @@ using namespace metal;
     device const int* kernel_ids [[buffer(4)]],
     device const int* counts [[buffer(5)]],
     device const int* row_offsets [[buffer(6)]],
-    device const int* in_row_offsets [[buffer(7)]],
-    device const int* in_edge_ids [[buffer(8)]],
-    device const int* kernel_row_offsets [[buffer(9)]],
-    device const int* kernel_edge_ids [[buffer(10)]],
-    device float* grad [[buffer(11)]],
-    constant const int& edge_capacity [[buffer(12)]],
-    constant const int& out_capacity [[buffer(13)]],
-    constant const int& n_kernels [[buffer(14)]],
-    constant const int& in_channels [[buffer(15)]],
-    constant const int& out_channels [[buffer(16)]],
-    constant const int& feat_s0 [[buffer(17)]],
-    constant const int& feat_s1 [[buffer(18)]],
-    constant const int& cotangent_s0 [[buffer(19)]],
-    constant const int& cotangent_s1 [[buffer(20)]],
-    constant const int& weight_layout [[buffer(21)]],
-    constant const int& kernel_x [[buffer(22)]],
-    constant const int& kernel_y [[buffer(23)]],
-    constant const int& kernel_z [[buffer(24)]],
+    device const int* kernel_row_offsets [[buffer(7)]],
+    device const int* kernel_edge_ids [[buffer(8)]],
+    device float* grad [[buffer(9)]],
+    constant const int& edge_capacity [[buffer(10)]],
+    constant const int& out_capacity [[buffer(11)]],
+    constant const int& n_kernels [[buffer(12)]],
+    constant const int& in_channels [[buffer(13)]],
+    constant const int& out_channels [[buffer(14)]],
+    constant const int& feat_s0 [[buffer(15)]],
+    constant const int& feat_s1 [[buffer(16)]],
+    constant const int& cotangent_s0 [[buffer(17)]],
+    constant const int& cotangent_s1 [[buffer(18)]],
+    constant const int& weight_layout [[buffer(19)]],
+    constant const int& kernel_x [[buffer(20)]],
+    constant const int& kernel_y [[buffer(21)]],
+    constant const int& kernel_z [[buffer(22)]],
     uint tile_id [[threadgroup_position_in_grid]],
     uint tid [[thread_index_in_threadgroup]]
 ) {
@@ -1430,8 +1408,6 @@ using namespace metal;
     }
     (void)kernel_ids;
     (void)row_offsets;
-    (void)in_row_offsets;
-    (void)in_edge_ids;
 }
 
 [[kernel]] void sparse_relation_conv_weight_grad_atomic_f32_i32(
@@ -1442,24 +1418,22 @@ using namespace metal;
     device const int* kernel_ids [[buffer(4)]],
     device const int* counts [[buffer(5)]],
     device const int* row_offsets [[buffer(6)]],
-    device const int* in_row_offsets [[buffer(7)]],
-    device const int* in_edge_ids [[buffer(8)]],
-    device const int* kernel_row_offsets [[buffer(9)]],
-    device const int* kernel_edge_ids [[buffer(10)]],
-    device atomic_float* grad [[buffer(11)]],
-    constant const int& edge_capacity [[buffer(12)]],
-    constant const int& out_capacity [[buffer(13)]],
-    constant const int& n_kernels [[buffer(14)]],
-    constant const int& in_channels [[buffer(15)]],
-    constant const int& out_channels [[buffer(16)]],
-    constant const int& feat_s0 [[buffer(17)]],
-    constant const int& feat_s1 [[buffer(18)]],
-    constant const int& cotangent_s0 [[buffer(19)]],
-    constant const int& cotangent_s1 [[buffer(20)]],
-    constant const int& weight_layout [[buffer(21)]],
-    constant const int& kernel_x [[buffer(22)]],
-    constant const int& kernel_y [[buffer(23)]],
-    constant const int& kernel_z [[buffer(24)]],
+    device const int* kernel_row_offsets [[buffer(7)]],
+    device const int* kernel_edge_ids [[buffer(8)]],
+    device atomic_float* grad [[buffer(9)]],
+    constant const int& edge_capacity [[buffer(10)]],
+    constant const int& out_capacity [[buffer(11)]],
+    constant const int& n_kernels [[buffer(12)]],
+    constant const int& in_channels [[buffer(13)]],
+    constant const int& out_channels [[buffer(14)]],
+    constant const int& feat_s0 [[buffer(15)]],
+    constant const int& feat_s1 [[buffer(16)]],
+    constant const int& cotangent_s0 [[buffer(17)]],
+    constant const int& cotangent_s1 [[buffer(18)]],
+    constant const int& weight_layout [[buffer(19)]],
+    constant const int& kernel_x [[buffer(20)]],
+    constant const int& kernel_y [[buffer(21)]],
+    constant const int& kernel_z [[buffer(22)]],
     uint elem [[thread_position_in_grid]]
 ) {
     int edge_count = min(counts[0], edge_capacity);
@@ -1497,8 +1471,6 @@ using namespace metal;
         memory_order_relaxed
     );
     (void)row_offsets;
-    (void)in_row_offsets;
-    (void)in_edge_ids;
     (void)kernel_row_offsets;
     (void)kernel_edge_ids;
     (void)n_kernels;

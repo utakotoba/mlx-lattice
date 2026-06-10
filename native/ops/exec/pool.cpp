@@ -7,6 +7,7 @@
 #include "backends/cpu/pool/algorithms.h"
 #include "backends/metal/pool/runtime.h"
 #include "mlx/ops.h"
+#include "ops/coords/factories.h"
 #include "ops/exec/primitive.h"
 #include "ops/exec/streams.h"
 
@@ -39,8 +40,6 @@ mx::array make_sparse_pool_features_jvp(
     const mx::array& kernel_ids,
     const mx::array& row_offsets,
     const mx::array& counts,
-    const mx::array& in_row_offsets,
-    const mx::array& in_edge_ids,
     SparsePoolShape shape
 );
 
@@ -83,8 +82,6 @@ class SparsePoolFeatures final : public SparsePrimitive {
                     primals[3],
                     primals[4],
                     primals[5],
-                    primals[6],
-                    primals[7],
                     shape_.out_capacity,
                     shape_.n_kernels,
                     shape_.input_exclusive ? PoolInputLayout::Exclusive
@@ -100,8 +97,6 @@ class SparsePoolFeatures final : public SparsePrimitive {
                     primals[3],
                     primals[4],
                     primals[5],
-                    primals[6],
-                    primals[7],
                     shape_
                 )};
             }
@@ -122,6 +117,29 @@ class SparsePoolFeatures final : public SparsePrimitive {
         grads.reserve(argnums.size());
         for (const auto argnum : argnums) {
             if (argnum == 0) {
+                if (shape_.input_exclusive) {
+                    auto view = make_relation_direct_view(
+                        primals[1], primals[5], shape_.in_capacity
+                    );
+                    grads.push_back(make_sparse_pool_features_grad(
+                        reduce_,
+                        cotangents[0],
+                        primals[0],
+                        outputs[0],
+                        primals[1],
+                        primals[2],
+                        primals[3],
+                        primals[4],
+                        primals[5],
+                        primals[4],
+                        view.edge_ids,
+                        shape_
+                    ));
+                    continue;
+                }
+                auto view = make_relation_grouped_view(
+                    primals[1], primals[5], shape_.in_capacity
+                );
                 grads.push_back(make_sparse_pool_features_grad(
                     reduce_,
                     cotangents[0],
@@ -132,8 +150,8 @@ class SparsePoolFeatures final : public SparsePrimitive {
                     primals[3],
                     primals[4],
                     primals[5],
-                    primals[6],
-                    primals[7],
+                    view.row_offsets,
+                    view.edge_ids,
                     shape_
                 ));
             } else {
@@ -243,19 +261,10 @@ mx::Stream pool_stream(
     const mx::array& out_rows,
     const mx::array& kernel_ids,
     const mx::array& row_offsets,
-    const mx::array& counts,
-    const mx::array& in_row_offsets,
-    const mx::array& in_edge_ids
+    const mx::array& counts
 ) {
     return sparse_pool_features_stream(
-        feats,
-        in_rows,
-        out_rows,
-        kernel_ids,
-        row_offsets,
-        counts,
-        in_row_offsets,
-        in_edge_ids
+        feats, in_rows, out_rows, kernel_ids, row_offsets, counts
     );
 }
 
@@ -269,8 +278,6 @@ mx::array make_sparse_pool_features(
     const mx::array& kernel_ids,
     const mx::array& row_offsets,
     const mx::array& counts,
-    const mx::array& in_row_offsets,
-    const mx::array& in_edge_ids,
     int out_capacity,
     int n_kernels,
     PoolInputLayout input_layout
@@ -282,16 +289,8 @@ mx::array make_sparse_pool_features(
         feats.shape(1),
         input_layout == PoolInputLayout::Exclusive,
     };
-    auto stream = pool_stream(
-        feats,
-        in_rows,
-        out_rows,
-        kernel_ids,
-        row_offsets,
-        counts,
-        in_row_offsets,
-        in_edge_ids
-    );
+    auto stream =
+        pool_stream(feats, in_rows, out_rows, kernel_ids, row_offsets, counts);
     auto primitive =
         std::make_shared<SparsePoolFeatures>(stream, reduce, shape);
     auto inputs = std::vector<mx::array>{
@@ -301,8 +300,6 @@ mx::array make_sparse_pool_features(
         kernel_ids,
         row_offsets,
         counts,
-        in_row_offsets,
-        in_edge_ids,
     };
     return mx::array::make_arrays(
         {mx::Shape{out_capacity, feats.shape(1)}},
@@ -329,14 +326,7 @@ mx::array make_sparse_pool_features_grad(
     SparsePoolShape shape
 ) {
     auto stream = pool_stream(
-        cotangent,
-        in_rows,
-        out_rows,
-        kernel_ids,
-        row_offsets,
-        counts,
-        in_row_offsets,
-        in_edge_ids
+        cotangent, in_rows, out_rows, kernel_ids, row_offsets, counts
     );
     auto primitive =
         std::make_shared<SparsePoolFeaturesGrad>(stream, reduce, shape);
@@ -370,19 +360,10 @@ mx::array make_sparse_pool_features_jvp(
     const mx::array& kernel_ids,
     const mx::array& row_offsets,
     const mx::array& counts,
-    const mx::array& in_row_offsets,
-    const mx::array& in_edge_ids,
     SparsePoolShape shape
 ) {
     auto stream = pool_stream(
-        tangent,
-        in_rows,
-        out_rows,
-        kernel_ids,
-        row_offsets,
-        counts,
-        in_row_offsets,
-        in_edge_ids
+        tangent, in_rows, out_rows, kernel_ids, row_offsets, counts
     );
     auto primitive =
         std::make_shared<SparsePoolFeaturesJvp>(stream, reduce, shape);
@@ -395,8 +376,6 @@ mx::array make_sparse_pool_features_jvp(
         kernel_ids,
         row_offsets,
         counts,
-        in_row_offsets,
-        in_edge_ids,
     };
     return mx::array::make_arrays(
         {mx::Shape{shape.out_capacity, shape.channels}},

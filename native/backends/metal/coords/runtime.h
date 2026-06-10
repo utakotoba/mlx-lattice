@@ -68,6 +68,20 @@ void eval_generative_kernel_relation(
     std::vector<mx::array>& outputs
 );
 
+void eval_relation_grouped_view(
+    RelationGroupedViewShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
+void eval_relation_direct_view(
+    RelationGroupedViewShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
 void eval_neighbor_relation(
     NeighborRelationOp op,
     NeighborRelationShape shape,

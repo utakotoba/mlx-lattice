@@ -145,8 +145,6 @@ def _fused_pool(
         relation.edges.kernel_ids,
         relation.row_offsets,
         relation.counts,
-        relation.in_row_offsets,
-        relation.in_edge_ids,
         _input_exclusive(spec),
         mode,
         relation.n_out_capacity,

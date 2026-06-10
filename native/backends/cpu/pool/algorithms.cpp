@@ -57,8 +57,8 @@ RelationView relation_view(const std::vector<mx::array>& inputs) {
         inputs[3].data<int32_t>(),
         inputs[4].data<int32_t>(),
         inputs[5].data<int32_t>(),
-        inputs[6].data<int32_t>(),
-        inputs[7].data<int32_t>(),
+        nullptr,
+        nullptr,
     };
 }
 
@@ -71,6 +71,19 @@ RelationView autodiff_relation_view(const std::vector<mx::array>& inputs) {
         inputs[7].data<int32_t>(),
         inputs[8].data<int32_t>(),
         inputs[9].data<int32_t>(),
+    };
+}
+
+RelationView
+autodiff_forward_relation_view(const std::vector<mx::array>& inputs) {
+    return {
+        inputs[3].data<int32_t>(),
+        inputs[4].data<int32_t>(),
+        inputs[5].data<int32_t>(),
+        inputs[6].data<int32_t>(),
+        inputs[7].data<int32_t>(),
+        nullptr,
+        nullptr,
     };
 }
 
@@ -261,10 +274,19 @@ void eval_grad(
             for (int in_row = 0; in_row < shape.in_capacity; ++in_row) {
                 for (int channel = 0; channel < shape.channels; ++channel) {
                     auto value = 0.0F;
-                    for (int cursor = relation.in_row_offsets[in_row];
-                         cursor < relation.in_row_offsets[in_row + 1];
-                         ++cursor) {
-                        auto edge = relation.in_edge_ids[cursor];
+                    auto direct_edge = shape.input_exclusive
+                                           ? relation.in_edge_ids[in_row]
+                                           : -1;
+                    auto start = shape.input_exclusive
+                                     ? 0
+                                     : relation.in_row_offsets[in_row];
+                    auto stop = shape.input_exclusive
+                                    ? int(direct_edge >= 0)
+                                    : relation.in_row_offsets[in_row + 1];
+                    for (int cursor = start; cursor < stop; ++cursor) {
+                        auto edge = shape.input_exclusive
+                                        ? direct_edge
+                                        : relation.in_edge_ids[cursor];
                         if (edge < 0) {
                             continue;
                         }
@@ -340,7 +362,7 @@ void eval_jvp(
             const auto& tangent = ready[0];
             const auto& feats = ready[1];
             const auto& pooled = ready[2];
-            auto relation = autodiff_relation_view(ready);
+            auto relation = autodiff_forward_relation_view(ready);
             auto degrees = row_degrees(relation, shape.out_capacity);
             auto ties =
                 reduce == PoolReduceOp::Max

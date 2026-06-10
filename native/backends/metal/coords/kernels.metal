@@ -223,6 +223,92 @@ using namespace metal;
     counts[0] = total;
 }
 
+[[kernel]] void count_forward_relation_slot_degrees_i32(
+    device const int* slot_in_rows [[buffer(0)]],
+    device const int* slot_kernel_ids [[buffer(1)]],
+    device const int* counts [[buffer(2)]],
+    device int* row_degrees [[buffer(3)]],
+    constant const int& rows [[buffer(4)]],
+    constant const int& kernel_count [[buffer(5)]],
+    uint row [[thread_position_in_grid]]
+) {
+    int out_count = min(counts[1], rows);
+    if (row >= uint(rows)) {
+        return;
+    }
+    if (row >= uint(out_count)) {
+        row_degrees[row] = 0;
+        return;
+    }
+
+    int start = int(row) * kernel_count;
+    int degree = 0;
+    for (int kernel_id = 0; kernel_id < kernel_count; ++kernel_id) {
+        int edge = start + kernel_id;
+        if (slot_in_rows[edge] >= 0 && slot_kernel_ids[edge] >= 0) {
+            ++degree;
+        }
+    }
+    row_degrees[row] = degree;
+}
+
+[[kernel]] void scan_relation_row_degrees_blocks_i32(
+    device const int* row_degrees [[buffer(0)]],
+    device int* local_offsets [[buffer(1)]],
+    device int* block_offsets [[buffer(2)]],
+    constant const int& rows [[buffer(3)]],
+    uint block [[threadgroup_position_in_grid]],
+    uint tid [[thread_index_in_threadgroup]]
+) {
+    threadgroup int scan[256];
+    uint row = block * 256 + tid;
+    scan[tid] = row < uint(rows) ? row_degrees[row] : 0;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    for (uint offset = 1; offset < 256; offset <<= 1) {
+        uint index = (tid + 1) * offset * 2 - 1;
+        if (index < 256) {
+            scan[index] += scan[index - offset];
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    if (tid == 0) {
+        block_offsets[block] = scan[255];
+        scan[255] = 0;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    for (uint offset = 128; offset > 0; offset >>= 1) {
+        uint index = (tid + 1) * offset * 2 - 1;
+        if (index < 256) {
+            int value = scan[index - offset];
+            scan[index - offset] = scan[index];
+            scan[index] += value;
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    if (row < uint(rows)) {
+        local_offsets[row] = scan[tid];
+    }
+}
+
+[[kernel]] void finalize_forward_relation_row_offsets_i32(
+    device const int* local_offsets [[buffer(0)]],
+    device const int* block_offsets [[buffer(1)]],
+    device int* row_offsets [[buffer(2)]],
+    device const int* counts [[buffer(3)]],
+    constant const int& rows [[buffer(4)]],
+    uint row [[thread_position_in_grid]]
+) {
+    if (row < uint(rows)) {
+        row_offsets[row] = block_offsets[row / 256] + local_offsets[row];
+    } else if (row == uint(rows)) {
+        row_offsets[row] = counts[0];
+    }
+}
+
 [[kernel]] void compact_forward_relation_slots_i32(
     device const int* slot_in_rows [[buffer(0)]],
     device const int* slot_out_rows [[buffer(1)]],
@@ -404,37 +490,22 @@ using namespace metal;
 
 // MARK: - relation execution views
 
-[[kernel]] void clear_kernel_relation_views_i32(
-    device int* in_row_offsets [[buffer(0)]],
-    device int* in_edge_ids [[buffer(1)]],
-    device int* kernel_row_offsets [[buffer(2)]],
-    device int* kernel_edge_ids [[buffer(3)]],
-    constant const int& edge_capacity [[buffer(4)]],
-    constant const int& in_capacity [[buffer(5)]],
-    constant const int& kernel_count [[buffer(6)]],
+[[kernel]] void clear_relation_grouped_view_i32(
+    device int* row_offsets [[buffer(0)]],
+    constant const int& group_count [[buffer(1)]],
     uint elem [[thread_position_in_grid]]
 ) {
-    if (elem <= uint(in_capacity)) {
-        in_row_offsets[elem] = 0;
-    }
-    if (elem <= uint(kernel_count)) {
-        kernel_row_offsets[elem] = 0;
-    }
-    if (elem < uint(edge_capacity)) {
-        in_edge_ids[elem] = -1;
-        kernel_edge_ids[elem] = -1;
+    if (elem <= uint(group_count)) {
+        row_offsets[elem] = 0;
     }
 }
 
-[[kernel]] void count_kernel_relation_views_i32(
-    device const int* in_rows [[buffer(0)]],
-    device const int* kernel_ids [[buffer(1)]],
-    device const int* counts [[buffer(2)]],
-    device atomic_int* in_row_offsets [[buffer(3)]],
-    device atomic_int* kernel_row_offsets [[buffer(4)]],
-    constant const int& edge_capacity [[buffer(5)]],
-    constant const int& in_capacity [[buffer(6)]],
-    constant const int& kernel_count [[buffer(7)]],
+[[kernel]] void count_relation_grouped_view_i32(
+    device const int* group_ids [[buffer(0)]],
+    device const int* counts [[buffer(1)]],
+    device atomic_int* row_offsets [[buffer(2)]],
+    constant const int& edge_capacity [[buffer(3)]],
+    constant const int& group_count [[buffer(4)]],
     uint edge [[thread_position_in_grid]]
 ) {
     int edge_count = min(counts[0], edge_capacity);
@@ -442,27 +513,18 @@ using namespace metal;
         return;
     }
 
-    int in_row = in_rows[edge];
-    int kernel_id = kernel_ids[edge];
-    if (in_row >= 0 && in_row < in_capacity) {
+    int group = group_ids[edge];
+    if (group >= 0 && group < group_count) {
         atomic_fetch_add_explicit(
-            &in_row_offsets[in_row + 1], 1, memory_order_relaxed
-        );
-    }
-    if (kernel_id >= 0 && kernel_id < kernel_count) {
-        atomic_fetch_add_explicit(
-            &kernel_row_offsets[kernel_id + 1], 1, memory_order_relaxed
+            &row_offsets[group + 1], 1, memory_order_relaxed
         );
     }
 }
 
-[[kernel]] void prefix_kernel_relation_views_i32(
-    device int* in_row_offsets [[buffer(0)]],
-    device int* in_cursors [[buffer(1)]],
-    device int* kernel_row_offsets [[buffer(2)]],
-    device int* kernel_cursors [[buffer(3)]],
-    constant const int& in_capacity [[buffer(4)]],
-    constant const int& kernel_count [[buffer(5)]],
+[[kernel]] void prefix_relation_grouped_view_i32(
+    device int* row_offsets [[buffer(0)]],
+    device int* cursors [[buffer(1)]],
+    constant const int& group_count [[buffer(2)]],
     uint elem [[thread_position_in_grid]]
 ) {
     if (elem != 0) {
@@ -470,37 +532,84 @@ using namespace metal;
     }
 
     int total = 0;
-    in_row_offsets[0] = 0;
-    in_cursors[0] = 0;
-    for (int row = 1; row <= in_capacity; ++row) {
-        int count = in_row_offsets[row];
+    row_offsets[0] = 0;
+    cursors[0] = 0;
+    for (int row = 1; row <= group_count; ++row) {
+        int count = row_offsets[row];
         total += count;
-        in_row_offsets[row] = total;
-        in_cursors[row] = total;
-    }
-
-    total = 0;
-    kernel_row_offsets[0] = 0;
-    kernel_cursors[0] = 0;
-    for (int kernel_index = 1; kernel_index <= kernel_count; ++kernel_index) {
-        int count = kernel_row_offsets[kernel_index];
-        total += count;
-        kernel_row_offsets[kernel_index] = total;
-        kernel_cursors[kernel_index] = total;
+        row_offsets[row] = total;
+        cursors[row] = total;
     }
 }
 
-[[kernel]] void fill_kernel_relation_views_i32(
-    device const int* in_rows [[buffer(0)]],
-    device const int* kernel_ids [[buffer(1)]],
-    device const int* counts [[buffer(2)]],
-    device atomic_int* in_cursors [[buffer(3)]],
-    device atomic_int* kernel_cursors [[buffer(4)]],
-    device int* in_edge_ids [[buffer(5)]],
-    device int* kernel_edge_ids [[buffer(6)]],
-    constant const int& edge_capacity [[buffer(7)]],
-    constant const int& in_capacity [[buffer(8)]],
-    constant const int& kernel_count [[buffer(9)]],
+[[kernel]] void scan_relation_grouped_view_blocks_i32(
+    device const int* counts_by_group [[buffer(0)]],
+    device int* local_offsets [[buffer(1)]],
+    device int* block_offsets [[buffer(2)]],
+    constant const int& group_count [[buffer(3)]],
+    uint block [[threadgroup_position_in_grid]],
+    uint tid [[thread_index_in_threadgroup]]
+) {
+    threadgroup int scan[256];
+    uint group = block * 256 + tid;
+    scan[tid] = group < uint(group_count) ? counts_by_group[group + 1] : 0;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    for (uint offset = 1; offset < 256; offset <<= 1) {
+        uint index = (tid + 1) * offset * 2 - 1;
+        if (index < 256) {
+            scan[index] += scan[index - offset];
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    if (tid == 0) {
+        block_offsets[block] = scan[255];
+        scan[255] = 0;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    for (uint offset = 128; offset > 0; offset >>= 1) {
+        uint index = (tid + 1) * offset * 2 - 1;
+        if (index < 256) {
+            int value = scan[index - offset];
+            scan[index - offset] = scan[index];
+            scan[index] += value;
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+
+    if (group < uint(group_count)) {
+        local_offsets[group] = scan[tid];
+    }
+}
+
+[[kernel]] void finalize_relation_grouped_view_i32(
+    device const int* local_offsets [[buffer(0)]],
+    device const int* block_offsets [[buffer(1)]],
+    device const int* total_count [[buffer(2)]],
+    device int* row_offsets [[buffer(3)]],
+    device int* cursors [[buffer(4)]],
+    constant const int& group_count [[buffer(5)]],
+    uint group [[thread_position_in_grid]]
+) {
+    if (group < uint(group_count)) {
+        int offset = block_offsets[group / 256] + local_offsets[group];
+        row_offsets[group] = offset;
+        cursors[group] = offset;
+    } else if (group == uint(group_count)) {
+        row_offsets[group_count] = total_count[0];
+        cursors[group_count] = total_count[0];
+    }
+}
+
+[[kernel]] void fill_relation_grouped_view_i32(
+    device const int* group_ids [[buffer(0)]],
+    device const int* counts [[buffer(1)]],
+    device atomic_int* cursors [[buffer(2)]],
+    device int* edge_ids [[buffer(3)]],
+    constant const int& edge_capacity [[buffer(4)]],
+    constant const int& group_count [[buffer(5)]],
     uint edge [[thread_position_in_grid]]
 ) {
     int edge_count = min(counts[0], edge_capacity);
@@ -508,19 +617,39 @@ using namespace metal;
         return;
     }
 
-    int in_row = in_rows[edge];
-    int kernel_id = kernel_ids[edge];
-    if (in_row >= 0 && in_row < in_capacity) {
-        int slot = atomic_fetch_add_explicit(
-            &in_cursors[in_row], 1, memory_order_relaxed
-        );
-        in_edge_ids[slot] = int(edge);
+    int group = group_ids[edge];
+    if (group >= 0 && group < group_count) {
+        int slot =
+            atomic_fetch_add_explicit(&cursors[group], 1, memory_order_relaxed);
+        edge_ids[slot] = int(edge);
     }
-    if (kernel_id >= 0 && kernel_id < kernel_count) {
-        int slot = atomic_fetch_add_explicit(
-            &kernel_cursors[kernel_id], 1, memory_order_relaxed
-        );
-        kernel_edge_ids[slot] = int(edge);
+}
+
+[[kernel]] void clear_relation_direct_view_i32(
+    device int* edge_ids [[buffer(0)]],
+    constant const int& group_count [[buffer(1)]],
+    uint group [[thread_position_in_grid]]
+) {
+    if (group < uint(group_count)) {
+        edge_ids[group] = -1;
+    }
+}
+
+[[kernel]] void fill_relation_direct_view_i32(
+    device const int* group_ids [[buffer(0)]],
+    device const int* counts [[buffer(1)]],
+    device int* edge_ids [[buffer(2)]],
+    constant const int& edge_capacity [[buffer(3)]],
+    constant const int& group_count [[buffer(4)]],
+    uint edge [[thread_position_in_grid]]
+) {
+    int edge_count = min(counts[0], edge_capacity);
+    if (edge >= uint(edge_count)) {
+        return;
+    }
+    int group = group_ids[edge];
+    if (group >= 0 && group < group_count) {
+        edge_ids[group] = int(edge);
     }
 }
 

@@ -15,10 +15,6 @@ mx::array sparse_conv_features(
     const mx::array& kernel_ids,
     const mx::array& counts,
     const mx::array& row_offsets,
-    const mx::array& in_row_offsets,
-    const mx::array& in_edge_ids,
-    const mx::array& kernel_row_offsets,
-    const mx::array& kernel_edge_ids,
     int out_capacity,
     int n_kernels
 ) {
@@ -58,26 +54,9 @@ mx::array sparse_conv_features(
             "counts must have shape (2,) and int32 dtype."
         );
     }
-    if (row_offsets.ndim() != 1 || in_row_offsets.ndim() != 1 ||
-        in_edge_ids.ndim() != 1 || kernel_row_offsets.ndim() != 1 ||
-        kernel_edge_ids.ndim() != 1) {
+    if (row_offsets.ndim() != 1 || row_offsets.dtype() != mx::int32) {
         throw std::invalid_argument(
-            "relation execution views must be one-dimensional."
-        );
-    }
-    if (row_offsets.dtype() != mx::int32 ||
-        in_row_offsets.dtype() != mx::int32 ||
-        in_edge_ids.dtype() != mx::int32 ||
-        kernel_row_offsets.dtype() != mx::int32 ||
-        kernel_edge_ids.dtype() != mx::int32) {
-        throw std::invalid_argument(
-            "relation execution views must use int32 dtype."
-        );
-    }
-    if (in_edge_ids.shape(0) != in_rows.shape(0) ||
-        kernel_edge_ids.shape(0) != in_rows.shape(0)) {
-        throw std::invalid_argument(
-            "relation execution edge views must match edge capacity."
+            "row_offsets must be a one-dimensional int32 array."
         );
     }
     if (row_offsets.shape(0) != out_capacity + 1) {
@@ -116,10 +95,6 @@ mx::array sparse_conv_features(
         kernel_ids,
         counts,
         row_offsets,
-        in_row_offsets,
-        in_edge_ids,
-        kernel_row_offsets,
-        kernel_edge_ids,
         out_capacity,
         n_kernels
     );
@@ -133,8 +108,6 @@ mx::array sparse_pool_features(
     const mx::array& kernel_ids,
     const mx::array& row_offsets,
     const mx::array& counts,
-    const mx::array& in_row_offsets,
-    const mx::array& in_edge_ids,
     int out_capacity,
     int n_kernels,
     PoolInputLayout input_layout
@@ -146,8 +119,6 @@ mx::array sparse_pool_features(
         kernel_ids,
         row_offsets,
         counts,
-        in_row_offsets,
-        in_edge_ids,
         out_capacity,
         n_kernels
     );
@@ -159,8 +130,6 @@ mx::array sparse_pool_features(
         kernel_ids,
         row_offsets,
         counts,
-        in_row_offsets,
-        in_edge_ids,
         out_capacity,
         n_kernels,
         input_layout

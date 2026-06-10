@@ -127,11 +127,10 @@ void eval_grad(
     auto& encoder = mx::metal::get_command_encoder(stream);
 
     auto kernel_name = "sparse_pool_relation_sum_avg_input_grad_f32_i32";
-    if (reduce == PoolReduceOp::Max) {
+    if (shape.input_exclusive) {
+        kernel_name = "sparse_pool_relation_exclusive_input_grad_f32_i32";
+    } else if (reduce == PoolReduceOp::Max) {
         kernel_name = "sparse_pool_relation_max_input_grad_f32_i32";
-    } else if (shape.input_exclusive) {
-        kernel_name =
-            "sparse_pool_relation_sum_avg_exclusive_input_grad_f32_i32";
     }
     auto kernel = device.get_kernel(kernel_name, library);
     encoder.set_compute_pipeline_state(kernel);
@@ -176,8 +175,8 @@ void eval_jvp(
     for (int index = 0; index < int(inputs.size()); ++index) {
         encoder.set_input_array(inputs[index], index);
     }
-    encoder.set_output_array(out, 10);
-    bind_autodiff_shape(encoder, inputs, reduce, shape, 11);
+    encoder.set_output_array(out, 8);
+    bind_autodiff_shape(encoder, inputs, reduce, shape, 9);
     dispatch_1d(
         encoder,
         kernel,
