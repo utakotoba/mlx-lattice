@@ -94,15 +94,20 @@ void eval(
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
     auto& encoder = mx::metal::get_command_encoder(stream);
 
+    auto use_cout16 = shape.out_channels == 16 &&
+                      ((shape.n_kernels >= 16 && shape.out_capacity >= 4096) ||
+                       shape.out_capacity >= 50000);
     auto use_vec4 = shape.out_channels % 4 == 0;
     auto use_gather = use_vec4 || shape.n_kernels == 1;
     if (!use_gather) {
         clear_output(encoder, device, library, out);
     }
     auto kernel = device.get_kernel(
-        use_vec4 ? "sparse_relation_conv_f32_i32_vec4"
-                 : (use_gather ? "sparse_relation_conv_f32_i32"
-                               : "sparse_relation_conv_atomic_f32_i32"),
+        use_cout16
+            ? "sparse_relation_conv_f32_i32_cout16"
+            : (use_vec4 ? "sparse_relation_conv_f32_i32_vec4"
+                        : (use_gather ? "sparse_relation_conv_f32_i32"
+                                      : "sparse_relation_conv_atomic_f32_i32")),
         library
     );
     encoder.set_compute_pipeline_state(kernel);
@@ -117,12 +122,14 @@ void eval(
     dispatch_1d(
         encoder,
         kernel,
-        use_vec4 ? static_cast<size_t>(shape.out_capacity) *
-                       static_cast<size_t>(shape.out_channels / 4)
-                 : static_cast<size_t>(
-                       use_gather ? shape.out_capacity
-                                  : static_cast<int>(inputs[2].shape(0))
-                   ) * static_cast<size_t>(shape.out_channels)
+        use_cout16
+            ? static_cast<size_t>(shape.out_capacity)
+            : (use_vec4 ? static_cast<size_t>(shape.out_capacity) *
+                              static_cast<size_t>(shape.out_channels / 4)
+                        : static_cast<size_t>(
+                              use_gather ? shape.out_capacity
+                                         : static_cast<int>(inputs[2].shape(0))
+                          ) * static_cast<size_t>(shape.out_channels))
     );
 #else
     (void)shape;
@@ -147,10 +154,12 @@ void eval_input_grad(
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
     auto& encoder = mx::metal::get_command_encoder(stream);
 
+    auto use_cin16 = shape.in_channels == 16 && shape.in_capacity >= 4096;
     auto use_vec4 = shape.in_channels % 4 == 0;
     auto kernel = device.get_kernel(
-        use_vec4 ? "sparse_relation_conv_input_grad_f32_i32_vec4"
-                 : "sparse_relation_conv_input_grad_f32_i32",
+        use_cin16 ? "sparse_relation_conv_input_grad_f32_i32_cin16"
+                  : (use_vec4 ? "sparse_relation_conv_input_grad_f32_i32_vec4"
+                              : "sparse_relation_conv_input_grad_f32_i32"),
         library
     );
     encoder.set_compute_pipeline_state(kernel);
@@ -169,10 +178,11 @@ void eval_input_grad(
     dispatch_1d(
         encoder,
         kernel,
-        use_vec4 ? static_cast<size_t>(shape.in_capacity) *
-                       static_cast<size_t>(shape.in_channels / 4)
-                 : static_cast<size_t>(shape.in_capacity) *
-                       static_cast<size_t>(shape.in_channels)
+        use_cin16 ? static_cast<size_t>(shape.in_capacity)
+                  : (use_vec4 ? static_cast<size_t>(shape.in_capacity) *
+                                    static_cast<size_t>(shape.in_channels / 4)
+                              : static_cast<size_t>(shape.in_capacity) *
+                                    static_cast<size_t>(shape.in_channels))
     );
 #else
     (void)shape;
