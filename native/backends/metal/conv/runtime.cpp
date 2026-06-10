@@ -207,16 +207,22 @@ void eval_weight_grad(
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
     auto& encoder = mx::metal::get_command_encoder(stream);
 
+    auto use_block4 = shape.in_channels % 4 == 0 &&
+                      shape.out_channels % 4 == 0 && shape.n_kernels >= 16 &&
+                      shape.in_capacity >= 50000;
     auto use_cout16 = shape.out_channels == 16 && shape.n_kernels >= 16;
     auto use_gather = shape.n_kernels >= 16;
-    if (!use_gather && !use_cout16) {
+    if (!use_gather && !use_block4 && !use_cout16) {
         clear_output(encoder, device, library, out);
     }
     auto kernel = device.get_kernel(
-        use_cout16
-            ? "sparse_relation_conv_weight_grad_cout16_f32_i32"
-            : (use_gather ? "sparse_relation_conv_weight_grad_f32_i32"
-                          : "sparse_relation_conv_weight_grad_atomic_f32_i32"),
+        use_block4
+            ? "sparse_relation_conv_weight_grad_block4_f32_i32"
+            : (use_cout16
+                   ? "sparse_relation_conv_weight_grad_cout16_f32_i32"
+                   : (use_gather
+                          ? "sparse_relation_conv_weight_grad_f32_i32"
+                          : "sparse_relation_conv_weight_grad_atomic_f32_i32")),
         library
     );
     encoder.set_compute_pipeline_state(kernel);
@@ -237,7 +243,13 @@ void eval_weight_grad(
     encoder.set_bytes(shape.kernel_x, 22);
     encoder.set_bytes(shape.kernel_y, 23);
     encoder.set_bytes(shape.kernel_z, 24);
-    if (use_cout16) {
+    if (use_block4) {
+        auto total_tiles = static_cast<size_t>(shape.n_kernels) *
+                           static_cast<size_t>(shape.in_channels / 4);
+        encoder.dispatch_threadgroups(
+            MTL::Size(total_tiles, 1, 1), MTL::Size(64, 1, 1)
+        );
+    } else if (use_cout16) {
         auto total_pairs = static_cast<size_t>(shape.n_kernels) *
                            static_cast<size_t>(shape.in_channels);
         encoder.dispatch_threadgroups(

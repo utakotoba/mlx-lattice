@@ -1309,6 +1309,131 @@ using namespace metal;
     (void)in_edge_ids;
 }
 
+[[kernel]] void sparse_relation_conv_weight_grad_block4_f32_i32(
+    device const float* feats [[buffer(0)]],
+    device const float* cotangent [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device const int* in_row_offsets [[buffer(7)]],
+    device const int* in_edge_ids [[buffer(8)]],
+    device const int* kernel_row_offsets [[buffer(9)]],
+    device const int* kernel_edge_ids [[buffer(10)]],
+    device float* grad [[buffer(11)]],
+    constant const int& edge_capacity [[buffer(12)]],
+    constant const int& out_capacity [[buffer(13)]],
+    constant const int& n_kernels [[buffer(14)]],
+    constant const int& in_channels [[buffer(15)]],
+    constant const int& out_channels [[buffer(16)]],
+    constant const int& feat_s0 [[buffer(17)]],
+    constant const int& feat_s1 [[buffer(18)]],
+    constant const int& cotangent_s0 [[buffer(19)]],
+    constant const int& cotangent_s1 [[buffer(20)]],
+    constant const int& weight_layout [[buffer(21)]],
+    constant const int& kernel_x [[buffer(22)]],
+    constant const int& kernel_y [[buffer(23)]],
+    constant const int& kernel_z [[buffer(24)]],
+    uint tile_id [[threadgroup_position_in_grid]],
+    uint tid [[thread_index_in_threadgroup]]
+) {
+    threadgroup float partial[1024];
+    int in_blocks = in_channels / 4;
+    int total_tiles = n_kernels * in_blocks;
+    if (tile_id >= uint(total_tiles) || tid >= 64) {
+        return;
+    }
+
+    int kernel_id = int(tile_id) / in_blocks;
+    int ci = (int(tile_id) - kernel_id * in_blocks) * 4;
+    int edge_count = min(counts[0], edge_capacity);
+    int start = kernel_row_offsets[kernel_id];
+    int stop = kernel_row_offsets[kernel_id + 1];
+    int thread_base = int(tid) * 16;
+    for (int co = 0; co < out_channels; co += 4) {
+        float4 acc0 = float4(0.0f);
+        float4 acc1 = float4(0.0f);
+        float4 acc2 = float4(0.0f);
+        float4 acc3 = float4(0.0f);
+        for (int cursor = start + int(tid); cursor < stop; cursor += 64) {
+            int edge = kernel_edge_ids[cursor];
+            if (edge < 0 || edge >= edge_count) {
+                continue;
+            }
+            int in_row = in_rows[edge];
+            int out_row = out_rows[edge];
+            if (in_row < 0 || out_row < 0 || out_row >= out_capacity) {
+                continue;
+            }
+            int feat_base = in_row * feat_s0 + ci * feat_s1;
+            int cotangent_base = out_row * cotangent_s0 + co * cotangent_s1;
+            float4 grad4 = float4(
+                cotangent[cotangent_base],
+                cotangent[cotangent_base + cotangent_s1],
+                cotangent[cotangent_base + cotangent_s1 * 2],
+                cotangent[cotangent_base + cotangent_s1 * 3]
+            );
+            acc0 += feats[feat_base] * grad4;
+            acc1 += feats[feat_base + feat_s1] * grad4;
+            acc2 += feats[feat_base + feat_s1 * 2] * grad4;
+            acc3 += feats[feat_base + feat_s1 * 3] * grad4;
+        }
+
+        partial[thread_base] = acc0.x;
+        partial[thread_base + 1] = acc0.y;
+        partial[thread_base + 2] = acc0.z;
+        partial[thread_base + 3] = acc0.w;
+        partial[thread_base + 4] = acc1.x;
+        partial[thread_base + 5] = acc1.y;
+        partial[thread_base + 6] = acc1.z;
+        partial[thread_base + 7] = acc1.w;
+        partial[thread_base + 8] = acc2.x;
+        partial[thread_base + 9] = acc2.y;
+        partial[thread_base + 10] = acc2.z;
+        partial[thread_base + 11] = acc2.w;
+        partial[thread_base + 12] = acc3.x;
+        partial[thread_base + 13] = acc3.y;
+        partial[thread_base + 14] = acc3.z;
+        partial[thread_base + 15] = acc3.w;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        for (uint stride = 32; stride > 0; stride >>= 1) {
+            if (tid < stride) {
+                int lhs = int(tid) * 16;
+                int rhs = int(tid + stride) * 16;
+                for (int value = 0; value < 16; ++value) {
+                    partial[lhs + value] += partial[rhs + value];
+                }
+            }
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+        }
+
+        if (tid == 0) {
+            for (int ci_offset = 0; ci_offset < 4; ++ci_offset) {
+                for (int co_offset = 0; co_offset < 4; ++co_offset) {
+                    grad[sparse_conv_dense_weight_offset(
+                        kernel_id,
+                        ci + ci_offset,
+                        co + co_offset,
+                        weight_layout,
+                        kernel_x,
+                        kernel_y,
+                        kernel_z,
+                        in_channels,
+                        out_channels
+                    )] = partial[ci_offset * 4 + co_offset];
+                }
+            }
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    (void)kernel_ids;
+    (void)row_offsets;
+    (void)in_row_offsets;
+    (void)in_edge_ids;
+}
+
 [[kernel]] void sparse_relation_conv_weight_grad_atomic_f32_i32(
     device const float* feats [[buffer(0)]],
     device const float* cotangent [[buffer(1)]],
