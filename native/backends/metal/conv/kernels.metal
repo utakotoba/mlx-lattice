@@ -4,6 +4,464 @@ using namespace metal;
 
 #include "native/backends/metal/conv/common.metal"
 
+inline float4 dense_c16_weight4_f32(
+    device const float* weights,
+    int weight_s0,
+    int kernel_id,
+    int ci,
+    int co_base
+) {
+    const int kernel_base = kernel_id * 16 + ci;
+    return float4(
+        weights[(co_base + 0) * weight_s0 + kernel_base],
+        weights[(co_base + 1) * weight_s0 + kernel_base],
+        weights[(co_base + 2) * weight_s0 + kernel_base],
+        weights[(co_base + 3) * weight_s0 + kernel_base]
+    );
+}
+
+inline float4 dense_c16_weight4_f16(
+    device const half* weights,
+    int weight_s0,
+    int kernel_id,
+    int ci,
+    int co_base
+) {
+    const int kernel_base = kernel_id * 16 + ci;
+    return float4(
+        float(weights[(co_base + 0) * weight_s0 + kernel_base]),
+        float(weights[(co_base + 1) * weight_s0 + kernel_base]),
+        float(weights[(co_base + 2) * weight_s0 + kernel_base]),
+        float(weights[(co_base + 3) * weight_s0 + kernel_base])
+    );
+}
+
+inline float4 dense_c16_weight_ci4_f32(
+    device const float* weights,
+    int weight_s0,
+    int kernel_id,
+    int co,
+    int ci_base
+) {
+    const int base = co * weight_s0 + kernel_id * 16 + ci_base;
+    return float4(
+        weights[base + 0],
+        weights[base + 1],
+        weights[base + 2],
+        weights[base + 3]
+    );
+}
+
+inline float4 dense_c16_weight_ci4_f16(
+    device const half* weights,
+    int weight_s0,
+    int kernel_id,
+    int co,
+    int ci_base
+) {
+    const int base = co * weight_s0 + kernel_id * 16 + ci_base;
+    return float4(
+        float(weights[base + 0]),
+        float(weights[base + 1]),
+        float(weights[base + 2]),
+        float(weights[base + 3])
+    );
+}
+
+[[kernel]] void sparse_relation_conv_f32_i32_cout16_dense_c16(
+    device const float* feats [[buffer(0)]],
+    device const float* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device float* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& in_channels [[buffer(10)]],
+    constant const int& out_channels [[buffer(11)]],
+    constant const int& feat_s0 [[buffer(12)]],
+    constant const int& feat_s1 [[buffer(13)]],
+    constant const int& weight_s0 [[buffer(14)]],
+    constant const int& weight_s1 [[buffer(15)]],
+    constant const int& weight_s2 [[buffer(16)]],
+    constant const int& weight_s3 [[buffer(17)]],
+    constant const int& weight_s4 [[buffer(18)]],
+    constant const int& weight_layout [[buffer(19)]],
+    constant const int& kernel_x [[buffer(20)]],
+    constant const int& kernel_y [[buffer(21)]],
+    constant const int& kernel_z [[buffer(22)]],
+    uint out_row_id [[thread_position_in_grid]]
+) {
+    if (out_row_id >= uint(out_capacity)) {
+        return;
+    }
+
+    const int out_row = int(out_row_id);
+    const int out_base = out_row * 16;
+    const int out_count = min(counts[1], out_capacity);
+    if (out_row >= out_count) {
+        for (int co = 0; co < 16; ++co) {
+            out[out_base + co] = 0.0f;
+        }
+        return;
+    }
+
+    const int edge_count = min(counts[0], edge_capacity);
+    float4 acc0 = float4(0.0f);
+    float4 acc1 = float4(0.0f);
+    float4 acc2 = float4(0.0f);
+    float4 acc3 = float4(0.0f);
+    for (int edge = row_offsets[out_row]; edge < row_offsets[out_row + 1];
+         ++edge) {
+        if (edge < 0 || edge >= edge_count) {
+            continue;
+        }
+        const int in_row = in_rows[edge];
+        const int kernel_id = kernel_ids[edge];
+        if (in_row < 0 || kernel_id < 0) {
+            continue;
+        }
+        const int feat_base = in_row * feat_s0;
+        for (int ci = 0; ci < 16; ++ci) {
+            const float value = feats[feat_base + ci * feat_s1];
+            acc0 += value *
+                    dense_c16_weight4_f32(weights, weight_s0, kernel_id, ci, 0);
+            acc1 += value *
+                    dense_c16_weight4_f32(weights, weight_s0, kernel_id, ci, 4);
+            acc2 += value *
+                    dense_c16_weight4_f32(weights, weight_s0, kernel_id, ci, 8);
+            acc3 +=
+                value *
+                dense_c16_weight4_f32(weights, weight_s0, kernel_id, ci, 12);
+        }
+    }
+    out[out_base] = acc0.x;
+    out[out_base + 1] = acc0.y;
+    out[out_base + 2] = acc0.z;
+    out[out_base + 3] = acc0.w;
+    out[out_base + 4] = acc1.x;
+    out[out_base + 5] = acc1.y;
+    out[out_base + 6] = acc1.z;
+    out[out_base + 7] = acc1.w;
+    out[out_base + 8] = acc2.x;
+    out[out_base + 9] = acc2.y;
+    out[out_base + 10] = acc2.z;
+    out[out_base + 11] = acc2.w;
+    out[out_base + 12] = acc3.x;
+    out[out_base + 13] = acc3.y;
+    out[out_base + 14] = acc3.z;
+    out[out_base + 15] = acc3.w;
+    (void)out_rows;
+    (void)in_channels;
+    (void)out_channels;
+    (void)weight_s1;
+    (void)weight_s2;
+    (void)weight_s3;
+    (void)weight_s4;
+    (void)weight_layout;
+    (void)kernel_x;
+    (void)kernel_y;
+    (void)kernel_z;
+}
+
+[[kernel]] void sparse_relation_conv_f16_i32_cout16_dense_c16(
+    device const half* feats [[buffer(0)]],
+    device const half* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device half* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& in_channels [[buffer(10)]],
+    constant const int& out_channels [[buffer(11)]],
+    constant const int& feat_s0 [[buffer(12)]],
+    constant const int& feat_s1 [[buffer(13)]],
+    constant const int& weight_s0 [[buffer(14)]],
+    constant const int& weight_s1 [[buffer(15)]],
+    constant const int& weight_s2 [[buffer(16)]],
+    constant const int& weight_s3 [[buffer(17)]],
+    constant const int& weight_s4 [[buffer(18)]],
+    constant const int& weight_layout [[buffer(19)]],
+    constant const int& kernel_x [[buffer(20)]],
+    constant const int& kernel_y [[buffer(21)]],
+    constant const int& kernel_z [[buffer(22)]],
+    uint out_row_id [[thread_position_in_grid]]
+) {
+    if (out_row_id >= uint(out_capacity)) {
+        return;
+    }
+
+    const int out_row = int(out_row_id);
+    const int out_base = out_row * 16;
+    const int out_count = min(counts[1], out_capacity);
+    if (out_row >= out_count) {
+        for (int co = 0; co < 16; ++co) {
+            out[out_base + co] = half(0.0h);
+        }
+        return;
+    }
+
+    const int edge_count = min(counts[0], edge_capacity);
+    float4 acc0 = float4(0.0f);
+    float4 acc1 = float4(0.0f);
+    float4 acc2 = float4(0.0f);
+    float4 acc3 = float4(0.0f);
+    for (int edge = row_offsets[out_row]; edge < row_offsets[out_row + 1];
+         ++edge) {
+        if (edge < 0 || edge >= edge_count) {
+            continue;
+        }
+        const int in_row = in_rows[edge];
+        const int kernel_id = kernel_ids[edge];
+        if (in_row < 0 || kernel_id < 0) {
+            continue;
+        }
+        const int feat_base = in_row * feat_s0;
+        for (int ci = 0; ci < 16; ++ci) {
+            const float value = float(feats[feat_base + ci * feat_s1]);
+            acc0 += value *
+                    dense_c16_weight4_f16(weights, weight_s0, kernel_id, ci, 0);
+            acc1 += value *
+                    dense_c16_weight4_f16(weights, weight_s0, kernel_id, ci, 4);
+            acc2 += value *
+                    dense_c16_weight4_f16(weights, weight_s0, kernel_id, ci, 8);
+            acc3 +=
+                value *
+                dense_c16_weight4_f16(weights, weight_s0, kernel_id, ci, 12);
+        }
+    }
+    out[out_base] = half(acc0.x);
+    out[out_base + 1] = half(acc0.y);
+    out[out_base + 2] = half(acc0.z);
+    out[out_base + 3] = half(acc0.w);
+    out[out_base + 4] = half(acc1.x);
+    out[out_base + 5] = half(acc1.y);
+    out[out_base + 6] = half(acc1.z);
+    out[out_base + 7] = half(acc1.w);
+    out[out_base + 8] = half(acc2.x);
+    out[out_base + 9] = half(acc2.y);
+    out[out_base + 10] = half(acc2.z);
+    out[out_base + 11] = half(acc2.w);
+    out[out_base + 12] = half(acc3.x);
+    out[out_base + 13] = half(acc3.y);
+    out[out_base + 14] = half(acc3.z);
+    out[out_base + 15] = half(acc3.w);
+    (void)out_rows;
+    (void)in_channels;
+    (void)out_channels;
+    (void)weight_s1;
+    (void)weight_s2;
+    (void)weight_s3;
+    (void)weight_s4;
+    (void)weight_layout;
+    (void)kernel_x;
+    (void)kernel_y;
+    (void)kernel_z;
+}
+
+[[kernel]] void sparse_relation_conv_input_grad_f32_i32_cin16_dense_c16(
+    device const float* cotangent [[buffer(0)]],
+    device const float* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device const int* in_row_offsets [[buffer(7)]],
+    device const int* in_edge_ids [[buffer(8)]],
+    device float* grad [[buffer(9)]],
+    constant const int& edge_capacity [[buffer(10)]],
+    constant const int& out_capacity [[buffer(11)]],
+    constant const int& in_capacity [[buffer(12)]],
+    constant const int& in_channels [[buffer(13)]],
+    constant const int& out_channels [[buffer(14)]],
+    constant const int& cotangent_s0 [[buffer(15)]],
+    constant const int& cotangent_s1 [[buffer(16)]],
+    constant const int& weight_s0 [[buffer(17)]],
+    constant const int& weight_s1 [[buffer(18)]],
+    constant const int& weight_s2 [[buffer(19)]],
+    constant const int& weight_s3 [[buffer(20)]],
+    constant const int& weight_s4 [[buffer(21)]],
+    constant const int& weight_layout [[buffer(22)]],
+    constant const int& kernel_x [[buffer(23)]],
+    constant const int& kernel_y [[buffer(24)]],
+    constant const int& kernel_z [[buffer(25)]],
+    uint in_row_id [[thread_position_in_grid]]
+) {
+    if (in_row_id >= uint(in_capacity)) {
+        return;
+    }
+
+    const int in_row = int(in_row_id);
+    const int edge_count = min(counts[0], edge_capacity);
+    float4 acc0 = float4(0.0f);
+    float4 acc1 = float4(0.0f);
+    float4 acc2 = float4(0.0f);
+    float4 acc3 = float4(0.0f);
+    for (int cursor = in_row_offsets[in_row];
+         cursor < in_row_offsets[in_row + 1];
+         ++cursor) {
+        const int edge = in_edge_ids[cursor];
+        if (edge < 0 || edge >= edge_count) {
+            continue;
+        }
+        const int out_row = out_rows[edge];
+        const int kernel_id = kernel_ids[edge];
+        if (out_row < 0 || out_row >= out_capacity || kernel_id < 0) {
+            continue;
+        }
+        const int cot_base = out_row * cotangent_s0;
+        for (int co = 0; co < 16; ++co) {
+            const float value = cotangent[cot_base + co * cotangent_s1];
+            acc0 +=
+                value *
+                dense_c16_weight_ci4_f32(weights, weight_s0, kernel_id, co, 0);
+            acc1 +=
+                value *
+                dense_c16_weight_ci4_f32(weights, weight_s0, kernel_id, co, 4);
+            acc2 +=
+                value *
+                dense_c16_weight_ci4_f32(weights, weight_s0, kernel_id, co, 8);
+            acc3 +=
+                value *
+                dense_c16_weight_ci4_f32(weights, weight_s0, kernel_id, co, 12);
+        }
+    }
+    const int grad_base = in_row * 16;
+    grad[grad_base] = acc0.x;
+    grad[grad_base + 1] = acc0.y;
+    grad[grad_base + 2] = acc0.z;
+    grad[grad_base + 3] = acc0.w;
+    grad[grad_base + 4] = acc1.x;
+    grad[grad_base + 5] = acc1.y;
+    grad[grad_base + 6] = acc1.z;
+    grad[grad_base + 7] = acc1.w;
+    grad[grad_base + 8] = acc2.x;
+    grad[grad_base + 9] = acc2.y;
+    grad[grad_base + 10] = acc2.z;
+    grad[grad_base + 11] = acc2.w;
+    grad[grad_base + 12] = acc3.x;
+    grad[grad_base + 13] = acc3.y;
+    grad[grad_base + 14] = acc3.z;
+    grad[grad_base + 15] = acc3.w;
+    (void)in_rows;
+    (void)row_offsets;
+    (void)in_channels;
+    (void)out_channels;
+    (void)weight_s1;
+    (void)weight_s2;
+    (void)weight_s3;
+    (void)weight_s4;
+    (void)weight_layout;
+    (void)kernel_x;
+    (void)kernel_y;
+    (void)kernel_z;
+}
+
+[[kernel]] void sparse_relation_conv_input_grad_f16_i32_cin16_dense_c16(
+    device const half* cotangent [[buffer(0)]],
+    device const half* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device const int* in_row_offsets [[buffer(7)]],
+    device const int* in_edge_ids [[buffer(8)]],
+    device half* grad [[buffer(9)]],
+    constant const int& edge_capacity [[buffer(10)]],
+    constant const int& out_capacity [[buffer(11)]],
+    constant const int& in_capacity [[buffer(12)]],
+    constant const int& in_channels [[buffer(13)]],
+    constant const int& out_channels [[buffer(14)]],
+    constant const int& cotangent_s0 [[buffer(15)]],
+    constant const int& cotangent_s1 [[buffer(16)]],
+    constant const int& weight_s0 [[buffer(17)]],
+    constant const int& weight_s1 [[buffer(18)]],
+    constant const int& weight_s2 [[buffer(19)]],
+    constant const int& weight_s3 [[buffer(20)]],
+    constant const int& weight_s4 [[buffer(21)]],
+    constant const int& weight_layout [[buffer(22)]],
+    constant const int& kernel_x [[buffer(23)]],
+    constant const int& kernel_y [[buffer(24)]],
+    constant const int& kernel_z [[buffer(25)]],
+    uint in_row_id [[thread_position_in_grid]]
+) {
+    if (in_row_id >= uint(in_capacity)) {
+        return;
+    }
+
+    const int in_row = int(in_row_id);
+    const int edge_count = min(counts[0], edge_capacity);
+    float4 acc0 = float4(0.0f);
+    float4 acc1 = float4(0.0f);
+    float4 acc2 = float4(0.0f);
+    float4 acc3 = float4(0.0f);
+    for (int cursor = in_row_offsets[in_row];
+         cursor < in_row_offsets[in_row + 1];
+         ++cursor) {
+        const int edge = in_edge_ids[cursor];
+        if (edge < 0 || edge >= edge_count) {
+            continue;
+        }
+        const int out_row = out_rows[edge];
+        const int kernel_id = kernel_ids[edge];
+        if (out_row < 0 || out_row >= out_capacity || kernel_id < 0) {
+            continue;
+        }
+        const int cot_base = out_row * cotangent_s0;
+        for (int co = 0; co < 16; ++co) {
+            const float value = float(cotangent[cot_base + co * cotangent_s1]);
+            acc0 +=
+                value *
+                dense_c16_weight_ci4_f16(weights, weight_s0, kernel_id, co, 0);
+            acc1 +=
+                value *
+                dense_c16_weight_ci4_f16(weights, weight_s0, kernel_id, co, 4);
+            acc2 +=
+                value *
+                dense_c16_weight_ci4_f16(weights, weight_s0, kernel_id, co, 8);
+            acc3 +=
+                value *
+                dense_c16_weight_ci4_f16(weights, weight_s0, kernel_id, co, 12);
+        }
+    }
+    const int grad_base = in_row * 16;
+    grad[grad_base] = half(acc0.x);
+    grad[grad_base + 1] = half(acc0.y);
+    grad[grad_base + 2] = half(acc0.z);
+    grad[grad_base + 3] = half(acc0.w);
+    grad[grad_base + 4] = half(acc1.x);
+    grad[grad_base + 5] = half(acc1.y);
+    grad[grad_base + 6] = half(acc1.z);
+    grad[grad_base + 7] = half(acc1.w);
+    grad[grad_base + 8] = half(acc2.x);
+    grad[grad_base + 9] = half(acc2.y);
+    grad[grad_base + 10] = half(acc2.z);
+    grad[grad_base + 11] = half(acc2.w);
+    grad[grad_base + 12] = half(acc3.x);
+    grad[grad_base + 13] = half(acc3.y);
+    grad[grad_base + 14] = half(acc3.z);
+    grad[grad_base + 15] = half(acc3.w);
+    (void)in_rows;
+    (void)row_offsets;
+    (void)in_channels;
+    (void)out_channels;
+    (void)weight_s1;
+    (void)weight_s2;
+    (void)weight_s3;
+    (void)weight_s4;
+    (void)weight_layout;
+    (void)kernel_x;
+    (void)kernel_y;
+    (void)kernel_z;
+}
+
 [[kernel]] void sparse_relation_conv_clear_f32(
     device float* out [[buffer(0)]],
     constant const int& total [[buffer(1)]],

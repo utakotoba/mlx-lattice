@@ -80,6 +80,17 @@ void clear_output(
 
 bool is_float16(const mx::array& array) { return array.dtype() == mx::float16; }
 
+bool is_dense_5d_c16_weight(const mx::array& weights, SparseConvShape shape) {
+    return shape.weight_layout == 1 && shape.in_channels == 16 &&
+           shape.out_channels == 16 && shape.n_kernels >= 16 &&
+           weights.ndim() == 5 && stride_at(weights, 4) == 1 &&
+           stride_at(weights, 3) == 16 &&
+           stride_at(weights, 2) == shape.kernel_z * 16 &&
+           stride_at(weights, 1) == shape.kernel_y * shape.kernel_z * 16 &&
+           stride_at(weights, 0) ==
+               shape.kernel_x * shape.kernel_y * shape.kernel_z * 16;
+}
+
 const char*
 typed_kernel_name(const char* fp32_kernel, const char* fp16_kernel, bool fp16) {
     return fp16 ? fp16_kernel : fp32_kernel;
@@ -187,13 +198,20 @@ void eval(
     auto use_cout16 = shape.out_channels == 16 &&
                       ((shape.n_kernels >= 16 && shape.out_capacity >= 4096) ||
                        shape.out_capacity >= 50000);
+    auto use_dense_c16 = use_cout16 && is_dense_5d_c16_weight(inputs[1], shape);
     auto use_vec4 = !fp16 && shape.out_channels % 4 == 0;
     auto use_gather = fp16 || use_vec4 || shape.n_kernels == 1;
     if (!use_gather) {
         clear_output(encoder, device, library, out);
     }
     const char* kernel_name = "sparse_relation_conv_atomic_f32_i32";
-    if (use_cout16) {
+    if (use_dense_c16) {
+        kernel_name = typed_kernel_name(
+            "sparse_relation_conv_f32_i32_cout16_dense_c16",
+            "sparse_relation_conv_f16_i32_cout16_dense_c16",
+            fp16
+        );
+    } else if (use_cout16) {
         kernel_name = typed_kernel_name(
             "sparse_relation_conv_f32_i32_cout16",
             "sparse_relation_conv_f16_i32_cout16",
@@ -252,22 +270,32 @@ void eval_input_grad(
     auto& encoder = mx::metal::get_command_encoder(stream);
 
     auto fp16 = is_float16(inputs[0]);
-    if (!fp16 && tensor_ops::conv::input_grad::is_preferred(shape, stream)) {
+    auto use_dense_c16 = is_dense_5d_c16_weight(inputs[1], shape);
+    if (!use_dense_c16 && !fp16 &&
+        tensor_ops::conv::input_grad::is_preferred(shape, stream)) {
         tensor_ops::conv::input_grad::encode(shape, stream, inputs, out);
         return;
     }
     auto use_cin16 = shape.in_channels == 16 && shape.in_capacity >= 4096;
     auto use_vec4 = !fp16 && shape.in_channels % 4 == 0;
     auto kernel = device.get_kernel(
-        use_cin16
+        use_dense_c16
             ? typed_kernel_name(
-                  "sparse_relation_conv_input_grad_f32_i32_cin16",
-                  "sparse_relation_conv_input_grad_f16_i32_cin16",
+                  "sparse_relation_conv_input_grad_f32_i32_cin16_dense_c16",
+                  "sparse_relation_conv_input_grad_f16_i32_cin16_dense_c16",
                   fp16
               )
-            : (use_vec4 ? "sparse_relation_conv_input_grad_f32_i32_vec4"
-                        : (fp16 ? "sparse_relation_conv_input_grad_f16_i32"
-                                : "sparse_relation_conv_input_grad_f32_i32")),
+            : (use_cin16
+                   ? typed_kernel_name(
+                         "sparse_relation_conv_input_grad_f32_i32_cin16",
+                         "sparse_relation_conv_input_grad_f16_i32_cin16",
+                         fp16
+                     )
+                   : (use_vec4
+                          ? "sparse_relation_conv_input_grad_f32_i32_vec4"
+                          : (fp16
+                                 ? "sparse_relation_conv_input_grad_f16_i32"
+                                 : "sparse_relation_conv_input_grad_f32_i32"))),
         library
     );
     encoder.set_compute_pipeline_state(kernel);
