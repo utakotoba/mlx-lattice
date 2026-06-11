@@ -29,8 +29,8 @@ sparse_relation_conv_weight_grad_tensor_ops_f32_i32(
     uint lane [[thread_index_in_threadgroup]]
 ) {
     threadgroup float lhs_tile[16 * 16];
-    threadgroup float rhs_tile[16 * 32];
-    threadgroup float out_tile[16 * 32];
+    threadgroup float rhs_tile[16 * 16];
+    threadgroup float out_tile[16 * 16];
 
     const int kernel_id = int(group_id) % n_kernels;
     const int partition = int(group_id) / n_kernels;
@@ -43,14 +43,14 @@ sparse_relation_conv_weight_grad_tensor_ops_f32_i32(
         min(kernel_start + partition * partition_edges, kernel_stop);
     const int stop = min(start + partition_edges, kernel_stop);
 
-    for (uint index = lane; index < 16 * 32; index += 32) {
+    for (uint index = lane; index < 16 * 16; index += 32) {
         out_tile[index] = 0.0f;
     }
     simdgroup_barrier(mem_flags::mem_threadgroup);
 
     constexpr auto desc = matmul2d_descriptor(
         16,
-        32,
+        16,
         16,
         false,
         false,
@@ -63,12 +63,12 @@ sparse_relation_conv_weight_grad_tensor_ops_f32_i32(
             lhs_tile, extents<int32_t, 16, 16>()
         );
     auto rhs_tensor =
-        tensor<threadgroup float, extents<int32_t, 32, 16>, tensor_inline>(
-            rhs_tile, extents<int32_t, 32, 16>()
+        tensor<threadgroup float, extents<int32_t, 16, 16>, tensor_inline>(
+            rhs_tile, extents<int32_t, 16, 16>()
         );
     auto out_tensor =
-        tensor<threadgroup float, extents<int32_t, 32, 16>, tensor_inline>(
-            out_tile, extents<int32_t, 32, 16>()
+        tensor<threadgroup float, extents<int32_t, 16, 16>, tensor_inline>(
+            out_tile, extents<int32_t, 16, 16>()
         );
 
     for (int base = start; base < stop; base += 16) {
@@ -89,9 +89,9 @@ sparse_relation_conv_weight_grad_tensor_ops_f32_i32(
             lhs_tile[index] = value;
         }
 
-        for (uint index = lane; index < 16 * 32; index += 32) {
-            const int edge_slot = int(index) / 32;
-            const int co = int(index) - edge_slot * 32;
+        for (uint index = lane; index < 16 * 16; index += 32) {
+            const int edge_slot = int(index) / 16;
+            const int co = int(index) - edge_slot * 16;
             const int cursor = base + edge_slot;
             float value = 0.0f;
             if (co < 16 && cursor < stop) {
@@ -116,7 +116,7 @@ sparse_relation_conv_weight_grad_tensor_ops_f32_i32(
     for (uint index = lane; index < 16 * 16; index += 32) {
         const int ci = int(index) / 16;
         const int co = int(index) - ci * 16;
-        partials[partial_base + int(index)] = out_tile[ci * 32 + co];
+        partials[partial_base + int(index)] = out_tile[ci * 16 + co];
     }
 }
 
@@ -142,8 +142,8 @@ sparse_relation_conv_weight_grad_tensor_ops_f16_i32(
     uint lane [[thread_index_in_threadgroup]]
 ) {
     threadgroup half lhs_tile[16 * 16];
-    threadgroup half rhs_tile[16 * 32];
-    threadgroup float out_tile[16 * 32];
+    threadgroup half rhs_tile[16 * 16];
+    threadgroup float out_tile[16 * 16];
 
     const int kernel_id = int(group_id) % n_kernels;
     const int partition = int(group_id) / n_kernels;
@@ -156,14 +156,14 @@ sparse_relation_conv_weight_grad_tensor_ops_f16_i32(
         min(kernel_start + partition * partition_edges, kernel_stop);
     const int stop = min(start + partition_edges, kernel_stop);
 
-    for (uint index = lane; index < 16 * 32; index += 32) {
+    for (uint index = lane; index < 16 * 16; index += 32) {
         out_tile[index] = 0.0f;
     }
     simdgroup_barrier(mem_flags::mem_threadgroup);
 
     constexpr auto desc = matmul2d_descriptor(
         16,
-        32,
+        16,
         16,
         false,
         false,
@@ -176,12 +176,12 @@ sparse_relation_conv_weight_grad_tensor_ops_f16_i32(
             lhs_tile, extents<int32_t, 16, 16>()
         );
     auto rhs_tensor =
-        tensor<threadgroup half, extents<int32_t, 32, 16>, tensor_inline>(
-            rhs_tile, extents<int32_t, 32, 16>()
+        tensor<threadgroup half, extents<int32_t, 16, 16>, tensor_inline>(
+            rhs_tile, extents<int32_t, 16, 16>()
         );
     auto out_tensor =
-        tensor<threadgroup float, extents<int32_t, 32, 16>, tensor_inline>(
-            out_tile, extents<int32_t, 32, 16>()
+        tensor<threadgroup float, extents<int32_t, 16, 16>, tensor_inline>(
+            out_tile, extents<int32_t, 16, 16>()
         );
 
     for (int base = start; base < stop; base += 16) {
@@ -202,9 +202,9 @@ sparse_relation_conv_weight_grad_tensor_ops_f16_i32(
             lhs_tile[index] = value;
         }
 
-        for (uint index = lane; index < 16 * 32; index += 32) {
-            const int edge_slot = int(index) / 32;
-            const int co = int(index) - edge_slot * 32;
+        for (uint index = lane; index < 16 * 16; index += 32) {
+            const int edge_slot = int(index) / 16;
+            const int co = int(index) - edge_slot * 16;
             const int cursor = base + edge_slot;
             half value = half(0.0h);
             if (co < 16 && cursor < stop) {
@@ -229,6 +229,6 @@ sparse_relation_conv_weight_grad_tensor_ops_f16_i32(
     for (uint index = lane; index < 16 * 16; index += 32) {
         const int ci = int(index) / 16;
         const int co = int(index) - ci * 16;
-        partials[partial_base + int(index)] = out_tile[ci * 32 + co];
+        partials[partial_base + int(index)] = out_tile[ci * 16 + co];
     }
 }
