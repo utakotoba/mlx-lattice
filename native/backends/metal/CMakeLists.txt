@@ -8,7 +8,9 @@ target_sources(
     conv/runtime.cpp
     coords/runtime.cpp
     pool/runtime.cpp
-    runtime_utils.cpp)
+    runtime_utils.cpp
+    tensor_ops/capabilities.cpp
+    tensor_ops/conv/weight_grad/runtime.cpp)
 
 target_include_directories(
   mlx_lattice_backend_metal
@@ -36,6 +38,8 @@ if(MLX_LATTICE_HAS_METAL)
       ${CMAKE_CURRENT_LIST_DIR}/coords/set.metal
       ${CMAKE_CURRENT_LIST_DIR}/pool/autodiff.metal
       ${CMAKE_CURRENT_LIST_DIR}/pool/forward.metal
+      ${CMAKE_CURRENT_LIST_DIR}/tensor_ops/conv/weight_grad/contract.metal
+      ${CMAKE_CURRENT_LIST_DIR}/tensor_ops/conv/weight_grad/reduce.metal
     INCLUDE_DIRS ${PROJECT_SOURCE_DIR} ${MLX_INCLUDE_DIRS}
     OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
 
