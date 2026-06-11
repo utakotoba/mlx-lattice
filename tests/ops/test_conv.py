@@ -251,6 +251,54 @@ def test_conv3d_generic_weight_grad_matches_cpu_at_tensor_ops_boundary() -> (
     assert_nested_close(actual, expected, abs=2e-2)
 
 
+@pytest.mark.parametrize('channels', [32, 64])
+def test_conv3d_generic_weight_grad_tensor_ops_blocks_match_cpu(
+    channels: int,
+) -> None:
+    skip_without_metal()
+    rows = 32768
+    coords_values = [
+        [0, row % 97, (row // 97) % 97, row // (97 * 97)]
+        for row in range(rows)
+    ]
+    feats_values = [
+        [
+            ((row + 1) * (channel + 3) % 37) / 37.0
+            for channel in range(channels)
+        ]
+        for row in range(rows)
+    ]
+    weight_values = [
+        ((index % 23) - 11) / 23.0
+        for index in range(channels * 3 * 3 * 3 * channels)
+    ]
+
+    def weight_grad() -> list[object]:
+        coords = mx.array(coords_values, dtype=mx.int32)
+        feats = mx.array(feats_values, dtype=mx.float32)
+        weight = mx.array(weight_values, dtype=mx.float32).reshape(
+            channels, 3, 3, 3, channels
+        )
+
+        def loss(weight_arg: mx.array) -> mx.array:
+            x = SparseTensor(coords, feats)
+            return mx.sum(conv3d(x, weight_arg, kernel_size=3).feats)
+
+        grad = mx.grad(loss)(weight)
+        mx.eval(grad)
+        return grad.tolist()
+
+    previous = mx.default_device()
+    try:
+        mx.set_default_device(mx.cpu)
+        expected = weight_grad()
+    finally:
+        mx.set_default_device(previous)
+    actual = run_with_gpu_default(weight_grad)
+
+    assert_nested_close(actual, expected, abs=2e-2)
+
+
 def test_conv3d_generic_forward_matches_cpu_at_large_relation_boundary() -> (
     None
 ):

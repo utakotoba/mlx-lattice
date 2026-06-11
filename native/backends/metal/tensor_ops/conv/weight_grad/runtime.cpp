@@ -49,7 +49,9 @@ void dispatch_1d(Encoder& encoder, Kernel* kernel, std::size_t elements) {
 } // namespace
 
 bool supports(SparseConvShape shape) {
-    return shape.in_channels == kChannels && shape.out_channels == kChannels &&
+    return shape.in_channels == shape.out_channels &&
+           (shape.in_channels == 16 || shape.in_channels == 32 ||
+            shape.in_channels == 64) &&
            shape.n_kernels >= 16;
 }
 
@@ -66,9 +68,12 @@ void encode(
 ) {
 #ifdef _METAL_
     auto partitions = partition_count(shape);
+    auto channel_blocks = shape.in_channels / kChannels;
+    auto channel_tiles = channel_blocks * channel_blocks;
     auto partial_values = static_cast<std::size_t>(partitions) *
                           static_cast<std::size_t>(shape.n_kernels) *
-                          kChannels * kChannels;
+                          static_cast<std::size_t>(channel_tiles) * kChannels *
+                          kChannels;
     auto partials = make_float_temp(partial_values);
 
     auto& device = mx::metal::device(stream.device);
@@ -100,10 +105,13 @@ void encode(
     encoder.set_bytes(static_cast<int>(inputs[0].strides(1)), 13);
     encoder.set_bytes(static_cast<int>(inputs[1].strides(0)), 14);
     encoder.set_bytes(static_cast<int>(inputs[1].strides(1)), 15);
+    encoder.set_bytes(shape.in_channels, 16);
+    encoder.set_bytes(shape.out_channels, 17);
     encoder.dispatch_threadgroups(
         MTL::Size(
             static_cast<std::size_t>(shape.n_kernels) *
-                static_cast<std::size_t>(partitions),
+                static_cast<std::size_t>(partitions) *
+                static_cast<std::size_t>(channel_tiles),
             1,
             1
         ),
@@ -125,10 +133,13 @@ void encode(
     encoder.set_bytes(shape.kernel_x, 5);
     encoder.set_bytes(shape.kernel_y, 6);
     encoder.set_bytes(shape.kernel_z, 7);
+    encoder.set_bytes(shape.in_channels, 8);
+    encoder.set_bytes(shape.out_channels, 9);
     dispatch_1d(
         encoder,
         reduce,
-        static_cast<std::size_t>(shape.n_kernels) * kChannels * kChannels
+        static_cast<std::size_t>(shape.n_kernels) *
+            static_cast<std::size_t>(channel_tiles) * kChannels * kChannels
     );
 #else
     (void)shape;

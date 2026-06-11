@@ -367,6 +367,140 @@ using namespace metal;
         LATTICE_CONV_UNUSED_DENSE_INPUT_GRAD_ARGS();                           \
     }
 
+#define LATTICE_DEFINE_DENSE_CI4_CO4_WEIGHT_GRAD(NAME, CHANNELS, TYPE, STORE4) \
+    [[kernel]] void NAME(                                                      \
+        device const TYPE* feats [[buffer(0)]],                                \
+        device const TYPE* cotangent [[buffer(1)]],                            \
+        device const int* in_rows [[buffer(2)]],                               \
+        device const int* out_rows [[buffer(3)]],                              \
+        device const int* kernel_ids [[buffer(4)]],                            \
+        device const int* counts [[buffer(5)]],                                \
+        device const int* row_offsets [[buffer(6)]],                           \
+        device const int* kernel_row_offsets [[buffer(7)]],                    \
+        device const int* kernel_edge_ids [[buffer(8)]],                       \
+        device TYPE* grad [[buffer(9)]],                                       \
+        constant const int& edge_capacity [[buffer(10)]],                      \
+        constant const int& out_capacity [[buffer(11)]],                       \
+        constant const int& n_kernels [[buffer(12)]],                          \
+        constant const int& in_channels [[buffer(13)]],                        \
+        constant const int& out_channels [[buffer(14)]],                       \
+        constant const int& feat_s0 [[buffer(15)]],                            \
+        constant const int& feat_s1 [[buffer(16)]],                            \
+        constant const int& cotangent_s0 [[buffer(17)]],                       \
+        constant const int& cotangent_s1 [[buffer(18)]],                       \
+        constant const int& weight_layout [[buffer(19)]],                      \
+        constant const int& kernel_x [[buffer(20)]],                           \
+        constant const int& kernel_y [[buffer(21)]],                           \
+        constant const int& kernel_z [[buffer(22)]],                           \
+        uint tile_id [[threadgroup_position_in_grid]],                         \
+        uint tid [[thread_index_in_threadgroup]]                               \
+    ) {                                                                        \
+        threadgroup float partial[1024];                                       \
+        const int blocks = CHANNELS / 4;                                       \
+        const int tiles_per_kernel = blocks * blocks;                          \
+        const int total_tiles = n_kernels * tiles_per_kernel;                  \
+        if (tile_id >= uint(total_tiles) || tid >= 64) {                       \
+            return;                                                            \
+        }                                                                      \
+        const int tile = int(tile_id);                                         \
+        const int kernel_id = tile / tiles_per_kernel;                         \
+        const int rem = tile - kernel_id * tiles_per_kernel;                   \
+        const int ci = (rem / blocks) * 4;                                     \
+        const int co = (rem - (ci / 4) * blocks) * 4;                          \
+        const int edge_count = min(counts[0], edge_capacity);                  \
+        const int start = kernel_row_offsets[kernel_id];                       \
+        const int stop = kernel_row_offsets[kernel_id + 1];                    \
+        float4 acc0 = float4(0.0f);                                            \
+        float4 acc1 = float4(0.0f);                                            \
+        float4 acc2 = float4(0.0f);                                            \
+        float4 acc3 = float4(0.0f);                                            \
+        for (int cursor = start + int(tid); cursor < stop; cursor += 64) {     \
+            const int edge = kernel_edge_ids[cursor];                          \
+            if (edge < 0 || edge >= edge_count) {                              \
+                continue;                                                      \
+            }                                                                  \
+            const int in_row = in_rows[edge];                                  \
+            const int out_row = out_rows[edge];                                \
+            if (in_row < 0 || out_row < 0 || out_row >= out_capacity) {        \
+                continue;                                                      \
+            }                                                                  \
+            const int feat_base = in_row * feat_s0 + ci * feat_s1;             \
+            const float4 feat4 = float4(                                       \
+                float(feats[feat_base]),                                       \
+                float(feats[feat_base + feat_s1]),                             \
+                float(feats[feat_base + feat_s1 * 2]),                         \
+                float(feats[feat_base + feat_s1 * 3])                          \
+            );                                                                 \
+            const int cotangent_base =                                         \
+                out_row * cotangent_s0 + co * cotangent_s1;                    \
+            acc0 += feat4 * float(cotangent[cotangent_base]);                  \
+            acc1 += feat4 * float(cotangent[cotangent_base + cotangent_s1]);   \
+            acc2 +=                                                            \
+                feat4 * float(cotangent[cotangent_base + cotangent_s1 * 2]);   \
+            acc3 +=                                                            \
+                feat4 * float(cotangent[cotangent_base + cotangent_s1 * 3]);   \
+        }                                                                      \
+        const int thread_base = int(tid) * 16;                                 \
+        partial[thread_base] = acc0.x;                                         \
+        partial[thread_base + 1] = acc0.y;                                     \
+        partial[thread_base + 2] = acc0.z;                                     \
+        partial[thread_base + 3] = acc0.w;                                     \
+        partial[thread_base + 4] = acc1.x;                                     \
+        partial[thread_base + 5] = acc1.y;                                     \
+        partial[thread_base + 6] = acc1.z;                                     \
+        partial[thread_base + 7] = acc1.w;                                     \
+        partial[thread_base + 8] = acc2.x;                                     \
+        partial[thread_base + 9] = acc2.y;                                     \
+        partial[thread_base + 10] = acc2.z;                                    \
+        partial[thread_base + 11] = acc2.w;                                    \
+        partial[thread_base + 12] = acc3.x;                                    \
+        partial[thread_base + 13] = acc3.y;                                    \
+        partial[thread_base + 14] = acc3.z;                                    \
+        partial[thread_base + 15] = acc3.w;                                    \
+        threadgroup_barrier(mem_flags::mem_threadgroup);                       \
+        for (uint stride = 32; stride > 0; stride >>= 1) {                     \
+            if (tid < stride) {                                                \
+                const int lhs = int(tid) * 16;                                 \
+                const int rhs = int(tid + stride) * 16;                        \
+                for (int value = 0; value < 16; ++value) {                     \
+                    partial[lhs + value] += partial[rhs + value];              \
+                }                                                              \
+            }                                                                  \
+            threadgroup_barrier(mem_flags::mem_threadgroup);                   \
+        }                                                                      \
+        if (tid == 0) {                                                        \
+            const int kernel_base = kernel_id * CHANNELS + ci;                 \
+            STORE4(                                                            \
+                grad,                                                          \
+                ((co + 0) * n_kernels * CHANNELS) + kernel_base,               \
+                float4(partial[0], partial[1], partial[2], partial[3])         \
+            );                                                                 \
+            STORE4(                                                            \
+                grad,                                                          \
+                ((co + 1) * n_kernels * CHANNELS) + kernel_base,               \
+                float4(partial[4], partial[5], partial[6], partial[7])         \
+            );                                                                 \
+            STORE4(                                                            \
+                grad,                                                          \
+                ((co + 2) * n_kernels * CHANNELS) + kernel_base,               \
+                float4(partial[8], partial[9], partial[10], partial[11])       \
+            );                                                                 \
+            STORE4(                                                            \
+                grad,                                                          \
+                ((co + 3) * n_kernels * CHANNELS) + kernel_base,               \
+                float4(partial[12], partial[13], partial[14], partial[15])     \
+            );                                                                 \
+        }                                                                      \
+        (void)kernel_ids;                                                      \
+        (void)row_offsets;                                                     \
+        (void)in_channels;                                                     \
+        (void)out_channels;                                                    \
+        (void)weight_layout;                                                   \
+        (void)kernel_x;                                                        \
+        (void)kernel_y;                                                        \
+        (void)kernel_z;                                                        \
+    }
+
 LATTICE_DEFINE_DENSE_C16_FORWARD(
     sparse_relation_conv_f32_i32_cout16_dense_c16,
     float,
@@ -446,6 +580,43 @@ LATTICE_DEFINE_DENSE_CIN4_INPUT_GRAD(
     64,
     half,
     LATTICE_DENSE_WEIGHT_CI4_F16,
+    LATTICE_STORE_F16_4
+)
+
+LATTICE_DEFINE_DENSE_CI4_CO4_WEIGHT_GRAD(
+    sparse_relation_conv_weight_grad_f32_i32_c4_dense_c16,
+    16,
+    float,
+    LATTICE_STORE_F32_4
+)
+LATTICE_DEFINE_DENSE_CI4_CO4_WEIGHT_GRAD(
+    sparse_relation_conv_weight_grad_f16_i32_c4_dense_c16,
+    16,
+    half,
+    LATTICE_STORE_F16_4
+)
+LATTICE_DEFINE_DENSE_CI4_CO4_WEIGHT_GRAD(
+    sparse_relation_conv_weight_grad_f32_i32_c4_dense_c32,
+    32,
+    float,
+    LATTICE_STORE_F32_4
+)
+LATTICE_DEFINE_DENSE_CI4_CO4_WEIGHT_GRAD(
+    sparse_relation_conv_weight_grad_f16_i32_c4_dense_c32,
+    32,
+    half,
+    LATTICE_STORE_F16_4
+)
+LATTICE_DEFINE_DENSE_CI4_CO4_WEIGHT_GRAD(
+    sparse_relation_conv_weight_grad_f32_i32_c4_dense_c64,
+    64,
+    float,
+    LATTICE_STORE_F32_4
+)
+LATTICE_DEFINE_DENSE_CI4_CO4_WEIGHT_GRAD(
+    sparse_relation_conv_weight_grad_f16_i32_c4_dense_c64,
+    64,
+    half,
     LATTICE_STORE_F16_4
 )
 

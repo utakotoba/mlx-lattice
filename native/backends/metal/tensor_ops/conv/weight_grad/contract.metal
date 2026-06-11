@@ -25,6 +25,8 @@ sparse_relation_conv_weight_grad_tensor_ops_f32_i32(
     constant const int& feat_s1 [[buffer(13)]],
     constant const int& cotangent_s0 [[buffer(14)]],
     constant const int& cotangent_s1 [[buffer(15)]],
+    constant const int& in_channels [[buffer(16)]],
+    constant const int& out_channels [[buffer(17)]],
     uint group_id [[threadgroup_position_in_grid]],
     uint lane [[thread_index_in_threadgroup]]
 ) {
@@ -32,8 +34,14 @@ sparse_relation_conv_weight_grad_tensor_ops_f32_i32(
     threadgroup float rhs_tile[16 * 16];
     threadgroup float out_tile[16 * 16];
 
-    const int kernel_id = int(group_id) % n_kernels;
-    const int partition = int(group_id) / n_kernels;
+    const int channel_blocks = in_channels / 16;
+    const int channel_tiles = channel_blocks * channel_blocks;
+    const int kernel_tile = int(group_id) % (n_kernels * channel_tiles);
+    const int kernel_id = kernel_tile / channel_tiles;
+    const int channel_tile = kernel_tile - kernel_id * channel_tiles;
+    const int ci_base = (channel_tile / channel_blocks) * 16;
+    const int co_base = (channel_tile - (ci_base / 16) * channel_blocks) * 16;
+    const int partition = int(group_id) / (n_kernels * channel_tiles);
     const int edge_count = min(counts[0], edge_capacity);
     const int kernel_start = kernel_row_offsets[kernel_id];
     const int kernel_stop = kernel_row_offsets[kernel_id + 1];
@@ -73,8 +81,9 @@ sparse_relation_conv_weight_grad_tensor_ops_f32_i32(
 
     for (int base = start; base < stop; base += 16) {
         for (uint index = lane; index < 16 * 16; index += 32) {
-            const int ci = int(index) / 16;
-            const int edge_slot = int(index) - ci * 16;
+            const int ci_offset = int(index) / 16;
+            const int ci = ci_base + ci_offset;
+            const int edge_slot = int(index) - ci_offset * 16;
             const int cursor = base + edge_slot;
             float value = 0.0f;
             if (cursor < stop) {
@@ -91,10 +100,10 @@ sparse_relation_conv_weight_grad_tensor_ops_f32_i32(
 
         for (uint index = lane; index < 16 * 16; index += 32) {
             const int edge_slot = int(index) / 16;
-            const int co = int(index) - edge_slot * 16;
+            const int co = co_base + int(index) - edge_slot * 16;
             const int cursor = base + edge_slot;
             float value = 0.0f;
-            if (co < 16 && cursor < stop) {
+            if (co < out_channels && cursor < stop) {
                 const int edge = kernel_edge_ids[cursor];
                 if (edge >= 0 && edge < edge_count) {
                     const int out_row = out_rows[edge];
@@ -112,7 +121,9 @@ sparse_relation_conv_weight_grad_tensor_ops_f32_i32(
         simdgroup_barrier(mem_flags::mem_threadgroup);
     }
 
-    const int partial_base = (partition * n_kernels + kernel_id) * 16 * 16;
+    const int partial_base =
+        ((partition * n_kernels + kernel_id) * channel_tiles + channel_tile) *
+        16 * 16;
     for (uint index = lane; index < 16 * 16; index += 32) {
         const int ci = int(index) / 16;
         const int co = int(index) - ci * 16;
@@ -138,6 +149,8 @@ sparse_relation_conv_weight_grad_tensor_ops_f16_i32(
     constant const int& feat_s1 [[buffer(13)]],
     constant const int& cotangent_s0 [[buffer(14)]],
     constant const int& cotangent_s1 [[buffer(15)]],
+    constant const int& in_channels [[buffer(16)]],
+    constant const int& out_channels [[buffer(17)]],
     uint group_id [[threadgroup_position_in_grid]],
     uint lane [[thread_index_in_threadgroup]]
 ) {
@@ -145,8 +158,14 @@ sparse_relation_conv_weight_grad_tensor_ops_f16_i32(
     threadgroup half rhs_tile[16 * 16];
     threadgroup float out_tile[16 * 16];
 
-    const int kernel_id = int(group_id) % n_kernels;
-    const int partition = int(group_id) / n_kernels;
+    const int channel_blocks = in_channels / 16;
+    const int channel_tiles = channel_blocks * channel_blocks;
+    const int kernel_tile = int(group_id) % (n_kernels * channel_tiles);
+    const int kernel_id = kernel_tile / channel_tiles;
+    const int channel_tile = kernel_tile - kernel_id * channel_tiles;
+    const int ci_base = (channel_tile / channel_blocks) * 16;
+    const int co_base = (channel_tile - (ci_base / 16) * channel_blocks) * 16;
+    const int partition = int(group_id) / (n_kernels * channel_tiles);
     const int edge_count = min(counts[0], edge_capacity);
     const int kernel_start = kernel_row_offsets[kernel_id];
     const int kernel_stop = kernel_row_offsets[kernel_id + 1];
@@ -186,8 +205,9 @@ sparse_relation_conv_weight_grad_tensor_ops_f16_i32(
 
     for (int base = start; base < stop; base += 16) {
         for (uint index = lane; index < 16 * 16; index += 32) {
-            const int ci = int(index) / 16;
-            const int edge_slot = int(index) - ci * 16;
+            const int ci_offset = int(index) / 16;
+            const int ci = ci_base + ci_offset;
+            const int edge_slot = int(index) - ci_offset * 16;
             const int cursor = base + edge_slot;
             half value = half(0.0h);
             if (cursor < stop) {
@@ -204,10 +224,10 @@ sparse_relation_conv_weight_grad_tensor_ops_f16_i32(
 
         for (uint index = lane; index < 16 * 16; index += 32) {
             const int edge_slot = int(index) / 16;
-            const int co = int(index) - edge_slot * 16;
+            const int co = co_base + int(index) - edge_slot * 16;
             const int cursor = base + edge_slot;
             half value = half(0.0h);
-            if (co < 16 && cursor < stop) {
+            if (co < out_channels && cursor < stop) {
                 const int edge = kernel_edge_ids[cursor];
                 if (edge >= 0 && edge < edge_count) {
                     const int out_row = out_rows[edge];
@@ -225,7 +245,9 @@ sparse_relation_conv_weight_grad_tensor_ops_f16_i32(
         simdgroup_barrier(mem_flags::mem_threadgroup);
     }
 
-    const int partial_base = (partition * n_kernels + kernel_id) * 16 * 16;
+    const int partial_base =
+        ((partition * n_kernels + kernel_id) * channel_tiles + channel_tile) *
+        16 * 16;
     for (uint index = lane; index < 16 * 16; index += 32) {
         const int ci = int(index) / 16;
         const int co = int(index) - ci * 16;

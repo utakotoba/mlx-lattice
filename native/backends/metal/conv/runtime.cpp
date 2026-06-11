@@ -100,6 +100,14 @@ bool is_dense_5d_c_weight(const mx::array& weights, SparseConvShape shape) {
                                         shape.kernel_z * shape.in_channels;
 }
 
+bool is_dense_5d_square_c_shape(SparseConvShape shape) {
+    return shape.weight_layout == 1 &&
+           shape.in_channels == shape.out_channels &&
+           (shape.in_channels == 16 || shape.in_channels == 32 ||
+            shape.in_channels == 64) &&
+           shape.n_kernels >= 16;
+}
+
 const char* dense_forward_kernel_name(SparseConvShape shape, bool fp16) {
     if (shape.out_channels == 16) {
         return typed_kernel_name(
@@ -144,6 +152,28 @@ const char* dense_input_grad_kernel_name(SparseConvShape shape, bool fp16) {
     );
 }
 
+const char* dense_weight_grad_kernel_name(SparseConvShape shape, bool fp16) {
+    if (shape.in_channels == 16) {
+        return typed_kernel_name(
+            "sparse_relation_conv_weight_grad_f32_i32_c4_dense_c16",
+            "sparse_relation_conv_weight_grad_f16_i32_c4_dense_c16",
+            fp16
+        );
+    }
+    if (shape.in_channels == 32) {
+        return typed_kernel_name(
+            "sparse_relation_conv_weight_grad_f32_i32_c4_dense_c32",
+            "sparse_relation_conv_weight_grad_f16_i32_c4_dense_c32",
+            fp16
+        );
+    }
+    return typed_kernel_name(
+        "sparse_relation_conv_weight_grad_f32_i32_c4_dense_c64",
+        "sparse_relation_conv_weight_grad_f16_i32_c4_dense_c64",
+        fp16
+    );
+}
+
 void encode_weight_grad_classic(
     SparseConvShape shape,
     const mx::Stream& stream,
@@ -162,24 +192,32 @@ void encode_weight_grad_classic(
     auto edge_count = static_cast<int>(inputs[2].shape(0));
     auto use_cout16 = shape.out_channels == 16 && shape.n_kernels != 1 &&
                       (shape.n_kernels >= 16 || edge_count >= 50000);
+    auto use_dense_c = is_dense_5d_square_c_shape(shape) &&
+                       (shape.in_channels > 16 || fp16) &&
+                       (shape.in_capacity >= 4096 || edge_count >= 50000);
     auto use_gather = fp16 || shape.n_kernels >= 16;
-    if (!use_gather && !use_block4 && !use_cout16) {
+    if (!use_gather && !use_block4 && !use_cout16 && !use_dense_c) {
         clear_output(encoder, device, library, out);
     }
     auto kernel = device.get_kernel(
-        use_block4
-            ? "sparse_relation_conv_weight_grad_block4_f32_i32"
-            : (use_cout16
-                   ? typed_kernel_name(
-                         "sparse_relation_conv_weight_grad_cout16_f32_i32",
-                         "sparse_relation_conv_weight_grad_cout16_f16_i32",
-                         fp16
-                     )
-                   : (fp16 ? "sparse_relation_conv_weight_grad_f16_i32"
-                           : (use_gather
-                                  ? "sparse_relation_conv_weight_grad_f32_i32"
-                                  : "sparse_relation_conv_weight_grad_atomic_"
-                                    "f32_i32"))),
+        use_dense_c
+            ? dense_weight_grad_kernel_name(shape, fp16)
+            : (use_block4
+                   ? "sparse_relation_conv_weight_grad_block4_f32_i32"
+                   : (use_cout16
+                          ? typed_kernel_name(
+                                "sparse_relation_conv_weight_grad_cout16_"
+                                "f32_i32",
+                                "sparse_relation_conv_weight_grad_cout16_"
+                                "f16_i32",
+                                fp16
+                            )
+                          : (fp16 ? "sparse_relation_conv_weight_grad_f16_i32"
+                                  : (use_gather
+                                         ? "sparse_relation_conv_weight_grad_"
+                                           "f32_i32"
+                                         : "sparse_relation_conv_weight_grad_"
+                                           "atomic_f32_i32")))),
         library
     );
     encoder.set_compute_pipeline_state(kernel);
@@ -200,7 +238,14 @@ void encode_weight_grad_classic(
     encoder.set_bytes(shape.kernel_x, 20);
     encoder.set_bytes(shape.kernel_y, 21);
     encoder.set_bytes(shape.kernel_z, 22);
-    if (use_block4) {
+    if (use_dense_c) {
+        auto blocks = static_cast<size_t>(shape.in_channels / 4);
+        auto total_tiles =
+            static_cast<size_t>(shape.n_kernels) * blocks * blocks;
+        encoder.dispatch_threadgroups(
+            MTL::Size(total_tiles, 1, 1), MTL::Size(64, 1, 1)
+        );
+    } else if (use_block4) {
         auto total_tiles = static_cast<size_t>(shape.n_kernels) *
                            static_cast<size_t>(shape.in_channels / 4);
         encoder.dispatch_threadgroups(
