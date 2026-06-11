@@ -19,6 +19,7 @@ def all_cases(
     *,
     groups: tuple[str, ...] = GROUPS,
     n_values: tuple[int, ...] | None = None,
+    channels: tuple[int, ...] | None = None,
     dtype: str = 'float32',
 ) -> tuple[BenchmarkCase, ...]:
     selected = []
@@ -34,7 +35,12 @@ def all_cases(
     for group in groups:
         if group == 'conv':
             selected.extend(
-                conv.cases(preset, n_values=n_values, dtype=dtype)
+                conv.cases(
+                    preset,
+                    n_values=n_values,
+                    channels=channels,
+                    dtype=dtype,
+                )
             )
         else:
             selected.extend(modules[group].cases(preset, n_values=n_values))

@@ -61,11 +61,16 @@ def cases(
     preset: str,
     *,
     n_values: tuple[int, ...] | None = None,
+    channels: tuple[int, ...] | None = None,
     dtype: str = 'float32',
 ) -> tuple[BenchmarkCase, ...]:
     params = tuple(
         {**dict(item), 'dtype': dtype}
-        for item in param_grid(preset, n_values=n_values)
+        for item in param_grid(
+            preset,
+            n_values=n_values,
+            channels=(16,) if channels is None else channels,
+        )
     )
     specs = (
         ('conv3d_pointwise', 'pointwise'),

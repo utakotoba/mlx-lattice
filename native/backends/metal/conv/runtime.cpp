@@ -80,20 +80,68 @@ void clear_output(
 
 bool is_float16(const mx::array& array) { return array.dtype() == mx::float16; }
 
-bool is_dense_5d_c16_weight(const mx::array& weights, SparseConvShape shape) {
-    return shape.weight_layout == 1 && shape.in_channels == 16 &&
-           shape.out_channels == 16 && shape.n_kernels >= 16 &&
-           weights.ndim() == 5 && stride_at(weights, 4) == 1 &&
-           stride_at(weights, 3) == 16 &&
-           stride_at(weights, 2) == shape.kernel_z * 16 &&
-           stride_at(weights, 1) == shape.kernel_y * shape.kernel_z * 16 &&
-           stride_at(weights, 0) ==
-               shape.kernel_x * shape.kernel_y * shape.kernel_z * 16;
-}
-
 const char*
 typed_kernel_name(const char* fp32_kernel, const char* fp16_kernel, bool fp16) {
     return fp16 ? fp16_kernel : fp32_kernel;
+}
+
+bool is_dense_5d_c_weight(const mx::array& weights, SparseConvShape shape) {
+    return shape.weight_layout == 1 &&
+           shape.in_channels == shape.out_channels &&
+           (shape.in_channels == 16 || shape.in_channels == 32 ||
+            shape.in_channels == 64) &&
+           shape.n_kernels >= 16 && weights.ndim() == 5 &&
+           stride_at(weights, 4) == 1 &&
+           stride_at(weights, 3) == shape.in_channels &&
+           stride_at(weights, 2) == shape.kernel_z * shape.in_channels &&
+           stride_at(weights, 1) ==
+               shape.kernel_y * shape.kernel_z * shape.in_channels &&
+           stride_at(weights, 0) == shape.kernel_x * shape.kernel_y *
+                                        shape.kernel_z * shape.in_channels;
+}
+
+const char* dense_forward_kernel_name(SparseConvShape shape, bool fp16) {
+    if (shape.out_channels == 16) {
+        return typed_kernel_name(
+            "sparse_relation_conv_f32_i32_cout16_dense_c16",
+            "sparse_relation_conv_f16_i32_cout16_dense_c16",
+            fp16
+        );
+    }
+    if (shape.out_channels == 32) {
+        return typed_kernel_name(
+            "sparse_relation_conv_f32_i32_cout4_dense_c32",
+            "sparse_relation_conv_f16_i32_cout4_dense_c32",
+            fp16
+        );
+    }
+    return typed_kernel_name(
+        "sparse_relation_conv_f32_i32_cout4_dense_c64",
+        "sparse_relation_conv_f16_i32_cout4_dense_c64",
+        fp16
+    );
+}
+
+const char* dense_input_grad_kernel_name(SparseConvShape shape, bool fp16) {
+    if (shape.in_channels == 16) {
+        return typed_kernel_name(
+            "sparse_relation_conv_input_grad_f32_i32_cin16_dense_c16",
+            "sparse_relation_conv_input_grad_f16_i32_cin16_dense_c16",
+            fp16
+        );
+    }
+    if (shape.in_channels == 32) {
+        return typed_kernel_name(
+            "sparse_relation_conv_input_grad_f32_i32_cin4_dense_c32",
+            "sparse_relation_conv_input_grad_f16_i32_cin4_dense_c32",
+            fp16
+        );
+    }
+    return typed_kernel_name(
+        "sparse_relation_conv_input_grad_f32_i32_cin4_dense_c64",
+        "sparse_relation_conv_input_grad_f16_i32_cin4_dense_c64",
+        fp16
+    );
 }
 
 void encode_weight_grad_classic(
@@ -198,19 +246,16 @@ void eval(
     auto use_cout16 = shape.out_channels == 16 &&
                       ((shape.n_kernels >= 16 && shape.out_capacity >= 4096) ||
                        shape.out_capacity >= 50000);
-    auto use_dense_c16 = use_cout16 && is_dense_5d_c16_weight(inputs[1], shape);
+    auto use_dense_c =
+        shape.out_capacity >= 4096 && is_dense_5d_c_weight(inputs[1], shape);
     auto use_vec4 = !fp16 && shape.out_channels % 4 == 0;
     auto use_gather = fp16 || use_vec4 || shape.n_kernels == 1;
     if (!use_gather) {
         clear_output(encoder, device, library, out);
     }
     const char* kernel_name = "sparse_relation_conv_atomic_f32_i32";
-    if (use_dense_c16) {
-        kernel_name = typed_kernel_name(
-            "sparse_relation_conv_f32_i32_cout16_dense_c16",
-            "sparse_relation_conv_f16_i32_cout16_dense_c16",
-            fp16
-        );
+    if (use_dense_c) {
+        kernel_name = dense_forward_kernel_name(shape, fp16);
     } else if (use_cout16) {
         kernel_name = typed_kernel_name(
             "sparse_relation_conv_f32_i32_cout16",
@@ -234,18 +279,19 @@ void eval(
     encoder.set_bytes(stride_at(inputs[0], 0), 12);
     encoder.set_bytes(stride_at(inputs[0], 1), 13);
     bind_weight_shape(encoder, inputs[1], shape, 14);
-    dispatch_1d(
-        encoder,
-        kernel,
-        use_cout16
+    auto work_items =
+        use_dense_c && shape.out_channels > 16
+            ? static_cast<size_t>(shape.out_capacity) *
+                  static_cast<size_t>(shape.out_channels / 4)
+        : use_cout16 || (use_dense_c && shape.out_channels == 16)
             ? static_cast<size_t>(shape.out_capacity)
-            : (use_vec4 ? static_cast<size_t>(shape.out_capacity) *
-                              static_cast<size_t>(shape.out_channels / 4)
-                        : static_cast<size_t>(
-                              use_gather ? shape.out_capacity
-                                         : static_cast<int>(inputs[2].shape(0))
-                          ) * static_cast<size_t>(shape.out_channels))
-    );
+        : use_vec4 ? static_cast<size_t>(shape.out_capacity) *
+                         static_cast<size_t>(shape.out_channels / 4)
+                   : static_cast<size_t>(
+                         use_gather ? shape.out_capacity
+                                    : static_cast<int>(inputs[2].shape(0))
+                     ) * static_cast<size_t>(shape.out_channels);
+    dispatch_1d(encoder, kernel, work_items);
 #else
     (void)shape;
     (void)stream;
@@ -270,8 +316,9 @@ void eval_input_grad(
     auto& encoder = mx::metal::get_command_encoder(stream);
 
     auto fp16 = is_float16(inputs[0]);
-    auto use_dense_c16 = is_dense_5d_c16_weight(inputs[1], shape);
-    if (!use_dense_c16 && !fp16 &&
+    auto use_dense_c =
+        shape.in_capacity >= 4096 && is_dense_5d_c_weight(inputs[1], shape);
+    if (!use_dense_c && !fp16 &&
         tensor_ops::conv::input_grad::is_preferred(shape, stream)) {
         tensor_ops::conv::input_grad::encode(shape, stream, inputs, out);
         return;
@@ -279,12 +326,8 @@ void eval_input_grad(
     auto use_cin16 = shape.in_channels == 16 && shape.in_capacity >= 4096;
     auto use_vec4 = !fp16 && shape.in_channels % 4 == 0;
     auto kernel = device.get_kernel(
-        use_dense_c16
-            ? typed_kernel_name(
-                  "sparse_relation_conv_input_grad_f32_i32_cin16_dense_c16",
-                  "sparse_relation_conv_input_grad_f16_i32_cin16_dense_c16",
-                  fp16
-              )
+        use_dense_c
+            ? dense_input_grad_kernel_name(shape, fp16)
             : (use_cin16
                    ? typed_kernel_name(
                          "sparse_relation_conv_input_grad_f32_i32_cin16",
@@ -311,15 +354,17 @@ void eval_input_grad(
     encoder.set_bytes(stride_at(inputs[0], 0), 15);
     encoder.set_bytes(stride_at(inputs[0], 1), 16);
     bind_weight_shape(encoder, inputs[1], shape, 17);
-    dispatch_1d(
-        encoder,
-        kernel,
-        use_cin16 ? static_cast<size_t>(shape.in_capacity)
-                  : (use_vec4 ? static_cast<size_t>(shape.in_capacity) *
-                                    static_cast<size_t>(shape.in_channels / 4)
-                              : static_cast<size_t>(shape.in_capacity) *
-                                    static_cast<size_t>(shape.in_channels))
-    );
+    auto work_items = use_dense_c && shape.in_channels > 16
+                          ? static_cast<size_t>(shape.in_capacity) *
+                                static_cast<size_t>(shape.in_channels / 4)
+                      : use_cin16 || (use_dense_c && shape.in_channels == 16)
+                          ? static_cast<size_t>(shape.in_capacity)
+                      : use_vec4
+                          ? static_cast<size_t>(shape.in_capacity) *
+                                static_cast<size_t>(shape.in_channels / 4)
+                          : static_cast<size_t>(shape.in_capacity) *
+                                static_cast<size_t>(shape.in_channels);
+    dispatch_1d(encoder, kernel, work_items);
 #else
     (void)shape;
     (void)stream;

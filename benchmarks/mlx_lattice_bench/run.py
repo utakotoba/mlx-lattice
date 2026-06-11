@@ -34,6 +34,7 @@ def main() -> None:
     groups = tuple(args.group) if args.group else GROUPS
     modes = tuple(args.mode) if args.mode else ('cold_op', 'hot_op')
     n_values = tuple(args.n_values) if args.n_values else None
+    channels = tuple(args.channels) if args.channels else None
     dtype = _dtype_name(args.dtype)
 
     runtime = _load_runtime(
@@ -42,7 +43,11 @@ def main() -> None:
     )
     console = make_console(args.color, quiet=args.quiet)
     cases = runtime.all_cases(
-        args.preset, groups=groups, n_values=n_values, dtype=dtype
+        args.preset,
+        groups=groups,
+        n_values=n_values,
+        channels=channels,
+        dtype=dtype,
     )
 
     if args.list:
@@ -119,6 +124,12 @@ def _parser() -> argparse.ArgumentParser:
         action='append',
         type=_positive_int,
         help='planned input size N; repeat to sweep multiple values',
+    )
+    parser.add_argument(
+        '--channels',
+        action='append',
+        type=_positive_int,
+        help='channel count for channel-aware cases; repeat to sweep values',
     )
     parser.add_argument(
         '--dtype',

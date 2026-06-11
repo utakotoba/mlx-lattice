@@ -21,7 +21,9 @@ def param_grid(
     if preset == 'smoke':
         sizes = n_values or (small_n,)
         return tuple(
-            {'N': n, 'channels': channels[0], 'batches': 1} for n in sizes
+            {'N': n, 'channels': channel, 'batches': 1}
+            for n in sizes
+            for channel in channels
         )
     if preset == 'standard':
         sizes = n_values or (standard_n,)
