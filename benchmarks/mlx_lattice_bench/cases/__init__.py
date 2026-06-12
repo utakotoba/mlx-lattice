@@ -10,6 +10,7 @@ from . import (
     pool,
     quantization,
     relations,
+    tensor,
     workloads,
 )
 
@@ -31,6 +32,7 @@ def all_cases(
         'conv': conv,
         'pool': pool,
         'feature': feature,
+        'tensor': tensor,
         'workloads': workloads,
     }
     for group in groups:
@@ -44,7 +46,13 @@ def all_cases(
                     dtype=dtype,
                 )
             )
-        elif group in {'quantization', 'pool', 'feature', 'workloads'}:
+        elif group in {
+            'quantization',
+            'pool',
+            'feature',
+            'tensor',
+            'workloads',
+        }:
             selected.extend(
                 modules[group].cases(
                     preset,

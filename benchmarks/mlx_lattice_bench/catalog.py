@@ -7,6 +7,7 @@ GROUPS = (
     'conv',
     'pool',
     'feature',
+    'tensor',
     'workloads',
 )
 

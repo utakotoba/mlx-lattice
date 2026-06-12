@@ -23,6 +23,7 @@ def test_case_catalog_exposes_expected_public_surface_groups() -> None:
         'conv',
         'pool',
         'feature',
+        'tensor',
         'workloads',
     }
     assert 'voxelize_mean' in names
@@ -30,6 +31,7 @@ def test_case_catalog_exposes_expected_public_surface_groups() -> None:
     assert 'conv3d_generic' in names
     assert 'conv3d_generic_dfeatures' in names
     assert 'conv3d_generic_dweight' in names
+    assert 'prune_mask' in names
     assert 'workload_mini_encoder' in names
     assert 'workload_mini_encoder_fixed' in names
     assert cases[0].params[0]['N'] == 256

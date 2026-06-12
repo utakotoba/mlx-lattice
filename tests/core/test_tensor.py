@@ -10,6 +10,7 @@ from mlx_lattice.ops import (
     contains_coords,
     lookup_coords,
     prune,
+    prune_mask,
     sparse_collate,
     topk_rows,
 )
@@ -111,6 +112,20 @@ def test_tensor_ops_preserve_or_create_identity_intentionally() -> None:
     assert kept.coord_key != x.coord_key
     assert joined.feats.tolist() == [[3.0, 6.0], [1.0, 2.0], [2.0, 4.0]]
     assert joined.coord_key == x.coord_key
+
+
+def test_prune_mask_selects_sparse_rows_by_boolean_mask() -> None:
+    coords = mx.array(
+        [[0, 3, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
+        dtype=mx.int32,
+    )
+    feats = mx.array([[3.0], [1.0], [2.0]], dtype=mx.float32)
+    x = SparseTensor(coords, feats)
+
+    kept = prune_mask(x, mx.array([True, False, True], dtype=mx.bool_))
+
+    assert kept.coords.tolist() == [[0, 3, 0, 0], [0, 2, 0, 0]]
+    assert kept.feats.tolist() == [[3.0], [2.0]]
 
 
 def test_sparse_collate_decompose_topk_and_prune() -> None:

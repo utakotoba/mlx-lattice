@@ -79,6 +79,20 @@ def prune(x: SparseTensor, rows: mx.array) -> SparseTensor:
     )
 
 
+def prune_mask(x: SparseTensor, mask: mx.array) -> SparseTensor:
+    if mask.ndim != 1:
+        raise ValueError('mask must have shape (N,).')
+    if mask.shape[0] != x.capacity:
+        raise ValueError('mask must match the sparse tensor capacity.')
+    if mask.dtype != mx.bool_:
+        raise ValueError('mask must be boolean.')
+
+    ordering = mx.argsort(mask.astype(mx.int32)).astype(mx.int32)
+    count = int(mx.sum(mask).tolist())
+    rows = mx.array([], dtype=mx.int32) if count == 0 else ordering[-count:]
+    return prune(x, rows)
+
+
 def topk_rows(
     x: SparseTensor,
     counts: Sequence[int],

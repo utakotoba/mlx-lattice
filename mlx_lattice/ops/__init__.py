@@ -69,7 +69,13 @@ from mlx_lattice.ops.relations import (
     target_kernel_relation,
     transposed_kernel_relation,
 )
-from mlx_lattice.ops.tensor import cat, prune, sparse_collate, topk_rows
+from mlx_lattice.ops.tensor import (
+    cat,
+    prune,
+    prune_mask,
+    sparse_collate,
+    topk_rows,
+)
 
 __all__ = [
     'CoordinateOrdering',
@@ -116,6 +122,7 @@ __all__ = [
     'occupancy_expand',
     'pool3d',
     'prune',
+    'prune_mask',
     'radius_relation',
     'relu',
     'rms_norm',
