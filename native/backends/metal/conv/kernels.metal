@@ -687,7 +687,7 @@ using namespace metal;
     constant const int& kernel_z [[buffer(22)]],
     uint elem [[thread_position_in_grid]]
 ) {
-    dense_forward_cout16_impl<float, 64, 64>(
+    dense_forward_cout16_ci4_f32_impl<64, 64>(
         feats,
         weights,
         in_rows,
