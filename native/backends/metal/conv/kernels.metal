@@ -85,7 +85,7 @@ using namespace metal;
     constant const int& kernel_z [[buffer(22)]],
     uint elem [[thread_position_in_grid]]
 ) {
-    dense_forward_cout16_impl<half, 16>(
+    dense_forward_cout16_ci4_f16_impl<16>(
         feats,
         weights,
         in_rows,
@@ -409,7 +409,7 @@ using namespace metal;
     constant const int& kernel_z [[buffer(22)]],
     uint elem [[thread_position_in_grid]]
 ) {
-    dense_forward_cout16_impl<half, 32>(
+    dense_forward_cout16_ci4_f16_impl<32>(
         feats,
         weights,
         in_rows,
@@ -517,7 +517,7 @@ using namespace metal;
     constant const int& kernel_z [[buffer(22)]],
     uint elem [[thread_position_in_grid]]
 ) {
-    dense_forward_cout16_impl<half, 64>(
+    dense_forward_cout16_ci4_f16_impl<64>(
         feats,
         weights,
         in_rows,
