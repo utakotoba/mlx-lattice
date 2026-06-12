@@ -117,9 +117,26 @@ struct NativeSparseQuantization {
     mx::array counts;
 };
 
+struct NativeSparseOccupancy {
+    mx::array coords;
+    mx::array active_rows;
+    mx::array occupancy;
+};
+
+struct NativeOccupancyExpansion {
+    mx::array coords;
+    mx::array active_rows;
+    mx::array parent_rows;
+    mx::array child_indices;
+};
+
 struct CoordSetShape {
     int lhs_rows;
     int rhs_rows;
+};
+
+struct CoordActiveRowsShape {
+    int rows;
 };
 
 struct CoordLookupShape {

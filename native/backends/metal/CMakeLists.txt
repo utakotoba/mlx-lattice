@@ -35,6 +35,7 @@ if(MLX_LATTICE_HAS_METAL)
       ${CMAKE_CURRENT_LIST_DIR}/conv/kernels.metal
       ${CMAKE_CURRENT_LIST_DIR}/coords/hash.metal
       ${CMAKE_CURRENT_LIST_DIR}/coords/kernels.metal
+      ${CMAKE_CURRENT_LIST_DIR}/coords/occupancy.metal
       ${CMAKE_CURRENT_LIST_DIR}/coords/ordering.metal
       ${CMAKE_CURRENT_LIST_DIR}/coords/quantization.metal
       ${CMAKE_CURRENT_LIST_DIR}/coords/set.metal

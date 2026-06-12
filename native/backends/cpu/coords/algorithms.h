@@ -26,6 +26,24 @@ void eval_morton_codes(
     std::vector<mx::array>& outputs
 );
 
+void eval_occupancy_downsample(
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
+void eval_occupancy_expand(
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
+void eval_child_coords_from_indices(
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
 void eval_sparse_quantize(
     QuantizationSpec spec,
     const mx::Stream& stream,

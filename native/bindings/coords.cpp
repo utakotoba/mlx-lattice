@@ -144,6 +144,59 @@ void register_coords(nb::module_& module) {
         "Return Gameleon-compatible 3D Morton codes for sparse coordinates."
     );
     module.def(
+        "occupancy_downsample",
+        [](const mx::array& coords, const mx::array& active_rows) {
+            const auto& result = occupancy_downsample(coords, active_rows);
+            return nb::make_tuple(
+                result.coords, result.active_rows, result.occupancy
+            );
+        },
+        "coords"_a,
+        "active_rows"_a,
+        nb::sig(
+            "def occupancy_downsample(coords: mlx.core.array, active_rows: "
+            "mlx.core.array) -> tuple[mlx.core.array, mlx.core.array, "
+            "mlx.core.array]"
+        ),
+        "Downsample coordinates into parent occupancy codes."
+    );
+    module.def(
+        "occupancy_expand",
+        [](const mx::array& coords,
+           const mx::array& active_rows,
+           const mx::array& occupancy) {
+            const auto& result =
+                occupancy_expand(coords, active_rows, occupancy);
+            return nb::make_tuple(
+                result.coords,
+                result.active_rows,
+                result.parent_rows,
+                result.child_indices
+            );
+        },
+        "coords"_a,
+        "active_rows"_a,
+        "occupancy"_a,
+        nb::sig(
+            "def occupancy_expand(coords: mlx.core.array, active_rows: "
+            "mlx.core.array, occupancy: mlx.core.array) -> "
+            "tuple[mlx.core.array, mlx.core.array, mlx.core.array, "
+            "mlx.core.array]"
+        ),
+        "Expand coordinates from parent occupancy codes."
+    );
+    module.def(
+        "child_coords_from_indices",
+        &child_coords_from_indices,
+        "parent_coords"_a,
+        "child_indices"_a,
+        nb::sig(
+            "def child_coords_from_indices(parent_coords: mlx.core.array, "
+            "child_indices: mlx.core.array) -> mlx.core.array"
+        ),
+        "Expand parent coordinates by child indices."
+    );
+    module.def(
         "sparse_quantize",
         [](const mx::array& points,
            const mx::array& batch_indices,

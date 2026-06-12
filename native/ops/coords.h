@@ -14,6 +14,17 @@ NativeCoordSet union_coords(const mx::array& lhs, const mx::array& rhs);
 NativeCoordSet intersection_coords(const mx::array& lhs, const mx::array& rhs);
 mx::array lookup_coords(const mx::array& coords, const mx::array& queries);
 mx::array morton_codes(const mx::array& coords);
+NativeSparseOccupancy
+occupancy_downsample(const mx::array& coords, const mx::array& active_rows);
+NativeOccupancyExpansion occupancy_expand(
+    const mx::array& coords,
+    const mx::array& active_rows,
+    const mx::array& occupancy
+);
+mx::array child_coords_from_indices(
+    const mx::array& parent_coords,
+    const mx::array& child_indices
+);
 
 NativeSparseQuantization sparse_quantize(
     const mx::array& points,

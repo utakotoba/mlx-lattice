@@ -10,6 +10,19 @@ NativeCoordSet
 make_intersection_coords(const mx::array& lhs, const mx::array& rhs);
 mx::array make_lookup_coords(const mx::array& coords, const mx::array& queries);
 mx::array make_morton_codes(const mx::array& coords);
+NativeSparseOccupancy make_occupancy_downsample(
+    const mx::array& coords,
+    const mx::array& active_rows
+);
+NativeOccupancyExpansion make_occupancy_expand(
+    const mx::array& coords,
+    const mx::array& active_rows,
+    const mx::array& occupancy
+);
+mx::array make_child_coords_from_indices(
+    const mx::array& parent_coords,
+    const mx::array& child_indices
+);
 
 NativeSparseQuantization make_sparse_quantize(
     const mx::array& points,

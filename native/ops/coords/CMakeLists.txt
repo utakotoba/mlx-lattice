@@ -8,6 +8,7 @@ target_sources(
     api.cpp
     lookup.cpp
     neighbors.cpp
+    occupancy.cpp
     offsets.cpp
     ordering.cpp
     quantization.cpp

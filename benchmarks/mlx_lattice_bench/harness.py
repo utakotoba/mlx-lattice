@@ -12,6 +12,8 @@ from mlx_lattice.core import (
     CoordinateSet,
     KernelRelation,
     NeighborRelation,
+    OccupancyExpansion,
+    SparseOccupancy,
     SparseQuantization,
     SparseTensor,
 )
@@ -263,6 +265,17 @@ def _collect_arrays(value: Any) -> Iterable[mx.array]:
         yield value.coords
         yield value.order
         yield value.inverse_rows
+        return
+    if isinstance(value, SparseOccupancy):
+        yield value.coords
+        yield value.active_rows
+        yield value.occupancy
+        return
+    if isinstance(value, OccupancyExpansion):
+        yield value.coords
+        yield value.active_rows
+        yield value.parent_rows
+        yield value.child_indices
         return
     if isinstance(value, SparseQuantization):
         yield value.coords

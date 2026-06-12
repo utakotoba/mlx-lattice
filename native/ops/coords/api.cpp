@@ -35,6 +35,35 @@ mx::array morton_codes(const mx::array& coords) {
     return make_morton_codes(coords);
 }
 
+NativeSparseOccupancy
+occupancy_downsample(const mx::array& coords, const mx::array& active_rows) {
+    validate_coords(coords);
+    validate_active_rows(active_rows);
+    return make_occupancy_downsample(coords, active_rows);
+}
+
+NativeOccupancyExpansion occupancy_expand(
+    const mx::array& coords,
+    const mx::array& active_rows,
+    const mx::array& occupancy
+) {
+    validate_coords(coords);
+    validate_active_rows(active_rows);
+    validate_row_indices(occupancy, coords.shape(0), "occupancy");
+    return make_occupancy_expand(coords, active_rows, occupancy);
+}
+
+mx::array child_coords_from_indices(
+    const mx::array& parent_coords,
+    const mx::array& child_indices
+) {
+    validate_coords(parent_coords);
+    validate_row_indices(
+        child_indices, parent_coords.shape(0), "child_indices"
+    );
+    return make_child_coords_from_indices(parent_coords, child_indices);
+}
+
 // MARK: - quantization
 
 NativeSparseQuantization sparse_quantize(

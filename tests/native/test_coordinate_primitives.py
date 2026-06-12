@@ -12,6 +12,7 @@ from mlx_lattice.ops import (
     build_radius_relation,
     build_target_kernel_relation,
     build_transposed_kernel_relation,
+    child_coords_from_indices,
     downsample_coords,
     intersection_coords,
     kernel_offsets,
@@ -21,6 +22,8 @@ from mlx_lattice.ops import (
     morton_codes,
     morton_order,
     morton_sort_coords,
+    occupancy_downsample,
+    occupancy_expand,
     radius_relation,
     union_coords,
 )
@@ -139,6 +142,103 @@ def test_morton_ordering_supports_gpu_and_int64_inputs() -> None:
         _expected_morton_code(row) for row in coords.tolist()
     ]
     assert order.tolist() == [0, 1, 2]
+
+
+def test_occupancy_helpers_round_trip_child_layout() -> None:
+    coords = mx.array(
+        [
+            [0, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [0, 1, 1, 0],
+            [0, 0, 0, 1],
+            [0, 1, 0, 1],
+            [0, 0, 1, 1],
+            [0, 1, 1, 1],
+            [0, 2, 0, 0],
+        ],
+        dtype=mx.int32,
+    )
+
+    downsampled = occupancy_downsample(coords)
+    expanded = occupancy_expand(
+        downsampled.coords,
+        downsampled.occupancy,
+        active_rows=downsampled.active_rows,
+    )
+    child_coords = child_coords_from_indices(
+        mx.array([[0, 0, 0, 0], [0, 1, 0, 0]], dtype=mx.int32),
+        mx.array([7, 0], dtype=mx.int32),
+    )
+
+    assert downsampled.coords.tolist()[:2] == [[0, 0, 0, 0], [0, 1, 0, 0]]
+    assert downsampled.active_rows.tolist() == [2]
+    assert downsampled.occupancy.tolist()[:2] == [255, 1]
+    assert expanded.coords.tolist()[:9] == [
+        [0, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 1, 0],
+        [0, 1, 1, 0],
+        [0, 0, 0, 1],
+        [0, 1, 0, 1],
+        [0, 0, 1, 1],
+        [0, 1, 1, 1],
+        [0, 2, 0, 0],
+    ]
+    assert expanded.active_rows.tolist() == [9]
+    assert expanded.parent_rows.tolist()[:9] == [0, 0, 0, 0, 0, 0, 0, 0, 1]
+    assert expanded.child_indices.tolist()[:9] == [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        0,
+    ]
+    assert child_coords.tolist() == [[0, 1, 1, 1], [0, 2, 0, 0]]
+
+
+@run_with_gpu_default
+def test_occupancy_helpers_support_gpu_when_available() -> None:
+    coords = mx.array(
+        [
+            [0, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [0, 1, 1, 0],
+            [0, 0, 0, 1],
+            [0, 1, 0, 1],
+            [0, 0, 1, 1],
+            [0, 1, 1, 1],
+            [0, 2, 0, 0],
+        ],
+        dtype=mx.int64,
+    )
+
+    downsampled = occupancy_downsample(coords)
+    expanded = occupancy_expand(downsampled.coords, downsampled.occupancy)
+    child_coords = child_coords_from_indices(
+        mx.array([[0, 0, 0, 0], [0, 1, 0, 0]], dtype=mx.int64),
+        mx.array([7, 0], dtype=mx.int32),
+    )
+
+    mx.eval(
+        downsampled.coords, downsampled.active_rows, downsampled.occupancy
+    )
+    mx.eval(
+        expanded.coords,
+        expanded.active_rows,
+        expanded.parent_rows,
+        expanded.child_indices,
+        child_coords,
+    )
+    assert downsampled.active_rows.tolist() == [2]
+    assert downsampled.occupancy.tolist()[:2] == [255, 1]
+    assert expanded.active_rows.tolist() == [9]
+    assert child_coords.tolist() == [[0, 1, 1, 1], [0, 2, 0, 0]]
 
 
 def test_kernel_offsets_and_relation_builders_emit_expected_edges() -> None:

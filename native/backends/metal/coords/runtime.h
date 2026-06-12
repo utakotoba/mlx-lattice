@@ -30,6 +30,27 @@ void eval_morton_codes(
     std::vector<mx::array>& outputs
 );
 
+void eval_occupancy_downsample(
+    CoordActiveRowsShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
+void eval_occupancy_expand(
+    CoordActiveRowsShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
+void eval_child_coords_from_indices(
+    CoordRowsShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
 void eval_sparse_quantize(
     QuantizationSpec spec,
     int rows,

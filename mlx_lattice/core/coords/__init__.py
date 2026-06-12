@@ -13,6 +13,13 @@ from mlx_lattice.core.coords.manager import (
     CoordinateManager,
     CoordinateMapKey,
 )
+from mlx_lattice.core.coords.occupancy import (
+    OccupancyExpansion,
+    SparseOccupancy,
+    child_coords_from_indices,
+    occupancy_downsample,
+    occupancy_expand,
+)
 from mlx_lattice.core.coords.ordering import (
     CoordinateOrdering,
     morton_codes,
@@ -39,6 +46,8 @@ __all__ = [
     'CoordinateMapKey',
     'CoordinateOrdering',
     'CoordinateSet',
+    'OccupancyExpansion',
+    'SparseOccupancy',
     'SparseQuantization',
     'build_generative_relation',
     'build_kernel_relation',
@@ -46,6 +55,7 @@ __all__ = [
     'build_radius_relation',
     'build_target_kernel_relation',
     'build_transposed_kernel_relation',
+    'child_coords_from_indices',
     'contains_coords',
     'downsample_coords',
     'intersection_coords',
@@ -55,6 +65,8 @@ __all__ = [
     'morton_codes',
     'morton_order',
     'morton_sort_coords',
+    'occupancy_downsample',
+    'occupancy_expand',
     'sparse_quantize',
     'union_coords',
     'validate_coords',

@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from mlx_lattice.core.coords.occupancy import (
+    OccupancyExpansion,
+    SparseOccupancy,
+    child_coords_from_indices,
+    occupancy_downsample,
+    occupancy_expand,
+)
 from mlx_lattice.core.coords.ordering import (
     CoordinateOrdering,
     morton_codes,
@@ -23,7 +30,10 @@ from mlx_lattice.core.coords.set_ops import (
 __all__ = [
     'CoordinateOrdering',
     'CoordinateSet',
+    'OccupancyExpansion',
+    'SparseOccupancy',
     'SparseQuantization',
+    'child_coords_from_indices',
     'contains_coords',
     'downsample_coords',
     'intersection_coords',
@@ -32,6 +42,8 @@ __all__ = [
     'morton_codes',
     'morton_order',
     'morton_sort_coords',
+    'occupancy_downsample',
+    'occupancy_expand',
     'sparse_quantize',
     'union_coords',
 ]

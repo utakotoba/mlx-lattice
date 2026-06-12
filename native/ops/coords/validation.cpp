@@ -69,6 +69,14 @@ void validate_voxel_counts(const mx::array& voxel_counts, int rows) {
     }
 }
 
+void validate_row_indices(const mx::array& rows, int count, const char* name) {
+    if (rows.shape() != mx::Shape{count} || rows.dtype() != mx::int32) {
+        throw std::invalid_argument(
+            std::string(name) + " must have shape (N,) and int32 dtype."
+        );
+    }
+}
+
 void validate_feature_matrix(const mx::array& feats) {
     if (feats.ndim() != 2) {
         throw std::invalid_argument("feats must have shape (N, C).");
