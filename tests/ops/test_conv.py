@@ -77,7 +77,12 @@ def test_conv3d_generic_supports_float16() -> None:
 
 @pytest.mark.parametrize(
     ('channels_in', 'channels_out', 'dtype'),
-    [(16, 32, mx.float16), (32, 16, mx.float16), (64, 32, mx.float32)],
+    [
+        (16, 32, mx.float16),
+        (32, 16, mx.float16),
+        (64, 32, mx.float32),
+        (64, 64, mx.float16),
+    ],
 )
 def test_conv3d_generic_supports_dense_channel_pairs_on_metal(
     channels_in: int,
