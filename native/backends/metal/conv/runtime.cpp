@@ -118,67 +118,74 @@ bool supports_dense_input_grad_shape(SparseConvShape shape) {
            (shape.in_channels == 64 && shape.out_channels == 16);
 }
 
+struct TypedKernelName {
+    const char* fp32;
+    const char* fp16;
+};
+
+struct ChannelKernelName {
+    int in_channels;
+    int out_channels;
+    TypedKernelName kernel;
+};
+
+const char* find_channel_kernel_name(
+    const ChannelKernelName* names,
+    size_t count,
+    SparseConvShape shape,
+    bool fp16
+) {
+    for (size_t index = 0; index < count; ++index) {
+        const auto& item = names[index];
+        if (shape.in_channels == item.in_channels &&
+            shape.out_channels == item.out_channels) {
+            return typed_kernel_name(item.kernel.fp32, item.kernel.fp16, fp16);
+        }
+    }
+    throw std::runtime_error("Unsupported dense convolution channel shape.");
+}
+
 const char* dense_forward_kernel_name(SparseConvShape shape, bool fp16) {
-    if (shape.in_channels == 16 && shape.out_channels == 16) {
-        return typed_kernel_name(
-            "sparse_relation_conv_f32_i32_cout16_dense_cin16_cout16",
-            "sparse_relation_conv_f16_i32_cout16_dense_cin16_cout16",
-            fp16
-        );
-    }
-    if (shape.in_channels == 16 && shape.out_channels == 32) {
-        return typed_kernel_name(
-            "sparse_relation_conv_f32_i32_cout16_dense_cin16_cout32",
-            "sparse_relation_conv_f16_i32_cout16_dense_cin16_cout32",
-            fp16
-        );
-    }
-    if (shape.in_channels == 16 && shape.out_channels == 64) {
-        return typed_kernel_name(
-            "sparse_relation_conv_f32_i32_cout16_dense_cin16_cout64",
-            "sparse_relation_conv_f16_i32_cout16_dense_cin16_cout64",
-            fp16
-        );
-    }
-    if (shape.in_channels == 32 && shape.out_channels == 16) {
-        return typed_kernel_name(
-            "sparse_relation_conv_f32_i32_cout16_dense_cin32_cout16",
-            "sparse_relation_conv_f16_i32_cout16_dense_cin32_cout16",
-            fp16
-        );
-    }
-    if (shape.in_channels == 32 && shape.out_channels == 32) {
-        return typed_kernel_name(
-            "sparse_relation_conv_f32_i32_cout16_dense_cin32_cout32",
-            "sparse_relation_conv_f16_i32_cout16_dense_cin32_cout32",
-            fp16
-        );
-    }
-    if (shape.in_channels == 32 && shape.out_channels == 64) {
-        return typed_kernel_name(
-            "sparse_relation_conv_f32_i32_cout16_dense_cin32_cout64",
-            "sparse_relation_conv_f16_i32_cout16_dense_cin32_cout64",
-            fp16
-        );
-    }
-    if (shape.in_channels == 64 && shape.out_channels == 16) {
-        return typed_kernel_name(
-            "sparse_relation_conv_f32_i32_cout16_dense_cin64_cout16",
-            "sparse_relation_conv_f16_i32_cout16_dense_cin64_cout16",
-            fp16
-        );
-    }
-    if (shape.in_channels == 64 && shape.out_channels == 32) {
-        return typed_kernel_name(
-            "sparse_relation_conv_f32_i32_cout16_dense_cin64_cout32",
-            "sparse_relation_conv_f16_i32_cout16_dense_cin64_cout32",
-            fp16
-        );
-    }
-    return typed_kernel_name(
-        "sparse_relation_conv_f32_i32_cout16_dense_cin64_cout64",
-        "sparse_relation_conv_f16_i32_cout16_dense_cin64_cout64",
-        fp16
+    static constexpr ChannelKernelName kDenseForwardKernels[] = {
+        {16,
+         16,
+         {"sparse_relation_conv_f32_i32_cout16_dense_cin16_cout16",
+          "sparse_relation_conv_f16_i32_cout16_dense_cin16_cout16"}},
+        {16,
+         32,
+         {"sparse_relation_conv_f32_i32_cout16_dense_cin16_cout32",
+          "sparse_relation_conv_f16_i32_cout16_dense_cin16_cout32"}},
+        {16,
+         64,
+         {"sparse_relation_conv_f32_i32_cout16_dense_cin16_cout64",
+          "sparse_relation_conv_f16_i32_cout16_dense_cin16_cout64"}},
+        {32,
+         16,
+         {"sparse_relation_conv_f32_i32_cout16_dense_cin32_cout16",
+          "sparse_relation_conv_f16_i32_cout16_dense_cin32_cout16"}},
+        {32,
+         32,
+         {"sparse_relation_conv_f32_i32_cout16_dense_cin32_cout32",
+          "sparse_relation_conv_f16_i32_cout16_dense_cin32_cout32"}},
+        {32,
+         64,
+         {"sparse_relation_conv_f32_i32_cout16_dense_cin32_cout64",
+          "sparse_relation_conv_f16_i32_cout16_dense_cin32_cout64"}},
+        {64,
+         16,
+         {"sparse_relation_conv_f32_i32_cout16_dense_cin64_cout16",
+          "sparse_relation_conv_f16_i32_cout16_dense_cin64_cout16"}},
+        {64,
+         32,
+         {"sparse_relation_conv_f32_i32_cout16_dense_cin64_cout32",
+          "sparse_relation_conv_f16_i32_cout16_dense_cin64_cout32"}},
+        {64,
+         64,
+         {"sparse_relation_conv_f32_i32_cout16_dense_cin64_cout64",
+          "sparse_relation_conv_f16_i32_cout16_dense_cin64_cout64"}},
+    };
+    return find_channel_kernel_name(
+        kDenseForwardKernels, std::size(kDenseForwardKernels), shape, fp16
     );
 }
 
