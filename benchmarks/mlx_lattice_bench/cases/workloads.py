@@ -70,9 +70,13 @@ def cases(
     preset: str,
     *,
     n_values: tuple[int, ...] | None = None,
+    channels: tuple[int, ...] | None = None,
 ) -> tuple[BenchmarkCase, ...]:
     params = tuple(
-        dict(item) for item in param_grid(preset, n_values=n_values)
+        dict(item)
+        for item in param_grid(
+            preset, n_values=n_values, channels=channels or (16, 64)
+        )
     )
     return tuple(
         _case(name, kind, params)

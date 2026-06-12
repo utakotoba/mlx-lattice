@@ -44,6 +44,14 @@ def all_cases(
                     dtype=dtype,
                 )
             )
+        elif group in {'quantization', 'pool', 'feature', 'workloads'}:
+            selected.extend(
+                modules[group].cases(
+                    preset,
+                    n_values=n_values,
+                    channels=channels,
+                )
+            )
         else:
             selected.extend(modules[group].cases(preset, n_values=n_values))
     return tuple(selected)

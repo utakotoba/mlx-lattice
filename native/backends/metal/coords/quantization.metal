@@ -23,40 +23,20 @@ inline void quantized_point_coord(
     out[3] = int(floor((points[base + 2] - origin_z) / voxel_z));
 }
 
-inline int lookup_quantized_point_hash(
-    device const float* points,
-    device const int* batch_indices,
+inline int lookup_quantized_coord_hash(
+    device const int* quantized_coords,
     device const int* table_rows,
     int table_capacity,
-    thread const int* target,
-    float voxel_x,
-    float voxel_y,
-    float voxel_z,
-    float origin_x,
-    float origin_y,
-    float origin_z
+    int target_row
 ) {
-    int slot = coord_hash_i32(target) & (table_capacity - 1);
+    int slot =
+        coord_hash_i32(quantized_coords, target_row) & (table_capacity - 1);
     for (int probe = 0; probe < table_capacity; ++probe) {
         int row = table_rows[slot];
         if (row < 0) {
             return -1;
         }
-        int stored[4];
-        quantized_point_coord(
-            points,
-            batch_indices,
-            row,
-            voxel_x,
-            voxel_y,
-            voxel_z,
-            origin_x,
-            origin_y,
-            origin_z,
-            stored
-        );
-        if (target[0] == stored[0] && target[1] == stored[1] &&
-            target[2] == stored[2] && target[3] == stored[3]) {
+        if (coord_equal(quantized_coords, row, quantized_coords, target_row)) {
             return row;
         }
         slot = (slot + 1) & (table_capacity - 1);
@@ -84,19 +64,18 @@ inline int lookup_quantized_point_hash(
     }
 }
 
-[[kernel]] void build_quantized_point_hash_i32(
+[[kernel]] void quantize_points_i32(
     device const float* points [[buffer(0)]],
     device const int* batch_indices [[buffer(1)]],
     device const int* active_rows [[buffer(2)]],
-    device atomic_int* table_rows [[buffer(3)]],
+    device int* quantized_coords [[buffer(3)]],
     constant const int& rows [[buffer(4)]],
-    constant const int& table_capacity [[buffer(5)]],
-    constant const float& voxel_x [[buffer(6)]],
-    constant const float& voxel_y [[buffer(7)]],
-    constant const float& voxel_z [[buffer(8)]],
-    constant const float& origin_x [[buffer(9)]],
-    constant const float& origin_y [[buffer(10)]],
-    constant const float& origin_z [[buffer(11)]],
+    constant const float& voxel_x [[buffer(5)]],
+    constant const float& voxel_y [[buffer(6)]],
+    constant const float& voxel_z [[buffer(7)]],
+    constant const float& origin_x [[buffer(8)]],
+    constant const float& origin_y [[buffer(9)]],
+    constant const float& origin_z [[buffer(10)]],
     uint row [[thread_position_in_grid]]
 ) {
     int point_count = min(active_rows[0], rows);
@@ -116,35 +95,38 @@ inline int lookup_quantized_point_hash(
         origin_z,
         candidate
     );
-    int slot = coord_hash_i32(candidate) & (table_capacity - 1);
+    write_coord(quantized_coords, int(row), candidate);
+}
+
+[[kernel]] void build_quantized_point_hash_i32(
+    device const int* quantized_coords [[buffer(0)]],
+    device const int* active_rows [[buffer(1)]],
+    device atomic_int* table_rows [[buffer(2)]],
+    constant const int& rows [[buffer(3)]],
+    constant const int& table_capacity [[buffer(4)]],
+    uint row [[thread_position_in_grid]]
+) {
+    int point_count = min(active_rows[0], rows);
+    if (row >= uint(point_count)) {
+        return;
+    }
+    int row_i = int(row);
+    int slot = coord_hash_i32(quantized_coords, row_i) & (table_capacity - 1);
     for (int probe = 0; probe < table_capacity; ++probe) {
         int expected = -1;
         if (atomic_compare_exchange_weak_explicit(
                 &table_rows[slot],
                 &expected,
-                int(row),
+                row_i,
                 memory_order_relaxed,
                 memory_order_relaxed
             )) {
             return;
         }
-        int stored[4];
-        quantized_point_coord(
-            points,
-            batch_indices,
-            expected,
-            voxel_x,
-            voxel_y,
-            voxel_z,
-            origin_x,
-            origin_y,
-            origin_z,
-            stored
-        );
-        if (candidate[0] == stored[0] && candidate[1] == stored[1] &&
-            candidate[2] == stored[2] && candidate[3] == stored[3]) {
+        if (expected >= 0 &&
+            coord_equal(quantized_coords, expected, quantized_coords, row_i)) {
             atomic_fetch_min_explicit(
-                &table_rows[slot], int(row), memory_order_relaxed
+                &table_rows[slot], row_i, memory_order_relaxed
             );
             return;
         }
@@ -153,19 +135,12 @@ inline int lookup_quantized_point_hash(
 }
 
 [[kernel]] void plan_quantized_points_i32(
-    device const float* points [[buffer(0)]],
-    device const int* batch_indices [[buffer(1)]],
-    device const int* active_rows [[buffer(2)]],
-    device const int* table_rows [[buffer(3)]],
-    device int* selected [[buffer(4)]],
-    constant const int& rows [[buffer(5)]],
-    constant const int& table_capacity [[buffer(6)]],
-    constant const float& voxel_x [[buffer(7)]],
-    constant const float& voxel_y [[buffer(8)]],
-    constant const float& voxel_z [[buffer(9)]],
-    constant const float& origin_x [[buffer(10)]],
-    constant const float& origin_y [[buffer(11)]],
-    constant const float& origin_z [[buffer(12)]],
+    device const int* quantized_coords [[buffer(0)]],
+    device const int* active_rows [[buffer(1)]],
+    device const int* table_rows [[buffer(2)]],
+    device int* selected [[buffer(3)]],
+    constant const int& rows [[buffer(4)]],
+    constant const int& table_capacity [[buffer(5)]],
     uint row [[thread_position_in_grid]]
 ) {
     int point_count = min(active_rows[0], rows);
@@ -176,74 +151,19 @@ inline int lookup_quantized_point_hash(
         selected[row] = 0;
         return;
     }
-    int candidate[4];
-    quantized_point_coord(
-        points,
-        batch_indices,
-        int(row),
-        voxel_x,
-        voxel_y,
-        voxel_z,
-        origin_x,
-        origin_y,
-        origin_z,
-        candidate
-    );
-    selected[row] = lookup_quantized_point_hash(
-                        points,
-                        batch_indices,
-                        table_rows,
-                        table_capacity,
-                        candidate,
-                        voxel_x,
-                        voxel_y,
-                        voxel_z,
-                        origin_x,
-                        origin_y,
-                        origin_z
+    selected[row] = lookup_quantized_coord_hash(
+                        quantized_coords, table_rows, table_capacity, int(row)
                     ) == int(row);
 }
 
-[[kernel]] void prefix_quantized_points_i32(
-    device const int* active_rows [[buffer(0)]],
-    device const int* selected [[buffer(1)]],
-    device int* out_active_rows [[buffer(2)]],
-    device int* representative_voxels [[buffer(3)]],
-    constant const int& rows [[buffer(4)]],
-    uint elem [[thread_position_in_grid]]
-) {
-    if (elem != 0) {
-        return;
-    }
-    int point_count = min(active_rows[0], rows);
-    int out_count = 0;
-    for (int row = 0; row < point_count; ++row) {
-        if (selected[row] != 0) {
-            representative_voxels[row] = out_count++;
-            continue;
-        }
-        representative_voxels[row] = -1;
-    }
-    for (int row = point_count; row < rows; ++row) {
-        representative_voxels[row] = -1;
-    }
-    out_active_rows[0] = out_count;
-}
-
 [[kernel]] void fill_quantized_points_i32(
-    device const float* points [[buffer(0)]],
-    device const int* batch_indices [[buffer(1)]],
-    device const int* active_rows [[buffer(2)]],
-    device const int* selected [[buffer(3)]],
-    device const int* representative_voxels [[buffer(4)]],
+    device const int* quantized_coords [[buffer(0)]],
+    device const int* active_rows [[buffer(1)]],
+    device const int* selected [[buffer(2)]],
+    device const int* local_offsets [[buffer(3)]],
+    device const int* block_offsets [[buffer(4)]],
     device int* out_coords [[buffer(5)]],
     constant const int& rows [[buffer(6)]],
-    constant const float& voxel_x [[buffer(7)]],
-    constant const float& voxel_y [[buffer(8)]],
-    constant const float& voxel_z [[buffer(9)]],
-    constant const float& origin_x [[buffer(10)]],
-    constant const float& origin_y [[buffer(11)]],
-    constant const float& origin_z [[buffer(12)]],
     uint row [[thread_position_in_grid]]
 ) {
     int point_count = min(active_rows[0], rows);
@@ -251,71 +171,36 @@ inline int lookup_quantized_point_hash(
         return;
     }
 
-    int candidate[4];
-    quantized_point_coord(
-        points,
-        batch_indices,
-        int(row),
-        voxel_x,
-        voxel_y,
-        voxel_z,
-        origin_x,
-        origin_y,
-        origin_z,
-        candidate
-    );
-    write_coord(out_coords, representative_voxels[row], candidate);
+    int out_row = block_offsets[row / 256] + local_offsets[row];
+    int in_base = int(row) * 4;
+    int out_base = out_row * 4;
+    out_coords[out_base] = quantized_coords[in_base];
+    out_coords[out_base + 1] = quantized_coords[in_base + 1];
+    out_coords[out_base + 2] = quantized_coords[in_base + 2];
+    out_coords[out_base + 3] = quantized_coords[in_base + 3];
 }
 
 [[kernel]] void map_quantized_points_i32(
-    device const float* points [[buffer(0)]],
-    device const int* batch_indices [[buffer(1)]],
-    device const int* active_rows [[buffer(2)]],
-    device const int* table_rows [[buffer(3)]],
-    device const int* representative_voxels [[buffer(4)]],
+    device const int* quantized_coords [[buffer(0)]],
+    device const int* active_rows [[buffer(1)]],
+    device const int* table_rows [[buffer(2)]],
+    device const int* local_offsets [[buffer(3)]],
+    device const int* block_offsets [[buffer(4)]],
     device int* inverse_rows [[buffer(5)]],
     device atomic_int* voxel_counts [[buffer(6)]],
     constant const int& rows [[buffer(7)]],
     constant const int& table_capacity [[buffer(8)]],
-    constant const float& voxel_x [[buffer(9)]],
-    constant const float& voxel_y [[buffer(10)]],
-    constant const float& voxel_z [[buffer(11)]],
-    constant const float& origin_x [[buffer(12)]],
-    constant const float& origin_y [[buffer(13)]],
-    constant const float& origin_z [[buffer(14)]],
     uint row [[thread_position_in_grid]]
 ) {
     int point_count = min(active_rows[0], rows);
     if (row >= uint(point_count)) {
         return;
     }
-    int candidate[4];
-    quantized_point_coord(
-        points,
-        batch_indices,
-        int(row),
-        voxel_x,
-        voxel_y,
-        voxel_z,
-        origin_x,
-        origin_y,
-        origin_z,
-        candidate
+    int representative = lookup_quantized_coord_hash(
+        quantized_coords, table_rows, table_capacity, int(row)
     );
-    int representative = lookup_quantized_point_hash(
-        points,
-        batch_indices,
-        table_rows,
-        table_capacity,
-        candidate,
-        voxel_x,
-        voxel_y,
-        voxel_z,
-        origin_x,
-        origin_y,
-        origin_z
-    );
-    int voxel_row = representative_voxels[representative];
+    int voxel_row =
+        block_offsets[representative / 256] + local_offsets[representative];
     inverse_rows[row] = voxel_row;
     atomic_fetch_add_explicit(
         &voxel_counts[voxel_row], 1, memory_order_relaxed
