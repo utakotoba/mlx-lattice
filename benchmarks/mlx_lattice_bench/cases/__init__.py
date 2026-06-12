@@ -20,6 +20,7 @@ def all_cases(
     groups: tuple[str, ...] = GROUPS,
     n_values: tuple[int, ...] | None = None,
     channels: tuple[int, ...] | None = None,
+    channel_pairs: tuple[tuple[int, int], ...] | None = None,
     dtype: str = 'float32',
 ) -> tuple[BenchmarkCase, ...]:
     selected = []
@@ -39,6 +40,7 @@ def all_cases(
                     preset,
                     n_values=n_values,
                     channels=channels,
+                    channel_pairs=channel_pairs,
                     dtype=dtype,
                 )
             )

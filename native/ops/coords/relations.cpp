@@ -347,8 +347,7 @@ class RelationGroupedView final : public mx::Primitive {
             return false;
         }
         const auto& views = static_cast<const RelationGroupedView&>(other);
-        return shape_.edge_capacity == views.shape_.edge_capacity &&
-               shape_.group_count == views.shape_.group_count;
+        return shape_ == views.shape_;
     }
 
   private:
@@ -385,8 +384,7 @@ class RelationDirectView final : public mx::Primitive {
             return false;
         }
         const auto& view = static_cast<const RelationDirectView&>(other);
-        return shape_.edge_capacity == view.shape_.edge_capacity &&
-               shape_.group_count == view.shape_.group_count;
+        return shape_ == view.shape_;
     }
 
   private:

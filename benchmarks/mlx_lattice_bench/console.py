@@ -127,6 +127,8 @@ class Console:
             'N',
             'points',
             'channels',
+            'channels_in',
+            'channels_out',
             'batches',
             'kernel',
             'stride',

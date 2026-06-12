@@ -86,12 +86,12 @@ typed_kernel_name(const char* fp32_kernel, const char* fp16_kernel, bool fp16) {
 }
 
 bool is_dense_5d_c_weight(const mx::array& weights, SparseConvShape shape) {
-    return shape.weight_layout == 1 &&
-           shape.in_channels == shape.out_channels &&
-           (shape.in_channels == 16 || shape.in_channels == 32 ||
-            shape.in_channels == 64) &&
-           shape.n_kernels >= 16 && weights.ndim() == 5 &&
-           stride_at(weights, 4) == 1 &&
+    auto supported_channels = [](int channels) {
+        return channels == 16 || channels == 32 || channels == 64;
+    };
+    return shape.weight_layout == 1 && supported_channels(shape.in_channels) &&
+           supported_channels(shape.out_channels) && shape.n_kernels >= 16 &&
+           weights.ndim() == 5 && stride_at(weights, 4) == 1 &&
            stride_at(weights, 3) == shape.in_channels &&
            stride_at(weights, 2) == shape.kernel_z * shape.in_channels &&
            stride_at(weights, 1) ==
@@ -109,23 +109,65 @@ bool is_dense_5d_square_c_shape(SparseConvShape shape) {
 }
 
 const char* dense_forward_kernel_name(SparseConvShape shape, bool fp16) {
-    if (shape.out_channels == 16) {
+    if (shape.in_channels == 16 && shape.out_channels == 16) {
         return typed_kernel_name(
-            "sparse_relation_conv_f32_i32_cout16_dense_c16",
-            "sparse_relation_conv_f16_i32_cout16_dense_c16",
+            "sparse_relation_conv_f32_i32_cout16_dense_cin16_cout16",
+            "sparse_relation_conv_f16_i32_cout16_dense_cin16_cout16",
             fp16
         );
     }
-    if (shape.out_channels == 32) {
+    if (shape.in_channels == 16 && shape.out_channels == 32) {
         return typed_kernel_name(
-            "sparse_relation_conv_f32_i32_cout16_dense_c32",
-            "sparse_relation_conv_f16_i32_cout16_dense_c32",
+            "sparse_relation_conv_f32_i32_cout16_dense_cin16_cout32",
+            "sparse_relation_conv_f16_i32_cout16_dense_cin16_cout32",
+            fp16
+        );
+    }
+    if (shape.in_channels == 16 && shape.out_channels == 64) {
+        return typed_kernel_name(
+            "sparse_relation_conv_f32_i32_cout16_dense_cin16_cout64",
+            "sparse_relation_conv_f16_i32_cout16_dense_cin16_cout64",
+            fp16
+        );
+    }
+    if (shape.in_channels == 32 && shape.out_channels == 16) {
+        return typed_kernel_name(
+            "sparse_relation_conv_f32_i32_cout16_dense_cin32_cout16",
+            "sparse_relation_conv_f16_i32_cout16_dense_cin32_cout16",
+            fp16
+        );
+    }
+    if (shape.in_channels == 32 && shape.out_channels == 32) {
+        return typed_kernel_name(
+            "sparse_relation_conv_f32_i32_cout16_dense_cin32_cout32",
+            "sparse_relation_conv_f16_i32_cout16_dense_cin32_cout32",
+            fp16
+        );
+    }
+    if (shape.in_channels == 32 && shape.out_channels == 64) {
+        return typed_kernel_name(
+            "sparse_relation_conv_f32_i32_cout16_dense_cin32_cout64",
+            "sparse_relation_conv_f16_i32_cout16_dense_cin32_cout64",
+            fp16
+        );
+    }
+    if (shape.in_channels == 64 && shape.out_channels == 16) {
+        return typed_kernel_name(
+            "sparse_relation_conv_f32_i32_cout16_dense_cin64_cout16",
+            "sparse_relation_conv_f16_i32_cout16_dense_cin64_cout16",
+            fp16
+        );
+    }
+    if (shape.in_channels == 64 && shape.out_channels == 32) {
+        return typed_kernel_name(
+            "sparse_relation_conv_f32_i32_cout16_dense_cin64_cout32",
+            "sparse_relation_conv_f16_i32_cout16_dense_cin64_cout32",
             fp16
         );
     }
     return typed_kernel_name(
-        "sparse_relation_conv_f32_i32_cout16_dense_c64",
-        "sparse_relation_conv_f16_i32_cout16_dense_c64",
+        "sparse_relation_conv_f32_i32_cout16_dense_cin64_cout64",
+        "sparse_relation_conv_f16_i32_cout16_dense_cin64_cout64",
         fp16
     );
 }

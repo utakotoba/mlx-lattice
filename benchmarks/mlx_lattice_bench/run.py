@@ -35,6 +35,7 @@ def main() -> None:
     modes = tuple(args.mode) if args.mode else ('cold_op', 'hot_op')
     n_values = tuple(args.n_values) if args.n_values else None
     channels = tuple(args.channels) if args.channels else None
+    channel_pairs = tuple(args.channel_pair) if args.channel_pair else None
     dtype = _dtype_name(args.dtype)
 
     runtime = _load_runtime(
@@ -47,6 +48,7 @@ def main() -> None:
         groups=groups,
         n_values=n_values,
         channels=channels,
+        channel_pairs=channel_pairs,
         dtype=dtype,
     )
 
@@ -130,6 +132,16 @@ def _parser() -> argparse.ArgumentParser:
         action='append',
         type=_positive_int,
         help='channel count for channel-aware cases; repeat to sweep values',
+    )
+    parser.add_argument(
+        '--channel-pair',
+        action='append',
+        type=_channel_pair,
+        metavar='CIN:COUT',
+        help=(
+            'conv-only input/output channel pair; repeat to sweep values '
+            '(for example 16:32)'
+        ),
     )
     parser.add_argument(
         '--dtype',
@@ -279,6 +291,16 @@ def _positive_int(value: str) -> int:
     if parsed <= 0:
         raise argparse.ArgumentTypeError('must be a positive integer')
     return parsed
+
+
+def _channel_pair(value: str) -> tuple[int, int]:
+    try:
+        left, right = value.split(':', 1)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            'channel pair must have form CIN:COUT'
+        ) from exc
+    return (_positive_int(left), _positive_int(right))
 
 
 def _dtype_name(value: str) -> str:

@@ -5,7 +5,7 @@ using namespace metal;
 #include "native/backends/metal/conv/common.metal"
 #include "native/backends/metal/conv/dense_kernels.metal"
 
-[[kernel]] void sparse_relation_conv_f32_i32_cout16_dense_c16(
+[[kernel]] void sparse_relation_conv_f32_i32_cout16_dense_cin16_cout16(
     device const float* feats [[buffer(0)]],
     device const float* weights [[buffer(1)]],
     device const int* in_rows [[buffer(2)]],
@@ -31,35 +31,22 @@ using namespace metal;
     constant const int& kernel_z [[buffer(22)]],
     uint elem [[thread_position_in_grid]]
 ) {
-    dense_forward_cout16_impl<float, 16>(
+    dense_forward_cout16_impl<float, 16, 16>(
         feats,
         weights,
         in_rows,
-        out_rows,
         kernel_ids,
         counts,
         row_offsets,
         out,
-        edge_capacity,
-        out_capacity,
-        in_channels,
-        out_channels,
-        feat_s0,
-        feat_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
         elem
     );
 }
 
-[[kernel]] void sparse_relation_conv_f16_i32_cout16_dense_c16(
+[[kernel]] void sparse_relation_conv_f16_i32_cout16_dense_cin16_cout16(
     device const half* feats [[buffer(0)]],
     device const half* weights [[buffer(1)]],
     device const int* in_rows [[buffer(2)]],
@@ -85,35 +72,22 @@ using namespace metal;
     constant const int& kernel_z [[buffer(22)]],
     uint elem [[thread_position_in_grid]]
 ) {
-    dense_forward_cout16_ci4_f16_impl<16>(
+    dense_forward_cout16_ci4_f16_impl<16, 16>(
         feats,
         weights,
         in_rows,
-        out_rows,
         kernel_ids,
         counts,
         row_offsets,
         out,
-        edge_capacity,
-        out_capacity,
-        in_channels,
-        out_channels,
-        feat_s0,
-        feat_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
         elem
     );
 }
 
-[[kernel]] void sparse_relation_conv_f32_i32_cout4_dense_c32(
+[[kernel]] void sparse_relation_conv_f32_i32_cout16_dense_cin16_cout32(
     device const float* feats [[buffer(0)]],
     device const float* weights [[buffer(1)]],
     device const int* in_rows [[buffer(2)]],
@@ -139,35 +113,22 @@ using namespace metal;
     constant const int& kernel_z [[buffer(22)]],
     uint elem [[thread_position_in_grid]]
 ) {
-    dense_forward_cout4_impl<float, 32>(
+    dense_forward_cout16_impl<float, 16, 32>(
         feats,
         weights,
         in_rows,
-        out_rows,
         kernel_ids,
         counts,
         row_offsets,
         out,
-        edge_capacity,
-        out_capacity,
-        in_channels,
-        out_channels,
-        feat_s0,
-        feat_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
         elem
     );
 }
 
-[[kernel]] void sparse_relation_conv_f16_i32_cout4_dense_c32(
+[[kernel]] void sparse_relation_conv_f16_i32_cout16_dense_cin16_cout32(
     device const half* feats [[buffer(0)]],
     device const half* weights [[buffer(1)]],
     device const int* in_rows [[buffer(2)]],
@@ -193,35 +154,22 @@ using namespace metal;
     constant const int& kernel_z [[buffer(22)]],
     uint elem [[thread_position_in_grid]]
 ) {
-    dense_forward_cout4_impl<half, 32>(
+    dense_forward_cout16_ci4_f16_impl<16, 32>(
         feats,
         weights,
         in_rows,
-        out_rows,
         kernel_ids,
         counts,
         row_offsets,
         out,
-        edge_capacity,
-        out_capacity,
-        in_channels,
-        out_channels,
-        feat_s0,
-        feat_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
         elem
     );
 }
 
-[[kernel]] void sparse_relation_conv_f32_i32_cout4_dense_c64(
+[[kernel]] void sparse_relation_conv_f32_i32_cout16_dense_cin16_cout64(
     device const float* feats [[buffer(0)]],
     device const float* weights [[buffer(1)]],
     device const int* in_rows [[buffer(2)]],
@@ -247,35 +195,22 @@ using namespace metal;
     constant const int& kernel_z [[buffer(22)]],
     uint elem [[thread_position_in_grid]]
 ) {
-    dense_forward_cout4_impl<float, 64>(
+    dense_forward_cout16_impl<float, 16, 64>(
         feats,
         weights,
         in_rows,
-        out_rows,
         kernel_ids,
         counts,
         row_offsets,
         out,
-        edge_capacity,
-        out_capacity,
-        in_channels,
-        out_channels,
-        feat_s0,
-        feat_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
         elem
     );
 }
 
-[[kernel]] void sparse_relation_conv_f16_i32_cout4_dense_c64(
+[[kernel]] void sparse_relation_conv_f16_i32_cout16_dense_cin16_cout64(
     device const half* feats [[buffer(0)]],
     device const half* weights [[buffer(1)]],
     device const int* in_rows [[buffer(2)]],
@@ -301,35 +236,22 @@ using namespace metal;
     constant const int& kernel_z [[buffer(22)]],
     uint elem [[thread_position_in_grid]]
 ) {
-    dense_forward_cout4_impl<half, 64>(
+    dense_forward_cout16_ci4_f16_impl<16, 64>(
         feats,
         weights,
         in_rows,
-        out_rows,
         kernel_ids,
         counts,
         row_offsets,
         out,
-        edge_capacity,
-        out_capacity,
-        in_channels,
-        out_channels,
-        feat_s0,
-        feat_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
         elem
     );
 }
 
-[[kernel]] void sparse_relation_conv_f32_i32_cout16_dense_c32(
+[[kernel]] void sparse_relation_conv_f32_i32_cout16_dense_cin32_cout16(
     device const float* feats [[buffer(0)]],
     device const float* weights [[buffer(1)]],
     device const int* in_rows [[buffer(2)]],
@@ -355,35 +277,22 @@ using namespace metal;
     constant const int& kernel_z [[buffer(22)]],
     uint elem [[thread_position_in_grid]]
 ) {
-    dense_forward_cout16_impl<float, 32>(
+    dense_forward_cout16_impl<float, 32, 16>(
         feats,
         weights,
         in_rows,
-        out_rows,
         kernel_ids,
         counts,
         row_offsets,
         out,
-        edge_capacity,
-        out_capacity,
-        in_channels,
-        out_channels,
-        feat_s0,
-        feat_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
         elem
     );
 }
 
-[[kernel]] void sparse_relation_conv_f16_i32_cout16_dense_c32(
+[[kernel]] void sparse_relation_conv_f16_i32_cout16_dense_cin32_cout16(
     device const half* feats [[buffer(0)]],
     device const half* weights [[buffer(1)]],
     device const int* in_rows [[buffer(2)]],
@@ -409,35 +318,22 @@ using namespace metal;
     constant const int& kernel_z [[buffer(22)]],
     uint elem [[thread_position_in_grid]]
 ) {
-    dense_forward_cout16_ci4_f16_impl<32>(
+    dense_forward_cout16_ci4_f16_impl<32, 16>(
         feats,
         weights,
         in_rows,
-        out_rows,
         kernel_ids,
         counts,
         row_offsets,
         out,
-        edge_capacity,
-        out_capacity,
-        in_channels,
-        out_channels,
-        feat_s0,
-        feat_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
         elem
     );
 }
 
-[[kernel]] void sparse_relation_conv_f32_i32_cout16_dense_c64(
+[[kernel]] void sparse_relation_conv_f32_i32_cout16_dense_cin32_cout32(
     device const float* feats [[buffer(0)]],
     device const float* weights [[buffer(1)]],
     device const int* in_rows [[buffer(2)]],
@@ -463,35 +359,22 @@ using namespace metal;
     constant const int& kernel_z [[buffer(22)]],
     uint elem [[thread_position_in_grid]]
 ) {
-    dense_forward_cout16_impl<float, 64>(
+    dense_forward_cout16_impl<float, 32, 32>(
         feats,
         weights,
         in_rows,
-        out_rows,
         kernel_ids,
         counts,
         row_offsets,
         out,
-        edge_capacity,
-        out_capacity,
-        in_channels,
-        out_channels,
-        feat_s0,
-        feat_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
         elem
     );
 }
 
-[[kernel]] void sparse_relation_conv_f16_i32_cout16_dense_c64(
+[[kernel]] void sparse_relation_conv_f16_i32_cout16_dense_cin32_cout32(
     device const half* feats [[buffer(0)]],
     device const half* weights [[buffer(1)]],
     device const int* in_rows [[buffer(2)]],
@@ -517,30 +400,345 @@ using namespace metal;
     constant const int& kernel_z [[buffer(22)]],
     uint elem [[thread_position_in_grid]]
 ) {
-    dense_forward_cout16_ci4_f16_impl<64>(
+    dense_forward_cout16_ci4_f16_impl<32, 32>(
         feats,
         weights,
         in_rows,
-        out_rows,
         kernel_ids,
         counts,
         row_offsets,
         out,
-        edge_capacity,
-        out_capacity,
-        in_channels,
-        out_channels,
-        feat_s0,
-        feat_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
+        elem
+    );
+}
+
+[[kernel]] void sparse_relation_conv_f32_i32_cout16_dense_cin32_cout64(
+    device const float* feats [[buffer(0)]],
+    device const float* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device float* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& in_channels [[buffer(10)]],
+    constant const int& out_channels [[buffer(11)]],
+    constant const int& feat_s0 [[buffer(12)]],
+    constant const int& feat_s1 [[buffer(13)]],
+    constant const int& weight_s0 [[buffer(14)]],
+    constant const int& weight_s1 [[buffer(15)]],
+    constant const int& weight_s2 [[buffer(16)]],
+    constant const int& weight_s3 [[buffer(17)]],
+    constant const int& weight_s4 [[buffer(18)]],
+    constant const int& weight_layout [[buffer(19)]],
+    constant const int& kernel_x [[buffer(20)]],
+    constant const int& kernel_y [[buffer(21)]],
+    constant const int& kernel_z [[buffer(22)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    dense_forward_cout16_impl<float, 32, 64>(
+        feats,
+        weights,
+        in_rows,
+        kernel_ids,
+        counts,
+        row_offsets,
+        out,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
+        elem
+    );
+}
+
+[[kernel]] void sparse_relation_conv_f16_i32_cout16_dense_cin32_cout64(
+    device const half* feats [[buffer(0)]],
+    device const half* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device half* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& in_channels [[buffer(10)]],
+    constant const int& out_channels [[buffer(11)]],
+    constant const int& feat_s0 [[buffer(12)]],
+    constant const int& feat_s1 [[buffer(13)]],
+    constant const int& weight_s0 [[buffer(14)]],
+    constant const int& weight_s1 [[buffer(15)]],
+    constant const int& weight_s2 [[buffer(16)]],
+    constant const int& weight_s3 [[buffer(17)]],
+    constant const int& weight_s4 [[buffer(18)]],
+    constant const int& weight_layout [[buffer(19)]],
+    constant const int& kernel_x [[buffer(20)]],
+    constant const int& kernel_y [[buffer(21)]],
+    constant const int& kernel_z [[buffer(22)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    dense_forward_cout16_ci4_f16_impl<32, 64>(
+        feats,
+        weights,
+        in_rows,
+        kernel_ids,
+        counts,
+        row_offsets,
+        out,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
+        elem
+    );
+}
+
+[[kernel]] void sparse_relation_conv_f32_i32_cout16_dense_cin64_cout16(
+    device const float* feats [[buffer(0)]],
+    device const float* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device float* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& in_channels [[buffer(10)]],
+    constant const int& out_channels [[buffer(11)]],
+    constant const int& feat_s0 [[buffer(12)]],
+    constant const int& feat_s1 [[buffer(13)]],
+    constant const int& weight_s0 [[buffer(14)]],
+    constant const int& weight_s1 [[buffer(15)]],
+    constant const int& weight_s2 [[buffer(16)]],
+    constant const int& weight_s3 [[buffer(17)]],
+    constant const int& weight_s4 [[buffer(18)]],
+    constant const int& weight_layout [[buffer(19)]],
+    constant const int& kernel_x [[buffer(20)]],
+    constant const int& kernel_y [[buffer(21)]],
+    constant const int& kernel_z [[buffer(22)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    dense_forward_cout16_impl<float, 64, 16>(
+        feats,
+        weights,
+        in_rows,
+        kernel_ids,
+        counts,
+        row_offsets,
+        out,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
+        elem
+    );
+}
+
+[[kernel]] void sparse_relation_conv_f16_i32_cout16_dense_cin64_cout16(
+    device const half* feats [[buffer(0)]],
+    device const half* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device half* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& in_channels [[buffer(10)]],
+    constant const int& out_channels [[buffer(11)]],
+    constant const int& feat_s0 [[buffer(12)]],
+    constant const int& feat_s1 [[buffer(13)]],
+    constant const int& weight_s0 [[buffer(14)]],
+    constant const int& weight_s1 [[buffer(15)]],
+    constant const int& weight_s2 [[buffer(16)]],
+    constant const int& weight_s3 [[buffer(17)]],
+    constant const int& weight_s4 [[buffer(18)]],
+    constant const int& weight_layout [[buffer(19)]],
+    constant const int& kernel_x [[buffer(20)]],
+    constant const int& kernel_y [[buffer(21)]],
+    constant const int& kernel_z [[buffer(22)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    dense_forward_cout16_ci4_f16_impl<64, 16>(
+        feats,
+        weights,
+        in_rows,
+        kernel_ids,
+        counts,
+        row_offsets,
+        out,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
+        elem
+    );
+}
+
+[[kernel]] void sparse_relation_conv_f32_i32_cout16_dense_cin64_cout32(
+    device const float* feats [[buffer(0)]],
+    device const float* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device float* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& in_channels [[buffer(10)]],
+    constant const int& out_channels [[buffer(11)]],
+    constant const int& feat_s0 [[buffer(12)]],
+    constant const int& feat_s1 [[buffer(13)]],
+    constant const int& weight_s0 [[buffer(14)]],
+    constant const int& weight_s1 [[buffer(15)]],
+    constant const int& weight_s2 [[buffer(16)]],
+    constant const int& weight_s3 [[buffer(17)]],
+    constant const int& weight_s4 [[buffer(18)]],
+    constant const int& weight_layout [[buffer(19)]],
+    constant const int& kernel_x [[buffer(20)]],
+    constant const int& kernel_y [[buffer(21)]],
+    constant const int& kernel_z [[buffer(22)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    dense_forward_cout16_impl<float, 64, 32>(
+        feats,
+        weights,
+        in_rows,
+        kernel_ids,
+        counts,
+        row_offsets,
+        out,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
+        elem
+    );
+}
+
+[[kernel]] void sparse_relation_conv_f16_i32_cout16_dense_cin64_cout32(
+    device const half* feats [[buffer(0)]],
+    device const half* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device half* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& in_channels [[buffer(10)]],
+    constant const int& out_channels [[buffer(11)]],
+    constant const int& feat_s0 [[buffer(12)]],
+    constant const int& feat_s1 [[buffer(13)]],
+    constant const int& weight_s0 [[buffer(14)]],
+    constant const int& weight_s1 [[buffer(15)]],
+    constant const int& weight_s2 [[buffer(16)]],
+    constant const int& weight_s3 [[buffer(17)]],
+    constant const int& weight_s4 [[buffer(18)]],
+    constant const int& weight_layout [[buffer(19)]],
+    constant const int& kernel_x [[buffer(20)]],
+    constant const int& kernel_y [[buffer(21)]],
+    constant const int& kernel_z [[buffer(22)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    dense_forward_cout16_ci4_f16_impl<64, 32>(
+        feats,
+        weights,
+        in_rows,
+        kernel_ids,
+        counts,
+        row_offsets,
+        out,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
+        elem
+    );
+}
+
+[[kernel]] void sparse_relation_conv_f32_i32_cout16_dense_cin64_cout64(
+    device const float* feats [[buffer(0)]],
+    device const float* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device float* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& in_channels [[buffer(10)]],
+    constant const int& out_channels [[buffer(11)]],
+    constant const int& feat_s0 [[buffer(12)]],
+    constant const int& feat_s1 [[buffer(13)]],
+    constant const int& weight_s0 [[buffer(14)]],
+    constant const int& weight_s1 [[buffer(15)]],
+    constant const int& weight_s2 [[buffer(16)]],
+    constant const int& weight_s3 [[buffer(17)]],
+    constant const int& weight_s4 [[buffer(18)]],
+    constant const int& weight_layout [[buffer(19)]],
+    constant const int& kernel_x [[buffer(20)]],
+    constant const int& kernel_y [[buffer(21)]],
+    constant const int& kernel_z [[buffer(22)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    dense_forward_cout16_impl<float, 64, 64>(
+        feats,
+        weights,
+        in_rows,
+        kernel_ids,
+        counts,
+        row_offsets,
+        out,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
+        elem
+    );
+}
+
+[[kernel]] void sparse_relation_conv_f16_i32_cout16_dense_cin64_cout64(
+    device const half* feats [[buffer(0)]],
+    device const half* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device half* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& in_channels [[buffer(10)]],
+    constant const int& out_channels [[buffer(11)]],
+    constant const int& feat_s0 [[buffer(12)]],
+    constant const int& feat_s1 [[buffer(13)]],
+    constant const int& weight_s0 [[buffer(14)]],
+    constant const int& weight_s1 [[buffer(15)]],
+    constant const int& weight_s2 [[buffer(16)]],
+    constant const int& weight_s3 [[buffer(17)]],
+    constant const int& weight_s4 [[buffer(18)]],
+    constant const int& weight_layout [[buffer(19)]],
+    constant const int& kernel_x [[buffer(20)]],
+    constant const int& kernel_y [[buffer(21)]],
+    constant const int& kernel_z [[buffer(22)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    dense_forward_cout16_ci4_f16_impl<64, 64>(
+        feats,
+        weights,
+        in_rows,
+        kernel_ids,
+        counts,
+        row_offsets,
+        out,
+        DenseForwardParams{
+            edge_capacity, out_capacity, feat_s0, feat_s1, weight_s0
+        },
         elem
     );
 }
@@ -577,30 +775,20 @@ using namespace metal;
     dense_input_grad_cin16_impl<float>(
         cotangent,
         weights,
-        in_rows,
         out_rows,
         kernel_ids,
         counts,
-        row_offsets,
         in_row_offsets,
         in_edge_ids,
         grad,
-        edge_capacity,
-        out_capacity,
-        in_capacity,
-        in_channels,
-        out_channels,
-        cotangent_s0,
-        cotangent_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseInputGradParams{
+            edge_capacity,
+            out_capacity,
+            in_capacity,
+            cotangent_s0,
+            cotangent_s1,
+            weight_s0,
+        },
         elem
     );
 }
@@ -637,30 +825,20 @@ using namespace metal;
     dense_input_grad_cin16_impl<half>(
         cotangent,
         weights,
-        in_rows,
         out_rows,
         kernel_ids,
         counts,
-        row_offsets,
         in_row_offsets,
         in_edge_ids,
         grad,
-        edge_capacity,
-        out_capacity,
-        in_capacity,
-        in_channels,
-        out_channels,
-        cotangent_s0,
-        cotangent_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseInputGradParams{
+            edge_capacity,
+            out_capacity,
+            in_capacity,
+            cotangent_s0,
+            cotangent_s1,
+            weight_s0,
+        },
         elem
     );
 }
@@ -697,30 +875,20 @@ using namespace metal;
     dense_input_grad_cin4_impl<float, 32>(
         cotangent,
         weights,
-        in_rows,
         out_rows,
         kernel_ids,
         counts,
-        row_offsets,
         in_row_offsets,
         in_edge_ids,
         grad,
-        edge_capacity,
-        out_capacity,
-        in_capacity,
-        in_channels,
-        out_channels,
-        cotangent_s0,
-        cotangent_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseInputGradParams{
+            edge_capacity,
+            out_capacity,
+            in_capacity,
+            cotangent_s0,
+            cotangent_s1,
+            weight_s0,
+        },
         elem
     );
 }
@@ -757,30 +925,20 @@ using namespace metal;
     dense_input_grad_cin4_impl<half, 32>(
         cotangent,
         weights,
-        in_rows,
         out_rows,
         kernel_ids,
         counts,
-        row_offsets,
         in_row_offsets,
         in_edge_ids,
         grad,
-        edge_capacity,
-        out_capacity,
-        in_capacity,
-        in_channels,
-        out_channels,
-        cotangent_s0,
-        cotangent_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseInputGradParams{
+            edge_capacity,
+            out_capacity,
+            in_capacity,
+            cotangent_s0,
+            cotangent_s1,
+            weight_s0,
+        },
         elem
     );
 }
@@ -817,30 +975,20 @@ using namespace metal;
     dense_input_grad_cin4_impl<float, 64>(
         cotangent,
         weights,
-        in_rows,
         out_rows,
         kernel_ids,
         counts,
-        row_offsets,
         in_row_offsets,
         in_edge_ids,
         grad,
-        edge_capacity,
-        out_capacity,
-        in_capacity,
-        in_channels,
-        out_channels,
-        cotangent_s0,
-        cotangent_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseInputGradParams{
+            edge_capacity,
+            out_capacity,
+            in_capacity,
+            cotangent_s0,
+            cotangent_s1,
+            weight_s0,
+        },
         elem
     );
 }
@@ -877,30 +1025,20 @@ using namespace metal;
     dense_input_grad_cin4_impl<half, 64>(
         cotangent,
         weights,
-        in_rows,
         out_rows,
         kernel_ids,
         counts,
-        row_offsets,
         in_row_offsets,
         in_edge_ids,
         grad,
-        edge_capacity,
-        out_capacity,
-        in_capacity,
-        in_channels,
-        out_channels,
-        cotangent_s0,
-        cotangent_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseInputGradParams{
+            edge_capacity,
+            out_capacity,
+            in_capacity,
+            cotangent_s0,
+            cotangent_s1,
+            weight_s0,
+        },
         elem
     );
 }
@@ -937,30 +1075,20 @@ using namespace metal;
     dense_input_grad_cin16_grouped_impl<float, 32>(
         cotangent,
         weights,
-        in_rows,
         out_rows,
         kernel_ids,
         counts,
-        row_offsets,
         in_row_offsets,
         in_edge_ids,
         grad,
-        edge_capacity,
-        out_capacity,
-        in_capacity,
-        in_channels,
-        out_channels,
-        cotangent_s0,
-        cotangent_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseInputGradParams{
+            edge_capacity,
+            out_capacity,
+            in_capacity,
+            cotangent_s0,
+            cotangent_s1,
+            weight_s0,
+        },
         elem
     );
 }
@@ -997,30 +1125,20 @@ using namespace metal;
     dense_input_grad_cin16_grouped_impl<half, 32>(
         cotangent,
         weights,
-        in_rows,
         out_rows,
         kernel_ids,
         counts,
-        row_offsets,
         in_row_offsets,
         in_edge_ids,
         grad,
-        edge_capacity,
-        out_capacity,
-        in_capacity,
-        in_channels,
-        out_channels,
-        cotangent_s0,
-        cotangent_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseInputGradParams{
+            edge_capacity,
+            out_capacity,
+            in_capacity,
+            cotangent_s0,
+            cotangent_s1,
+            weight_s0,
+        },
         elem
     );
 }
@@ -1057,30 +1175,20 @@ using namespace metal;
     dense_input_grad_cin16_grouped_impl<half, 64>(
         cotangent,
         weights,
-        in_rows,
         out_rows,
         kernel_ids,
         counts,
-        row_offsets,
         in_row_offsets,
         in_edge_ids,
         grad,
-        edge_capacity,
-        out_capacity,
-        in_capacity,
-        in_channels,
-        out_channels,
-        cotangent_s0,
-        cotangent_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
+        DenseInputGradParams{
+            edge_capacity,
+            out_capacity,
+            in_capacity,
+            cotangent_s0,
+            cotangent_s1,
+            weight_s0,
+        },
         elem
     );
 }
@@ -1118,25 +1226,17 @@ using namespace metal;
         cotangent,
         in_rows,
         out_rows,
-        kernel_ids,
         counts,
-        row_offsets,
         kernel_row_offsets,
         kernel_edge_ids,
         grad,
         edge_capacity,
         out_capacity,
         n_kernels,
-        in_channels,
-        out_channels,
         feat_s0,
         feat_s1,
         cotangent_s0,
         cotangent_s1,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
         tile_id,
         tid,
         partial
@@ -1176,25 +1276,17 @@ using namespace metal;
         cotangent,
         in_rows,
         out_rows,
-        kernel_ids,
         counts,
-        row_offsets,
         kernel_row_offsets,
         kernel_edge_ids,
         grad,
         edge_capacity,
         out_capacity,
         n_kernels,
-        in_channels,
-        out_channels,
         feat_s0,
         feat_s1,
         cotangent_s0,
         cotangent_s1,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
         tile_id,
         tid,
         partial
@@ -1234,25 +1326,17 @@ using namespace metal;
         cotangent,
         in_rows,
         out_rows,
-        kernel_ids,
         counts,
-        row_offsets,
         kernel_row_offsets,
         kernel_edge_ids,
         grad,
         edge_capacity,
         out_capacity,
         n_kernels,
-        in_channels,
-        out_channels,
         feat_s0,
         feat_s1,
         cotangent_s0,
         cotangent_s1,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
         tile_id,
         tid,
         partial
@@ -1292,25 +1376,17 @@ using namespace metal;
         cotangent,
         in_rows,
         out_rows,
-        kernel_ids,
         counts,
-        row_offsets,
         kernel_row_offsets,
         kernel_edge_ids,
         grad,
         edge_capacity,
         out_capacity,
         n_kernels,
-        in_channels,
-        out_channels,
         feat_s0,
         feat_s1,
         cotangent_s0,
         cotangent_s1,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
         tile_id,
         tid,
         partial
@@ -1350,25 +1426,17 @@ using namespace metal;
         cotangent,
         in_rows,
         out_rows,
-        kernel_ids,
         counts,
-        row_offsets,
         kernel_row_offsets,
         kernel_edge_ids,
         grad,
         edge_capacity,
         out_capacity,
         n_kernels,
-        in_channels,
-        out_channels,
         feat_s0,
         feat_s1,
         cotangent_s0,
         cotangent_s1,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
         tile_id,
         tid,
         partial
@@ -1408,25 +1476,17 @@ using namespace metal;
         cotangent,
         in_rows,
         out_rows,
-        kernel_ids,
         counts,
-        row_offsets,
         kernel_row_offsets,
         kernel_edge_ids,
         grad,
         edge_capacity,
         out_capacity,
         n_kernels,
-        in_channels,
-        out_channels,
         feat_s0,
         feat_s1,
         cotangent_s0,
         cotangent_s1,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
         tile_id,
         tid,
         partial

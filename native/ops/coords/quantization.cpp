@@ -144,10 +144,7 @@ class VoxelizeFeatures final : public mx::Primitive {
             return false;
         }
         const auto& op = static_cast<const VoxelizeFeatures&>(other);
-        return reduce_ == op.reduce_ &&
-               shape_.point_rows == op.shape_.point_rows &&
-               shape_.voxel_rows == op.shape_.voxel_rows &&
-               shape_.channels == op.shape_.channels;
+        return reduce_ == op.reduce_ && shape_ == op.shape_;
     }
 
   private:
@@ -189,10 +186,7 @@ class VoxelizeFeatureGrad final : public mx::Primitive {
             return false;
         }
         const auto& op = static_cast<const VoxelizeFeatureGrad&>(other);
-        return reduce_ == op.reduce_ &&
-               shape_.point_rows == op.shape_.point_rows &&
-               shape_.voxel_rows == op.shape_.voxel_rows &&
-               shape_.channels == op.shape_.channels;
+        return reduce_ == op.reduce_ && shape_ == op.shape_;
     }
 
   private:

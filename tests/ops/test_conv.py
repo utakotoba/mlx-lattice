@@ -75,6 +75,55 @@ def test_conv3d_generic_supports_float16() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ('channels_in', 'channels_out', 'dtype'),
+    [(16, 32, mx.float16), (32, 16, mx.float16), (64, 32, mx.float32)],
+)
+def test_conv3d_generic_supports_dense_channel_pairs_on_metal(
+    channels_in: int,
+    channels_out: int,
+    dtype: mx.Dtype,
+) -> None:
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
+        dtype=mx.int32,
+    )
+    feats = mx.array(
+        [
+            [
+                ((row + channel) % 7 - 3) / 7.0
+                for channel in range(channels_in)
+            ]
+            for row in range(3)
+        ],
+        dtype=dtype,
+    )
+    weight = mx.array(
+        [
+            ((index % 13) - 6) / 13.0
+            for index in range(channels_out * 3 * channels_in)
+        ],
+        dtype=dtype,
+    ).reshape(channels_out, 3, 1, 1, channels_in)
+    x = SparseTensor(coords, feats)
+
+    expected = conv3d(x, weight, kernel_size=(3, 1, 1)).feats
+    mx.eval(expected)
+
+    def run() -> list[list[float]]:
+        out = conv3d(x, weight, kernel_size=(3, 1, 1))
+        mx.eval(out.feats)
+        assert out.feats.shape == (3, channels_out)
+        assert out.feats.dtype == dtype
+        return active_feats(out).astype(mx.float32).tolist()
+
+    assert_nested_close(
+        run_with_gpu_default(run),
+        expected.astype(mx.float32).tolist(),
+        abs=2e-2 if dtype == mx.float16 else 1e-4,
+    )
+
+
 def test_conv3d_target_coordinates_match_sparse_reference() -> None:
     coords = mx.array(
         [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],

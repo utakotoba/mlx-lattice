@@ -166,15 +166,7 @@ class SparseConvFeatures final : public SparsePrimitive {
             return false;
         }
         const auto& op = static_cast<const SparseConvFeatures&>(other);
-        return shape_.in_capacity == op.shape_.in_capacity &&
-               shape_.out_capacity == op.shape_.out_capacity &&
-               shape_.n_kernels == op.shape_.n_kernels &&
-               shape_.in_channels == op.shape_.in_channels &&
-               shape_.out_channels == op.shape_.out_channels &&
-               shape_.weight_layout == op.shape_.weight_layout &&
-               shape_.kernel_x == op.shape_.kernel_x &&
-               shape_.kernel_y == op.shape_.kernel_y &&
-               shape_.kernel_z == op.shape_.kernel_z;
+        return shape_ == op.shape_;
     }
 
   private:
@@ -212,15 +204,7 @@ class SparseConvFeaturesInputGrad : public SparsePrimitive {
             return false;
         }
         const auto& op = static_cast<const SparseConvFeaturesInputGrad&>(other);
-        return shape_.in_capacity == op.shape_.in_capacity &&
-               shape_.out_capacity == op.shape_.out_capacity &&
-               shape_.n_kernels == op.shape_.n_kernels &&
-               shape_.in_channels == op.shape_.in_channels &&
-               shape_.out_channels == op.shape_.out_channels &&
-               shape_.weight_layout == op.shape_.weight_layout &&
-               shape_.kernel_x == op.shape_.kernel_x &&
-               shape_.kernel_y == op.shape_.kernel_y &&
-               shape_.kernel_z == op.shape_.kernel_z;
+        return shape_ == op.shape_;
     }
 
   protected:
@@ -257,15 +241,7 @@ class SparseConvFeaturesWeightGrad final : public SparseConvFeaturesInputGrad {
         }
         const auto& op =
             static_cast<const SparseConvFeaturesWeightGrad&>(other);
-        return shape_.in_capacity == op.shape_.in_capacity &&
-               shape_.out_capacity == op.shape_.out_capacity &&
-               shape_.n_kernels == op.shape_.n_kernels &&
-               shape_.in_channels == op.shape_.in_channels &&
-               shape_.out_channels == op.shape_.out_channels &&
-               shape_.weight_layout == op.shape_.weight_layout &&
-               shape_.kernel_x == op.shape_.kernel_x &&
-               shape_.kernel_y == op.shape_.kernel_y &&
-               shape_.kernel_z == op.shape_.kernel_z;
+        return shape_ == op.shape_;
     }
 };
 

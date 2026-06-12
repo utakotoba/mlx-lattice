@@ -166,12 +166,7 @@ class SparsePoolFeatures final : public SparsePrimitive {
             return false;
         }
         const auto& op = static_cast<const SparsePoolFeatures&>(other);
-        return reduce_ == op.reduce_ &&
-               shape_.in_capacity == op.shape_.in_capacity &&
-               shape_.out_capacity == op.shape_.out_capacity &&
-               shape_.n_kernels == op.shape_.n_kernels &&
-               shape_.channels == op.shape_.channels &&
-               shape_.input_exclusive == op.shape_.input_exclusive;
+        return reduce_ == op.reduce_ && shape_ == op.shape_;
     }
 
   private:
@@ -215,12 +210,7 @@ class SparsePoolFeaturesGrad : public SparsePrimitive {
             return false;
         }
         const auto& op = static_cast<const SparsePoolFeaturesGrad&>(other);
-        return reduce_ == op.reduce_ &&
-               shape_.in_capacity == op.shape_.in_capacity &&
-               shape_.out_capacity == op.shape_.out_capacity &&
-               shape_.n_kernels == op.shape_.n_kernels &&
-               shape_.channels == op.shape_.channels &&
-               shape_.input_exclusive == op.shape_.input_exclusive;
+        return reduce_ == op.reduce_ && shape_ == op.shape_;
     }
 
   protected:

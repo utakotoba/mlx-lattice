@@ -98,6 +98,40 @@ void dispatch_1d(Encoder& encoder, Kernel* kernel, size_t elements) {
     encoder.dispatch_threads(MTL::Size(threads, 1, 1), MTL::Size(group, 1, 1));
 }
 
+template <typename Encoder> void dispatch_single(Encoder& encoder) {
+    encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+}
+
+template <typename Encoder>
+void bind_input_arrays(
+    Encoder& encoder,
+    const std::vector<mx::array>& inputs,
+    int first = 0
+) {
+    for (int i = 0; i < int(inputs.size()); ++i) {
+        encoder.set_input_array(inputs[i], first + i);
+    }
+}
+
+template <typename Encoder>
+void bind_output_arrays(
+    Encoder& encoder,
+    std::vector<mx::array>& outputs,
+    int first,
+    int count
+) {
+    for (int i = 0; i < count; ++i) {
+        encoder.set_output_array(outputs[i], first + i);
+    }
+}
+
+template <typename Encoder>
+void bind_triple_bytes(Encoder& encoder, Triple value, int first) {
+    encoder.set_bytes(value[0], first);
+    encoder.set_bytes(value[1], first + 1);
+    encoder.set_bytes(value[2], first + 2);
+}
+
 StableCompactBuffers make_stable_compact_buffers(int rows) {
     auto blocks = std::max(
         (rows + kStableCompactBlockSize - 1) / kStableCompactBlockSize, 1
@@ -138,7 +172,7 @@ void encode_stable_compact_offsets(
     encoder.set_output_array(buffers.block_offsets, 0);
     encoder.set_output_array(count, 1);
     encoder.set_bytes(buffers.blocks, 2);
-    encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+    dispatch_single(encoder);
 }
 
 template <typename Device, typename Library, typename Encoder>
@@ -170,7 +204,7 @@ void encode_relation_compact_offsets(
     encoder.set_output_array(buffers.block_offsets, 0);
     encoder.set_output_array(counts, 1);
     encoder.set_bytes(buffers.blocks, 2);
-    encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+    dispatch_single(encoder);
 }
 
 template <typename Device, typename Library, typename Encoder>
@@ -188,7 +222,7 @@ void encode_neighbor_row_offsets(
         encoder.set_output_array(outputs.offsets, 0);
         encoder.set_output_array(outputs.counts, 1);
         encoder.set_bytes(query_rows, 2);
-        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+        dispatch_single(encoder);
         return;
     }
 
@@ -212,7 +246,7 @@ void encode_neighbor_row_offsets(
     encoder.set_output_array(buffers.block_offsets, 0);
     encoder.set_output_array(outputs.counts, 1);
     encoder.set_bytes(buffers.blocks, 2);
-    encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+    dispatch_single(encoder);
 
     auto finalize =
         device.get_kernel("finalize_forward_relation_row_offsets_i32", library);
@@ -312,7 +346,7 @@ void encode_relation_grouped_view(
         encoder.set_output_array(buffers.block_offsets, 0);
         encoder.set_output_array(total_count, 1);
         encoder.set_bytes(buffers.blocks, 2);
-        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+        dispatch_single(encoder);
 
         auto finalize =
             device.get_kernel("finalize_relation_grouped_view_i32", library);
@@ -335,7 +369,7 @@ void encode_relation_grouped_view(
         encoder.set_output_array(outputs[RelationViewRowOffsets], 0);
         encoder.set_output_array(cursors, 1);
         encoder.set_bytes(shape.group_count, 2);
-        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+        dispatch_single(encoder);
     }
 
     auto fill = device.get_kernel("fill_relation_grouped_view_i32", library);
@@ -420,7 +454,7 @@ void compact_forward_relation_slots(
         encoder.set_output_array(buffers.block_offsets, 0);
         encoder.set_output_array(outputs[RelationCounts], 1);
         encoder.set_bytes(buffers.blocks, 2);
-        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+        dispatch_single(encoder);
 
         auto finalize = device.get_kernel(
             "finalize_forward_relation_row_offsets_i32", library
@@ -452,7 +486,7 @@ void compact_forward_relation_slots(
         encoder.set_output_array(outputs[RelationRowOffsets], 0);
         encoder.set_output_array(outputs[RelationCounts], 1);
         encoder.set_bytes(shape.rows, 2);
-        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+        dispatch_single(encoder);
     }
 
     auto compact =
@@ -542,9 +576,7 @@ void eval_set_coords(
         encoder.set_output_array(table, 1);
         encoder.set_bytes(shape.lhs_rows, 2);
         encoder.set_bytes(table_capacity, 3);
-        encoder.set_bytes(stride[0], 4);
-        encoder.set_bytes(stride[1], 5);
-        encoder.set_bytes(stride[2], 6);
+        bind_triple_bytes(encoder, stride, 4);
         dispatch_1d(encoder, build, static_cast<size_t>(shape.lhs_rows));
 
         auto plan = device.get_kernel("plan_downsample_coord_set_i32", library);
@@ -554,9 +586,7 @@ void eval_set_coords(
         encoder.set_output_array(selected, 2);
         encoder.set_bytes(shape.lhs_rows, 3);
         encoder.set_bytes(table_capacity, 4);
-        encoder.set_bytes(stride[0], 5);
-        encoder.set_bytes(stride[1], 6);
-        encoder.set_bytes(stride[2], 7);
+        bind_triple_bytes(encoder, stride, 5);
         dispatch_1d(encoder, plan, static_cast<size_t>(shape.lhs_rows));
 
         auto compact = device.get_kernel(
@@ -583,9 +613,7 @@ void eval_set_coords(
             encoder.set_input_array(buffers.block_offsets, 3);
             encoder.set_output_array(out_coords, 4);
             encoder.set_bytes(shape.lhs_rows, 5);
-            encoder.set_bytes(stride[0], 6);
-            encoder.set_bytes(stride[1], 7);
-            encoder.set_bytes(stride[2], 8);
+            bind_triple_bytes(encoder, stride, 6);
             dispatch_1d(encoder, compact, static_cast<size_t>(shape.lhs_rows));
             return;
         }
@@ -595,10 +623,8 @@ void eval_set_coords(
         encoder.set_output_array(out_coords, 2);
         encoder.set_output_array(count, 3);
         encoder.set_bytes(shape.lhs_rows, 4);
-        encoder.set_bytes(stride[0], 5);
-        encoder.set_bytes(stride[1], 6);
-        encoder.set_bytes(stride[2], 7);
-        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+        bind_triple_bytes(encoder, stride, 5);
+        dispatch_single(encoder);
     } else if (op == CoordSetOp::Union) {
         auto total_rows = shape.lhs_rows + shape.rhs_rows;
         auto lhs_table_capacity = coord_hash_capacity(shape.lhs_rows);
@@ -674,7 +700,7 @@ void eval_set_coords(
         encoder.set_output_array(count, 4);
         encoder.set_bytes(shape.lhs_rows, 5);
         encoder.set_bytes(shape.rhs_rows, 6);
-        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+        dispatch_single(encoder);
     } else {
         auto rhs_table_capacity = coord_hash_capacity(shape.rhs_rows);
         auto lhs_table_capacity = coord_hash_capacity(shape.lhs_rows);
@@ -750,7 +776,7 @@ void eval_set_coords(
         encoder.set_output_array(out_coords, 2);
         encoder.set_output_array(count, 3);
         encoder.set_bytes(shape.lhs_rows, 4);
-        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+        dispatch_single(encoder);
     }
 #else
     (void)op;
@@ -886,7 +912,7 @@ void eval_sparse_quantize(
     encoder.set_output_array(outputs[1], 2);
     encoder.set_output_array(representative_voxels, 3);
     encoder.set_bytes(rows, 4);
-    encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+    dispatch_single(encoder);
 
     auto fill = device.get_kernel("fill_quantized_points_i32", library);
     encoder.set_compute_pipeline_state(fill);
@@ -962,9 +988,7 @@ void eval_voxelize_features(
     auto scatter =
         device.get_kernel("scatter_voxelized_features_f32_i32", library);
     encoder.set_compute_pipeline_state(scatter);
-    for (int i = 0; i < int(inputs.size()); ++i) {
-        encoder.set_input_array(inputs[i], i);
-    }
+    bind_input_arrays(encoder, inputs);
     encoder.set_output_array(outputs[0], 4);
     encoder.set_bytes(voxel_reduce_op_id(reduce), 5);
     encoder.set_bytes(shape.point_rows, 6);
@@ -1008,9 +1032,7 @@ void eval_voxelize_feature_grad(
     auto kernel = device.get_kernel("voxelize_feature_grad_f32_i32", library);
 
     encoder.set_compute_pipeline_state(kernel);
-    for (int i = 0; i < int(inputs.size()); ++i) {
-        encoder.set_input_array(inputs[i], i);
-    }
+    bind_input_arrays(encoder, inputs);
     encoder.set_output_array(outputs[0], 4);
     encoder.set_bytes(voxel_reduce_op_id(reduce), 5);
     encoder.set_bytes(shape.point_rows, 6);
@@ -1094,9 +1116,7 @@ void eval_generic_kernel_relation(
             encoder.set_output_array(out_table, 2);
             encoder.set_bytes(rows, 3);
             encoder.set_bytes(table_capacity, 4);
-            encoder.set_bytes(stride[0], 5);
-            encoder.set_bytes(stride[1], 6);
-            encoder.set_bytes(stride[2], 7);
+            bind_triple_bytes(encoder, stride, 5);
             dispatch_1d(encoder, build_outputs, static_cast<size_t>(rows));
 
             auto plan_outputs = device.get_kernel(
@@ -1109,9 +1129,7 @@ void eval_generic_kernel_relation(
             encoder.set_output_array(selected, 3);
             encoder.set_bytes(rows, 4);
             encoder.set_bytes(table_capacity, 5);
-            encoder.set_bytes(stride[0], 6);
-            encoder.set_bytes(stride[1], 7);
-            encoder.set_bytes(stride[2], 8);
+            bind_triple_bytes(encoder, stride, 6);
             dispatch_1d(encoder, plan_outputs, static_cast<size_t>(rows));
 
             if (rows >= kParallelCompactThreshold) {
@@ -1135,9 +1153,7 @@ void eval_generic_kernel_relation(
                 encoder.set_input_array(buffers.block_offsets, 3);
                 encoder.set_output_array(outputs[RelationOutCoords], 4);
                 encoder.set_bytes(rows, 5);
-                encoder.set_bytes(stride[0], 6);
-                encoder.set_bytes(stride[1], 7);
-                encoder.set_bytes(stride[2], 8);
+                bind_triple_bytes(encoder, stride, 6);
                 dispatch_1d(
                     encoder, compact_outputs, static_cast<size_t>(rows)
                 );
@@ -1151,12 +1167,8 @@ void eval_generic_kernel_relation(
                 encoder.set_output_array(outputs[RelationOutCoords], 2);
                 encoder.set_output_array(outputs[RelationCounts], 3);
                 encoder.set_bytes(rows, 4);
-                encoder.set_bytes(stride[0], 5);
-                encoder.set_bytes(stride[1], 6);
-                encoder.set_bytes(stride[2], 7);
-                encoder.dispatch_threads(
-                    MTL::Size(1, 1, 1), MTL::Size(1, 1, 1)
-                );
+                bind_triple_bytes(encoder, stride, 5);
+                dispatch_single(encoder);
             }
 
             auto slot_in_rows = make_int32_temp(rows * kernel_count);
@@ -1182,12 +1194,8 @@ void eval_generic_kernel_relation(
             encoder.set_bytes(rows, 9);
             encoder.set_bytes(kernel_count, 10);
             encoder.set_bytes(table_capacity, 11);
-            encoder.set_bytes(stride[0], 12);
-            encoder.set_bytes(stride[1], 13);
-            encoder.set_bytes(stride[2], 14);
-            encoder.set_bytes(padding[0], 15);
-            encoder.set_bytes(padding[1], 16);
-            encoder.set_bytes(padding[2], 17);
+            bind_triple_bytes(encoder, stride, 12);
+            bind_triple_bytes(encoder, padding, 15);
             dispatch_1d(
                 encoder,
                 slots,
@@ -1252,7 +1260,7 @@ void eval_generic_kernel_relation(
         encoder.set_output_array(buffers.block_offsets, 0);
         encoder.set_output_array(outputs[RelationCounts], 1);
         encoder.set_bytes(buffers.blocks, 2);
-        encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+        dispatch_single(encoder);
 
         auto finalize = device.get_kernel(
             "finalize_forward_relation_row_offsets_i32", library
@@ -1291,17 +1299,11 @@ void eval_generic_kernel_relation(
         encoder.set_input_array(inputs[0], 0);
         encoder.set_input_array(inputs[1], 1);
         encoder.set_input_array(inputs[2], 2);
-        for (int i = 0; i < int(RelationBaseOutputCount); ++i) {
-            encoder.set_output_array(outputs[i], i + 3);
-        }
+        bind_output_arrays(encoder, outputs, 3, RelationBaseOutputCount);
         encoder.set_bytes(rows, 9);
         encoder.set_bytes(kernel_count, 10);
-        encoder.set_bytes(stride[0], 11);
-        encoder.set_bytes(stride[1], 12);
-        encoder.set_bytes(stride[2], 13);
-        encoder.set_bytes(padding[0], 14);
-        encoder.set_bytes(padding[1], 15);
-        encoder.set_bytes(padding[2], 16);
+        bind_triple_bytes(encoder, stride, 11);
+        bind_triple_bytes(encoder, padding, 14);
         dispatch_1d(encoder, kernel, static_cast<size_t>(rows) * kernel_count);
         return;
     }
@@ -1318,18 +1320,12 @@ void eval_generic_kernel_relation(
     encoder.set_input_array(inputs[0], 0);
     encoder.set_input_array(inputs[1], 1);
     encoder.set_input_array(inputs[2], 2);
-    for (int i = 0; i < int(RelationBaseOutputCount); ++i) {
-        encoder.set_output_array(outputs[i], i + 3);
-    }
+    bind_output_arrays(encoder, outputs, 3, RelationBaseOutputCount);
     encoder.set_bytes(rows, 9);
     encoder.set_bytes(kernel_count, 10);
-    encoder.set_bytes(stride[0], 11);
-    encoder.set_bytes(stride[1], 12);
-    encoder.set_bytes(stride[2], 13);
-    encoder.set_bytes(padding[0], 14);
-    encoder.set_bytes(padding[1], 15);
-    encoder.set_bytes(padding[2], 16);
-    encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+    bind_triple_bytes(encoder, stride, 11);
+    bind_triple_bytes(encoder, padding, 14);
+    dispatch_single(encoder);
 #else
     (void)op;
     (void)rows;
@@ -1411,12 +1407,8 @@ void eval_target_kernel_relation(
     encoder.set_bytes(target_rows, 10);
     encoder.set_bytes(kernel_count, 11);
     encoder.set_bytes(table_capacity, 12);
-    encoder.set_bytes(stride[0], 13);
-    encoder.set_bytes(stride[1], 14);
-    encoder.set_bytes(stride[2], 15);
-    encoder.set_bytes(padding[0], 16);
-    encoder.set_bytes(padding[1], 17);
-    encoder.set_bytes(padding[2], 18);
+    bind_triple_bytes(encoder, stride, 13);
+    bind_triple_bytes(encoder, padding, 16);
     dispatch_1d(
         encoder,
         slots,
@@ -1481,14 +1473,10 @@ void eval_generative_kernel_relation(
     encoder.set_input_array(inputs[0], 0);
     encoder.set_input_array(inputs[1], 1);
     encoder.set_input_array(inputs[2], 2);
-    for (int i = 0; i < int(RelationBaseOutputCount); ++i) {
-        encoder.set_output_array(outputs[i], i + 3);
-    }
+    bind_output_arrays(encoder, outputs, 3, RelationBaseOutputCount);
     encoder.set_bytes(rows, 9);
     encoder.set_bytes(kernel_count, 10);
-    encoder.set_bytes(stride[0], 11);
-    encoder.set_bytes(stride[1], 12);
-    encoder.set_bytes(stride[2], 13);
+    bind_triple_bytes(encoder, stride, 11);
     encoder.dispatch_threads(
         MTL::Size(static_cast<size_t>(thread_count), 1, 1),
         MTL::Size(group, 1, 1)
@@ -1629,9 +1617,7 @@ void eval_neighbor_relation(
         );
         auto count = device.get_kernel("count_knn_relation_hash_i32", library);
         encoder.set_compute_pipeline_state(count);
-        for (int i = 0; i < int(inputs.size()); ++i) {
-            encoder.set_input_array(inputs[i], i);
-        }
+        bind_input_arrays(encoder, inputs);
         encoder.set_input_array(table, 4);
         encoder.set_output_array(outputs[NeighborRowOffsets], 5);
         encoder.set_bytes(shape.source_rows, 6);
@@ -1652,9 +1638,7 @@ void eval_neighbor_relation(
         auto fill =
             device.get_kernel("fill_knn_relation_compact_hash_i32", library);
         encoder.set_compute_pipeline_state(fill);
-        for (int i = 0; i < int(inputs.size()); ++i) {
-            encoder.set_input_array(inputs[i], i);
-        }
+        bind_input_arrays(encoder, inputs);
         encoder.set_input_array(table, 4);
         encoder.set_input_array(outputs[NeighborRowOffsets], 5);
         encoder.set_output_array(outputs[NeighborQueryRows], 6);
@@ -1674,9 +1658,7 @@ void eval_neighbor_relation(
         !use_knn_hash) {
         auto fill = device.get_kernel("fill_knn_relation_topk_i32", library);
         encoder.set_compute_pipeline_state(fill);
-        for (int i = 0; i < int(inputs.size()); ++i) {
-            encoder.set_input_array(inputs[i], i);
-        }
+        bind_input_arrays(encoder, inputs);
         encoder.set_output_array(outputs[NeighborQueryRows], 4);
         encoder.set_output_array(outputs[NeighborSourceRows], 5);
         encoder.set_output_array(outputs[NeighborIds], 6);
@@ -1709,9 +1691,7 @@ void eval_neighbor_relation(
         auto count =
             device.get_kernel("count_radius_relation_hash_i32", library);
         encoder.set_compute_pipeline_state(count);
-        for (int i = 0; i < int(inputs.size()); ++i) {
-            encoder.set_input_array(inputs[i], i);
-        }
+        bind_input_arrays(encoder, inputs);
         encoder.set_input_array(table, 4);
         encoder.set_output_array(outputs[NeighborRowOffsets], 5);
         encoder.set_bytes(shape.source_rows, 6);
@@ -1733,9 +1713,7 @@ void eval_neighbor_relation(
         auto fill =
             device.get_kernel("fill_radius_relation_compact_hash_i32", library);
         encoder.set_compute_pipeline_state(fill);
-        for (int i = 0; i < int(inputs.size()); ++i) {
-            encoder.set_input_array(inputs[i], i);
-        }
+        bind_input_arrays(encoder, inputs);
         encoder.set_input_array(table, 4);
         encoder.set_input_array(outputs[NeighborRowOffsets], 5);
         encoder.set_output_array(outputs[NeighborQueryRows], 6);
@@ -1753,9 +1731,7 @@ void eval_neighbor_relation(
     } else {
         auto fill = device.get_kernel("fill_neighbor_relation_i32", library);
         encoder.set_compute_pipeline_state(fill);
-        for (int i = 0; i < int(inputs.size()); ++i) {
-            encoder.set_input_array(inputs[i], i);
-        }
+        bind_input_arrays(encoder, inputs);
         encoder.set_output_array(outputs[NeighborQueryRows], 4);
         encoder.set_output_array(outputs[NeighborSourceRows], 5);
         encoder.set_output_array(outputs[NeighborIds], 6);
@@ -1778,7 +1754,7 @@ void eval_neighbor_relation(
     encoder.set_output_array(outputs[NeighborCounts], 5);
     encoder.set_bytes(shape.query_rows, 6);
     encoder.set_bytes(shape.max_neighbors, 7);
-    encoder.dispatch_threads(MTL::Size(1, 1, 1), MTL::Size(1, 1, 1));
+    dispatch_single(encoder);
 #else
     (void)op;
     (void)shape;

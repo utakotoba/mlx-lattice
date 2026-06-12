@@ -138,10 +138,30 @@ struct RelationGroupedViewShape {
     int group_count;
 };
 
+inline bool
+operator==(RelationGroupedViewShape lhs, RelationGroupedViewShape rhs) {
+    return lhs.edge_capacity == rhs.edge_capacity &&
+           lhs.group_count == rhs.group_count;
+}
+
+inline bool
+operator!=(RelationGroupedViewShape lhs, RelationGroupedViewShape rhs) {
+    return !(lhs == rhs);
+}
+
 struct VoxelFeatureShape {
     int point_rows;
     int voxel_rows;
     int channels;
 };
+
+inline bool operator==(VoxelFeatureShape lhs, VoxelFeatureShape rhs) {
+    return lhs.point_rows == rhs.point_rows &&
+           lhs.voxel_rows == rhs.voxel_rows && lhs.channels == rhs.channels;
+}
+
+inline bool operator!=(VoxelFeatureShape lhs, VoxelFeatureShape rhs) {
+    return !(lhs == rhs);
+}
 
 } // namespace mlx_lattice
