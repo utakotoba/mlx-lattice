@@ -16,14 +16,72 @@ namespace mlx_lattice::backend::metal::tensor_ops::conv::forward {
 namespace {
 
 constexpr int kChannels = 16;
-constexpr int kMinInputRows = 100000;
 
 #ifdef _METAL_
-template <typename Encoder, typename Kernel>
-void dispatch_1d(Encoder& encoder, Kernel* kernel, std::size_t elements) {
-    auto threads = std::max<std::size_t>(elements, 1);
-    auto group = std::min(threads, kernel->maxTotalThreadsPerThreadgroup());
-    encoder.dispatch_threads(MTL::Size(threads, 1, 1), MTL::Size(group, 1, 1));
+struct KernelNames {
+    int in_channels;
+    int out_channels;
+    const char* fp32;
+    const char* fp16;
+    int co_blocks_per_threadgroup;
+};
+
+constexpr KernelNames kKernels[] = {
+    {16,
+     16,
+     "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin16_cout16_sg1",
+     "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin16_cout16_sg1",
+     1},
+    {16,
+     32,
+     "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin16_cout32_sg1",
+     "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin16_cout32_sg1",
+     1},
+    {16,
+     64,
+     "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin16_cout64_sg1",
+     "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin16_cout64_sg1",
+     1},
+    {32,
+     16,
+     "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin32_cout16_sg1",
+     "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin32_cout16_sg1",
+     1},
+    {32,
+     32,
+     "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin32_cout32_sg1",
+     "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin32_cout32_sg1",
+     1},
+    {32,
+     64,
+     "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin32_cout64_sg1",
+     "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin32_cout64_sg1",
+     1},
+    {64,
+     16,
+     "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin64_cout16_sg1",
+     "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin64_cout16_sg1",
+     1},
+    {64,
+     32,
+     "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin64_cout32_sg1",
+     "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin64_cout32_sg1",
+     1},
+    {64,
+     64,
+     "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin64_cout64_sg1",
+     "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin64_cout64_sg1",
+     1},
+};
+
+const KernelNames* find_kernel(SparseConvShape shape) {
+    for (const auto& kernel : kKernels) {
+        if (shape.in_channels == kernel.in_channels &&
+            shape.out_channels == kernel.out_channels) {
+            return &kernel;
+        }
+    }
+    return nullptr;
 }
 
 bool is_float16(const mx::array& array) { return array.dtype() == mx::float16; }
@@ -36,13 +94,20 @@ int stride_at(const mx::array& array, int dim) {
 } // namespace
 
 bool supports(SparseConvShape shape) {
-    return shape.in_channels == 64 && shape.out_channels == 64 &&
-           shape.n_kernels == 27;
+    auto supported_channels = [](int channels) {
+        return channels == 16 || channels == 32 || channels == 64;
+    };
+    return supported_channels(shape.in_channels) &&
+           supported_channels(shape.out_channels) && shape.n_kernels == 27;
 }
 
 bool is_preferred(SparseConvShape shape, const mx::Stream& stream) {
-    return supports(shape) && shape.in_capacity >= kMinInputRows &&
-           has_nax_acceleration(stream);
+    (void)shape;
+    (void)stream;
+    // Correct full-grid dispatch is slower than the classic forward kernels for
+    // all measured 16/32/64 channel pairs at 100K rows. Keep the implementation
+    // available for experiments, but do not route production workloads here.
+    return false;
 }
 
 void encode(
@@ -56,11 +121,14 @@ void encode(
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
     auto& encoder = mx::metal::get_command_encoder(stream);
+    const auto* selected = find_kernel(shape);
+    if (selected == nullptr) {
+        throw std::runtime_error(
+            "Unsupported TensorOps forward convolution shape."
+        );
+    }
     auto kernel = device.get_kernel(
-        is_float16(inputs[0])
-            ? "sparse_relation_conv_forward_implicit_gemm_f16_i32_c64"
-            : "sparse_relation_conv_forward_implicit_gemm_f32_i32_c64",
-        library
+        is_float16(inputs[0]) ? selected->fp16 : selected->fp32, library
     );
 
     encoder.set_compute_pipeline_state(kernel);
@@ -87,8 +155,19 @@ void encode(
     auto row_tiles = static_cast<std::size_t>(
         (shape.out_capacity + kChannels - 1) / kChannels
     );
-    auto co_blocks = static_cast<std::size_t>(shape.out_channels / kChannels);
-    dispatch_1d(encoder, kernel, row_tiles * co_blocks);
+    auto co_groups = static_cast<std::size_t>(
+        (shape.out_channels / kChannels + selected->co_blocks_per_threadgroup -
+         1) /
+        selected->co_blocks_per_threadgroup
+    );
+    encoder.dispatch_threadgroups(
+        MTL::Size(row_tiles * co_groups, 1, 1),
+        MTL::Size(
+            static_cast<std::size_t>(selected->co_blocks_per_threadgroup) * 32,
+            1,
+            1
+        )
+    );
 #else
     (void)shape;
     (void)stream;

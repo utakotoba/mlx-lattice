@@ -7,13 +7,12 @@ using namespace mpp::tensor_ops;
 
 #include "native/backends/metal/conv/common.metal"
 
-namespace {
-
 enum : int {
     kTileRows = 16,
     kTileChannels = 16,
-    kTileValues = 16 * 16,
+    kTileValues = kTileRows * kTileChannels,
     kKernelVolume = 27,
+    kSimdgroupWidth = 32,
 };
 
 template <typename T>
@@ -54,7 +53,7 @@ inline void load_row_block(
             continue;
         }
         const int feat_base = in_row * feat_s0;
-        for (uint ci = lane; ci < kTileChannels; ci += 32) {
+        for (uint ci = lane; ci < kTileChannels; ci += kSimdgroupWidth) {
             lhs_tile[int(ci) * kTileRows + row_slot] =
                 float(feats[feat_base + (ci_base + int(ci)) * feat_s1]);
         }
@@ -79,7 +78,7 @@ inline void load_weight_block(
     threadgroup float* rhs_tile,
     uint lane
 ) {
-    for (uint index = lane; index < kTileValues; index += 32) {
+    for (uint index = lane; index < kTileValues; index += kSimdgroupWidth) {
         const int co = int(index) / kTileChannels;
         const int ci = int(index) - co * kTileChannels;
         rhs_tile[int(index)] = float(weights[sparse_conv_weight_offset(
@@ -109,7 +108,7 @@ inline void store_output_block(
     threadgroup float* out_tile,
     uint lane
 ) {
-    for (uint index = lane; index < kTileValues; index += 32) {
+    for (uint index = lane; index < kTileValues; index += kSimdgroupWidth) {
         const int row = int(index) / kTileChannels;
         const int co = int(index) - row * kTileChannels;
         const int out_row = out_row_base + row;
@@ -120,49 +119,75 @@ inline void store_output_block(
     }
 }
 
-template <typename T>
-inline void sparse_relation_conv_forward_implicit_gemm_impl(
-    device const T* feats,
-    device const T* weights,
-    device const int* in_rows,
-    device const int* out_rows,
-    device const int* kernel_ids,
-    device const int* counts,
-    device const int* row_offsets,
-    device T* out,
-    constant const int& edge_capacity,
-    constant const int& out_capacity,
-    constant const int& n_kernels,
-    constant const int& in_channels,
-    constant const int& out_channels,
-    constant const int& feat_s0,
-    constant const int& feat_s1,
-    constant const int& weight_s0,
-    constant const int& weight_s1,
-    constant const int& weight_s2,
-    constant const int& weight_s3,
-    constant const int& weight_s4,
-    constant const int& weight_layout,
-    constant const int& kernel_x,
-    constant const int& kernel_y,
-    constant const int& kernel_z,
-    threadgroup float* lhs_tile,
-    threadgroup float* rhs_tile,
-    threadgroup float* out_tile,
-    uint group_id,
-    uint lane
+template <
+    typename T,
+    int in_channels,
+    int out_channels,
+    int co_blocks_per_threadgroup>
+[[kernel, max_total_threads_per_threadgroup(128)]] void
+sparse_relation_conv_forward_implicit_gemm(
+    device const T* feats [[buffer(0)]],
+    device const T* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device T* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
 ) {
-    const int co_blocks = out_channels / kTileChannels;
-    const int row_tile = int(group_id) / co_blocks;
-    const int co_block = int(group_id) % co_blocks;
+    static_assert(in_channels % kTileChannels == 0);
+    static_assert(out_channels % kTileChannels == 0);
+    static_assert(
+        co_blocks_per_threadgroup == 1 || co_blocks_per_threadgroup == 4
+    );
+
+    constexpr int co_blocks = out_channels / kTileChannels;
+    constexpr int groups_per_row =
+        (co_blocks + co_blocks_per_threadgroup - 1) / co_blocks_per_threadgroup;
+    const int row_tile = int(group_id) / groups_per_row;
+    const int co_group = int(group_id) - row_tile * groups_per_row;
+    const int co_block =
+        co_group * co_blocks_per_threadgroup + int(simdgroup_id);
     const int out_row_base = row_tile * kTileRows;
-    const int co_base = co_block * kTileChannels;
     const int out_count = min(counts[1], out_capacity);
+
+    threadgroup float lhs_tiles[co_blocks_per_threadgroup * kTileValues];
+    threadgroup float rhs_tiles[co_blocks_per_threadgroup * kTileValues];
+    threadgroup float out_tiles[co_blocks_per_threadgroup * kTileValues];
+
     if (out_row_base >= out_count) {
         return;
     }
 
-    for (uint index = lane; index < kTileValues; index += 32) {
+    if (co_block >= co_blocks) {
+        return;
+    }
+
+    threadgroup float* lhs_tile = lhs_tiles + int(simdgroup_id) * kTileValues;
+    threadgroup float* rhs_tile = rhs_tiles + int(simdgroup_id) * kTileValues;
+    threadgroup float* out_tile = out_tiles + int(simdgroup_id) * kTileValues;
+    const int co_base = co_block * kTileChannels;
+
+    for (uint index = lane; index < kTileValues; index += kSimdgroupWidth) {
         out_tile[int(index)] = 0.0f;
     }
     simdgroup_barrier(mem_flags::mem_threadgroup);
@@ -192,7 +217,8 @@ inline void sparse_relation_conv_forward_implicit_gemm_impl(
 
     for (int kernel_id = 0; kernel_id < n_kernels; ++kernel_id) {
         for (int ci_base = 0; ci_base < in_channels; ci_base += kTileChannels) {
-            for (uint index = lane; index < kTileValues; index += 32) {
+            for (uint index = lane; index < kTileValues;
+                 index += kSimdgroupWidth) {
                 lhs_tile[int(index)] = 0.0f;
                 rhs_tile[int(index)] = 0.0f;
             }
@@ -241,77 +267,14 @@ inline void sparse_relation_conv_forward_implicit_gemm_impl(
         out, out_channels, out_row_base, co_base, out_count, out_tile, lane
     );
     (void)out_rows;
+    (void)runtime_in_channels;
+    (void)runtime_out_channels;
 }
 
-} // namespace
-
-[[kernel, max_total_threads_per_threadgroup(32)]] void
-sparse_relation_conv_forward_implicit_gemm_f16_i32_c64(
-    device const half* feats [[buffer(0)]],
-    device const half* weights [[buffer(1)]],
-    device const int* in_rows [[buffer(2)]],
-    device const int* out_rows [[buffer(3)]],
-    device const int* kernel_ids [[buffer(4)]],
-    device const int* counts [[buffer(5)]],
-    device const int* row_offsets [[buffer(6)]],
-    device half* out [[buffer(7)]],
-    constant const int& edge_capacity [[buffer(8)]],
-    constant const int& out_capacity [[buffer(9)]],
-    constant const int& n_kernels [[buffer(10)]],
-    constant const int& in_channels [[buffer(11)]],
-    constant const int& out_channels [[buffer(12)]],
-    constant const int& feat_s0 [[buffer(13)]],
-    constant const int& feat_s1 [[buffer(14)]],
-    constant const int& weight_s0 [[buffer(15)]],
-    constant const int& weight_s1 [[buffer(16)]],
-    constant const int& weight_s2 [[buffer(17)]],
-    constant const int& weight_s3 [[buffer(18)]],
-    constant const int& weight_s4 [[buffer(19)]],
-    constant const int& weight_layout [[buffer(20)]],
-    constant const int& kernel_x [[buffer(21)]],
-    constant const int& kernel_y [[buffer(22)]],
-    constant const int& kernel_z [[buffer(23)]],
-    uint group_id [[threadgroup_position_in_grid]],
-    uint lane [[thread_index_in_threadgroup]]
-) {
-    threadgroup float lhs_tile[kTileValues];
-    threadgroup float rhs_tile[kTileValues];
-    threadgroup float out_tile[kTileValues];
-    sparse_relation_conv_forward_implicit_gemm_impl(
-        feats,
-        weights,
-        in_rows,
-        out_rows,
-        kernel_ids,
-        counts,
-        row_offsets,
-        out,
-        edge_capacity,
-        out_capacity,
-        n_kernels,
-        in_channels,
-        out_channels,
-        feat_s0,
-        feat_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
-        lhs_tile,
-        rhs_tile,
-        out_tile,
-        group_id,
-        lane
-    );
-}
-
-[[kernel, max_total_threads_per_threadgroup(32)]] void
-sparse_relation_conv_forward_implicit_gemm_f32_i32_c64(
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin16_cout16_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<float, 16, 16, 1>(
     device const float* feats [[buffer(0)]],
     device const float* weights [[buffer(1)]],
     device const int* in_rows [[buffer(2)]],
@@ -323,8 +286,8 @@ sparse_relation_conv_forward_implicit_gemm_f32_i32_c64(
     constant const int& edge_capacity [[buffer(8)]],
     constant const int& out_capacity [[buffer(9)]],
     constant const int& n_kernels [[buffer(10)]],
-    constant const int& in_channels [[buffer(11)]],
-    constant const int& out_channels [[buffer(12)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
     constant const int& feat_s0 [[buffer(13)]],
     constant const int& feat_s1 [[buffer(14)]],
     constant const int& weight_s0 [[buffer(15)]],
@@ -337,40 +300,566 @@ sparse_relation_conv_forward_implicit_gemm_f32_i32_c64(
     constant const int& kernel_y [[buffer(22)]],
     constant const int& kernel_z [[buffer(23)]],
     uint group_id [[threadgroup_position_in_grid]],
-    uint lane [[thread_index_in_threadgroup]]
-) {
-    threadgroup float lhs_tile[kTileValues];
-    threadgroup float rhs_tile[kTileValues];
-    threadgroup float out_tile[kTileValues];
-    sparse_relation_conv_forward_implicit_gemm_impl(
-        feats,
-        weights,
-        in_rows,
-        out_rows,
-        kernel_ids,
-        counts,
-        row_offsets,
-        out,
-        edge_capacity,
-        out_capacity,
-        n_kernels,
-        in_channels,
-        out_channels,
-        feat_s0,
-        feat_s1,
-        weight_s0,
-        weight_s1,
-        weight_s2,
-        weight_s3,
-        weight_s4,
-        weight_layout,
-        kernel_x,
-        kernel_y,
-        kernel_z,
-        lhs_tile,
-        rhs_tile,
-        out_tile,
-        group_id,
-        lane
-    );
-}
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin16_cout32_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<float, 16, 32, 1>(
+    device const float* feats [[buffer(0)]],
+    device const float* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device float* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
+
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin16_cout64_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<float, 16, 64, 1>(
+    device const float* feats [[buffer(0)]],
+    device const float* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device float* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
+
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin32_cout16_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<float, 32, 16, 1>(
+    device const float* feats [[buffer(0)]],
+    device const float* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device float* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
+
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin32_cout32_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<float, 32, 32, 1>(
+    device const float* feats [[buffer(0)]],
+    device const float* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device float* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
+
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin32_cout64_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<float, 32, 64, 1>(
+    device const float* feats [[buffer(0)]],
+    device const float* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device float* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
+
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin64_cout16_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<float, 64, 16, 1>(
+    device const float* feats [[buffer(0)]],
+    device const float* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device float* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
+
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin64_cout32_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<float, 64, 32, 1>(
+    device const float* feats [[buffer(0)]],
+    device const float* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device float* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
+
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f32_i32_cin64_cout64_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<float, 64, 64, 1>(
+    device const float* feats [[buffer(0)]],
+    device const float* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device float* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
+
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin16_cout16_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<half, 16, 16, 1>(
+    device const half* feats [[buffer(0)]],
+    device const half* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device half* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
+
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin16_cout32_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<half, 16, 32, 1>(
+    device const half* feats [[buffer(0)]],
+    device const half* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device half* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
+
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin16_cout64_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<half, 16, 64, 1>(
+    device const half* feats [[buffer(0)]],
+    device const half* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device half* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
+
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin32_cout16_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<half, 32, 16, 1>(
+    device const half* feats [[buffer(0)]],
+    device const half* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device half* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
+
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin32_cout32_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<half, 32, 32, 1>(
+    device const half* feats [[buffer(0)]],
+    device const half* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device half* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
+
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin32_cout64_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<half, 32, 64, 1>(
+    device const half* feats [[buffer(0)]],
+    device const half* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device half* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
+
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin64_cout16_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<half, 64, 16, 1>(
+    device const half* feats [[buffer(0)]],
+    device const half* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device half* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
+
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin64_cout32_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<half, 64, 32, 1>(
+    device const half* feats [[buffer(0)]],
+    device const half* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device half* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
+
+template [[host_name(
+    "sparse_relation_conv_forward_implicit_gemm_f16_i32_cin64_cout64_sg1"
+)]] [[kernel]] void
+sparse_relation_conv_forward_implicit_gemm<half, 64, 64, 1>(
+    device const half* feats [[buffer(0)]],
+    device const half* weights [[buffer(1)]],
+    device const int* in_rows [[buffer(2)]],
+    device const int* out_rows [[buffer(3)]],
+    device const int* kernel_ids [[buffer(4)]],
+    device const int* counts [[buffer(5)]],
+    device const int* row_offsets [[buffer(6)]],
+    device half* out [[buffer(7)]],
+    constant const int& edge_capacity [[buffer(8)]],
+    constant const int& out_capacity [[buffer(9)]],
+    constant const int& n_kernels [[buffer(10)]],
+    constant const int& runtime_in_channels [[buffer(11)]],
+    constant const int& runtime_out_channels [[buffer(12)]],
+    constant const int& feat_s0 [[buffer(13)]],
+    constant const int& feat_s1 [[buffer(14)]],
+    constant const int& weight_s0 [[buffer(15)]],
+    constant const int& weight_s1 [[buffer(16)]],
+    constant const int& weight_s2 [[buffer(17)]],
+    constant const int& weight_s3 [[buffer(18)]],
+    constant const int& weight_s4 [[buffer(19)]],
+    constant const int& weight_layout [[buffer(20)]],
+    constant const int& kernel_x [[buffer(21)]],
+    constant const int& kernel_y [[buffer(22)]],
+    constant const int& kernel_z [[buffer(23)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint simdgroup_id [[simdgroup_index_in_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]
+);
