@@ -5,6 +5,7 @@ nanobind_add_module(
   NB_STATIC
   NB_DOMAIN mlx
   coords.cpp
+  entropy.cpp
   exec.cpp
   runtime.cpp
   module.cpp)

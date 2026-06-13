@@ -7,5 +7,6 @@ NB_MODULE(_ext, module) {
 
     mlx_lattice::bindings::register_runtime(module);
     mlx_lattice::bindings::register_coords(module);
+    mlx_lattice::bindings::register_entropy(module);
     mlx_lattice::bindings::register_exec(module);
 }

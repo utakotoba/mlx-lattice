@@ -26,6 +26,11 @@ from mlx_lattice.ops.coords import (
     sparse_quantize,
     union_coords,
 )
+from mlx_lattice.ops.entropy import (
+    normalized_cdf,
+    range_decode,
+    range_encode,
+)
 from mlx_lattice.ops.feature import (
     batch_norm,
     dropout,
@@ -118,12 +123,15 @@ __all__ = [
     'morton_codes',
     'morton_order',
     'morton_sort_coords',
+    'normalized_cdf',
     'occupancy_downsample',
     'occupancy_expand',
     'pool3d',
     'prune',
     'prune_mask',
     'radius_relation',
+    'range_decode',
+    'range_encode',
     'relu',
     'rms_norm',
     'sigmoid',
