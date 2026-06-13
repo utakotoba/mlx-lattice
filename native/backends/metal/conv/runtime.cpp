@@ -165,7 +165,7 @@ const char* dense_forward_kernel_name(SparseConvShape shape, bool fp16) {
           "sparse_relation_conv_f16_i32_cout16_dense_cin32_cout16"}},
         {32,
          32,
-         {"sparse_relation_conv_f32_i32_cout16_dense_cin32_cout32",
+         {"sparse_relation_conv_f32_i32_cout16_dense_ci4_cin32_cout32",
           "sparse_relation_conv_f16_i32_cout16_dense_cin32_cout32"}},
         {32,
          64,
