@@ -21,10 +21,13 @@ namespace mlx_lattice {
 namespace {
 
 constexpr std::string_view kRangeMagic = "MLXGERNG01";
+constexpr std::string_view kRansMagic = "MLXGERNS01";
 constexpr uint32_t kRangeTotal = 1u << 16;
 constexpr uint32_t kCodeHalf = 0x80000000u;
 constexpr uint32_t kCodeFirstQuarter = 0x40000000u;
 constexpr uint32_t kCodeThirdQuarter = 0xc0000000u;
+constexpr uint32_t kRansLowerBound = 1u << 23;
+constexpr uint32_t kRansMask = kRangeTotal - 1u;
 
 uint16_t read_cdf_value(const int16_t* cdf, int alphabet, int row, int col) {
     if (col == alphabet) {
@@ -78,10 +81,50 @@ uint32_t read_u32(std::string_view stream, size_t offset) {
     return value;
 }
 
+void validate_header(std::string_view stream, int rows, int alphabet) {
+    if (stream.size() < kRangeMagic.size() ||
+        stream.substr(0, kRangeMagic.size()) != kRangeMagic) {
+        throw std::invalid_argument("Invalid mlx-lattice range stream.");
+    }
+    auto stream_rows = static_cast<int>(read_u32(stream, kRangeMagic.size()));
+    auto stream_alphabet =
+        static_cast<int>(read_u32(stream, kRangeMagic.size() + 4));
+    if (stream_rows != rows || stream_alphabet != alphabet) {
+        throw std::invalid_argument("Range stream shape does not match CDF.");
+    }
+}
+
 void write_header(std::string& out, int rows, int alphabet) {
     out.append(kRangeMagic);
     append_u32(out, static_cast<uint32_t>(rows));
     append_u32(out, static_cast<uint32_t>(alphabet));
+}
+
+void write_rans_header(
+    std::string& out,
+    int rows,
+    int alphabet,
+    uint32_t state
+) {
+    out.append(kRansMagic);
+    append_u32(out, static_cast<uint32_t>(rows));
+    append_u32(out, static_cast<uint32_t>(alphabet));
+    append_u32(out, state);
+}
+
+void validate_rans_header(std::string_view stream, int rows, int alphabet) {
+    if (stream.size() < kRansMagic.size() + 12 ||
+        stream.substr(0, kRansMagic.size()) != kRansMagic) {
+        throw std::invalid_argument("Invalid mlx-lattice rANS stream.");
+    }
+    auto stream_rows = static_cast<int>(read_u32(stream, kRansMagic.size()));
+    auto stream_alphabet =
+        static_cast<int>(read_u32(stream, kRansMagic.size() + 4));
+    if (stream_rows != rows || stream_alphabet != alphabet) {
+        throw std::invalid_argument(
+            "rANS stream shape does not match probabilities."
+        );
+    }
 }
 
 struct CdfShape {
@@ -281,16 +324,7 @@ std::vector<int32_t> decode_symbols(
     int rows,
     int alphabet
 ) {
-    if (stream.size() < kRangeMagic.size() ||
-        stream.substr(0, kRangeMagic.size()) != kRangeMagic) {
-        throw std::invalid_argument("Invalid mlx-lattice range stream.");
-    }
-    auto stream_rows = static_cast<int>(read_u32(stream, kRangeMagic.size()));
-    auto stream_alphabet =
-        static_cast<int>(read_u32(stream, kRangeMagic.size() + 4));
-    if (stream_rows != rows || stream_alphabet != alphabet) {
-        throw std::invalid_argument("Range stream shape does not match CDF.");
-    }
+    validate_header(stream, rows, alphabet);
 
     ArithmeticDecoder decoder(stream);
 
@@ -331,34 +365,188 @@ float read_prob_value<mx::float16_t>(
 }
 
 template <typename T>
+void normalize_cdf_row(
+    const T* prob_data,
+    int row,
+    CdfShape shape,
+    std::vector<uint32_t>& cdf
+) {
+    cdf.resize(static_cast<size_t>(shape.alphabet) + 1);
+    cdf[0] = 0;
+    auto running = 0.0F;
+    auto base = static_cast<ptrdiff_t>(row) * shape.alphabet;
+    auto scale = static_cast<float>(kRangeTotal - shape.alphabet);
+    for (int col = 1; col < shape.alphabet; ++col) {
+        auto prob_value = read_prob_value(prob_data, base + col - 1);
+        if (!std::isfinite(prob_value)) {
+            throw std::invalid_argument(
+                "Probability rows must contain finite values."
+            );
+        }
+        running += std::clamp(prob_value, 0.0F, 1.0F);
+        auto cdf_value =
+            static_cast<int32_t>(std::lround(running * scale)) + col;
+        cdf_value =
+            std::clamp(cdf_value, col, int(kRangeTotal - shape.alphabet + col));
+        cdf[static_cast<size_t>(col)] = static_cast<uint32_t>(cdf_value);
+    }
+    cdf[static_cast<size_t>(shape.alphabet)] = kRangeTotal;
+}
+
+template <typename T>
 void normalize_cdf_typed(
     const T* prob_data,
     int16_t* out_data,
     CdfShape shape
 ) {
-    auto scale = static_cast<float>(kRangeTotal - shape.alphabet);
+    std::vector<uint32_t> cdf;
     for (int row = 0; row < shape.rows; ++row) {
-        auto running = 0.0F;
-        auto base = static_cast<ptrdiff_t>(row) * shape.alphabet;
+        normalize_cdf_row(prob_data, row, shape, cdf);
         auto out_base = static_cast<ptrdiff_t>(row) * (shape.alphabet + 1);
-        out_data[out_base] = 0;
-        for (int col = 1; col < shape.alphabet; ++col) {
-            auto prob_value = read_prob_value(prob_data, base + col - 1);
-            if (!std::isfinite(prob_value)) {
-                throw std::invalid_argument(
-                    "Probability rows must contain finite values."
-                );
-            }
-            running += std::clamp(prob_value, 0.0F, 1.0F);
-            auto cdf_value =
-                static_cast<int32_t>(std::lround(running * scale)) + col;
-            cdf_value = std::clamp(
-                cdf_value, col, int(kRangeTotal - shape.alphabet + col)
-            );
-            out_data[out_base + col] = static_cast<int16_t>(cdf_value);
+        for (int col = 0; col < shape.alphabet; ++col) {
+            out_data[out_base + col] =
+                static_cast<int16_t>(cdf[static_cast<size_t>(col)]);
         }
         out_data[out_base + shape.alphabet] = 0;
     }
+}
+
+template <typename T>
+std::string encode_symbols_from_prob(
+    const T* prob,
+    const int32_t* symbols,
+    CdfShape shape
+) {
+    std::string out;
+    out.reserve(kRangeMagic.size() + 8 + static_cast<size_t>(shape.rows));
+    write_header(out, shape.rows, shape.alphabet);
+    ArithmeticEncoder encoder(out);
+    std::vector<uint32_t> cdf;
+    for (int row = 0; row < shape.rows; ++row) {
+        normalize_cdf_row(prob, row, shape, cdf);
+        auto symbol = symbols[row];
+        if (symbol < 0 || symbol >= shape.alphabet) {
+            throw std::invalid_argument("Range symbol is outside the CDF.");
+        }
+        auto index = static_cast<size_t>(symbol);
+        encoder.encode(SymbolRange{cdf[index], cdf[index + 1]});
+    }
+    encoder.finish();
+    return out;
+}
+
+template <typename T>
+std::vector<int32_t> decode_symbols_from_prob(
+    const T* prob,
+    std::string_view stream,
+    CdfShape shape
+) {
+    validate_header(stream, shape.rows, shape.alphabet);
+    ArithmeticDecoder decoder(stream);
+    std::vector<int32_t> symbols(shape.rows);
+    std::vector<uint32_t> cdf;
+    for (int row = 0; row < shape.rows; ++row) {
+        normalize_cdf_row(prob, row, shape, cdf);
+        auto scaled = decoder.scaled();
+        auto symbol = 0;
+        for (; symbol < shape.alphabet; ++symbol) {
+            auto index = static_cast<size_t>(symbol);
+            auto lo = cdf[index];
+            auto hi = cdf[index + 1];
+            if (lo <= scaled && scaled < hi) {
+                break;
+            }
+        }
+        if (symbol == shape.alphabet) {
+            throw std::invalid_argument("Range stream symbol decode failed.");
+        }
+        symbols[row] = symbol;
+        auto index = static_cast<size_t>(symbol);
+        decoder.decode(SymbolRange{cdf[index], cdf[index + 1]});
+    }
+    return symbols;
+}
+
+template <typename T>
+std::string rans_encode_symbols_from_prob(
+    const T* prob,
+    const int32_t* symbols,
+    CdfShape shape
+) {
+    auto state = kRansLowerBound;
+    std::vector<uint8_t> payload;
+    payload.reserve(static_cast<size_t>(shape.rows));
+    std::vector<uint32_t> cdf;
+    for (int row = shape.rows - 1; row >= 0; --row) {
+        normalize_cdf_row(prob, row, shape, cdf);
+        auto symbol = symbols[row];
+        if (symbol < 0 || symbol >= shape.alphabet) {
+            throw std::invalid_argument("rANS symbol is outside the CDF.");
+        }
+        auto index = static_cast<size_t>(symbol);
+        auto lo = cdf[index];
+        auto freq = cdf[index + 1] - lo;
+        auto max_state = ((kRansLowerBound >> 16) << 8) * freq;
+        while (state >= max_state) {
+            payload.push_back(static_cast<uint8_t>(state & 0xffu));
+            state >>= 8;
+        }
+        state = ((state / freq) << 16) + (state % freq) + lo;
+    }
+
+    std::string out;
+    out.reserve(kRansMagic.size() + 12 + payload.size());
+    write_rans_header(out, shape.rows, shape.alphabet, state);
+    for (auto it = payload.rbegin(); it != payload.rend(); ++it) {
+        out.push_back(static_cast<char>(*it));
+    }
+    return out;
+}
+
+template <typename T>
+std::vector<int32_t> rans_decode_symbols_from_prob(
+    const T* prob,
+    std::string_view stream,
+    CdfShape shape
+) {
+    validate_rans_header(stream, shape.rows, shape.alphabet);
+    auto state = read_u32(stream, kRansMagic.size() + 8);
+    auto cursor = kRansMagic.size() + 12;
+    std::vector<int32_t> symbols(shape.rows);
+    std::vector<uint32_t> cdf;
+    for (int row = 0; row < shape.rows; ++row) {
+        normalize_cdf_row(prob, row, shape, cdf);
+        auto slot = state & kRansMask;
+        auto symbol = 0;
+        for (; symbol < shape.alphabet; ++symbol) {
+            auto index = static_cast<size_t>(symbol);
+            auto lo = cdf[index];
+            auto hi = cdf[index + 1];
+            if (lo <= slot && slot < hi) {
+                break;
+            }
+        }
+        if (symbol == shape.alphabet) {
+            throw std::invalid_argument("rANS stream symbol decode failed.");
+        }
+        symbols[row] = symbol;
+        auto index = static_cast<size_t>(symbol);
+        auto lo = cdf[index];
+        auto freq = cdf[index + 1] - lo;
+        state = freq * (state >> 16) + (slot - lo);
+        while (state < kRansLowerBound) {
+            if (cursor >= stream.size()) {
+                throw std::invalid_argument(
+                    "Truncated mlx-lattice rANS stream."
+                );
+            }
+            state = (state << 8) | static_cast<unsigned char>(stream[cursor++]);
+        }
+    }
+    if (cursor != stream.size()) {
+        throw std::invalid_argument("Malformed mlx-lattice rANS stream.");
+    }
+    return symbols;
 }
 
 } // namespace
@@ -418,6 +606,90 @@ mx::array make_range_decode(const mx::array& cdf, const std::string& stream) {
     auto buffer = mx::allocator::malloc(bytes);
     std::memcpy(buffer.raw_ptr(), decoded.data(), bytes);
     auto out = mx::array(buffer, mx::Shape{rows}, mx::int32);
+    auto copied = mx::copy(out, mx::default_device());
+    mx::eval(copied);
+    return copied;
+}
+
+std::string
+make_range_encode_from_prob(const mx::array& prob, const mx::array& symbols) {
+    auto device = mx::Device::cpu;
+    auto ready_prob = mx::contiguous(prob, false, device);
+    auto ready_symbols = mx::contiguous(symbols, false, device);
+    mx::eval(ready_prob, ready_symbols);
+    auto shape = CdfShape{ready_prob.shape(0), ready_prob.shape(1)};
+    if (prob.dtype() == mx::float32) {
+        return encode_symbols_from_prob<float>(
+            ready_prob.data<float>(), ready_symbols.data<int32_t>(), shape
+        );
+    }
+    return encode_symbols_from_prob<mx::float16_t>(
+        ready_prob.data<mx::float16_t>(), ready_symbols.data<int32_t>(), shape
+    );
+}
+
+mx::array
+make_range_decode_from_prob(const mx::array& prob, const std::string& stream) {
+    auto device = mx::Device::cpu;
+    auto ready_prob = mx::contiguous(prob, false, device);
+    mx::eval(ready_prob);
+    auto shape = CdfShape{ready_prob.shape(0), ready_prob.shape(1)};
+    std::vector<int32_t> decoded;
+    if (prob.dtype() == mx::float32) {
+        decoded = decode_symbols_from_prob<float>(
+            ready_prob.data<float>(), stream, shape
+        );
+    } else {
+        decoded = decode_symbols_from_prob<mx::float16_t>(
+            ready_prob.data<mx::float16_t>(), stream, shape
+        );
+    }
+    auto bytes = decoded.size() * sizeof(int32_t);
+    auto buffer = mx::allocator::malloc(bytes);
+    std::memcpy(buffer.raw_ptr(), decoded.data(), bytes);
+    auto out = mx::array(buffer, mx::Shape{shape.rows}, mx::int32);
+    auto copied = mx::copy(out, mx::default_device());
+    mx::eval(copied);
+    return copied;
+}
+
+std::string
+make_rans_encode_from_prob(const mx::array& prob, const mx::array& symbols) {
+    auto device = mx::Device::cpu;
+    auto ready_prob = mx::contiguous(prob, false, device);
+    auto ready_symbols = mx::contiguous(symbols, false, device);
+    mx::eval(ready_prob, ready_symbols);
+    auto shape = CdfShape{ready_prob.shape(0), ready_prob.shape(1)};
+    if (prob.dtype() == mx::float32) {
+        return rans_encode_symbols_from_prob<float>(
+            ready_prob.data<float>(), ready_symbols.data<int32_t>(), shape
+        );
+    }
+    return rans_encode_symbols_from_prob<mx::float16_t>(
+        ready_prob.data<mx::float16_t>(), ready_symbols.data<int32_t>(), shape
+    );
+}
+
+mx::array
+make_rans_decode_from_prob(const mx::array& prob, const std::string& stream) {
+    auto device = mx::Device::cpu;
+    auto ready_prob = mx::contiguous(prob, false, device);
+    mx::eval(ready_prob);
+    auto shape = CdfShape{ready_prob.shape(0), ready_prob.shape(1)};
+    std::vector<int32_t> decoded;
+    if (prob.dtype() == mx::float32) {
+        decoded = rans_decode_symbols_from_prob<float>(
+            ready_prob.data<float>(), stream, shape
+        );
+    } else {
+        decoded = rans_decode_symbols_from_prob<mx::float16_t>(
+            ready_prob.data<mx::float16_t>(), stream, shape
+        );
+    }
+    auto bytes = decoded.size() * sizeof(int32_t);
+    auto buffer = mx::allocator::malloc(bytes);
+    std::memcpy(buffer.raw_ptr(), decoded.data(), bytes);
+    auto out = mx::array(buffer, mx::Shape{shape.rows}, mx::int32);
     auto copied = mx::copy(out, mx::default_device());
     mx::eval(copied);
     return copied;

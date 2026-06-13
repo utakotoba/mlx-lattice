@@ -29,7 +29,11 @@ from mlx_lattice.ops.coords import (
 from mlx_lattice.ops.entropy import (
     normalized_cdf,
     range_decode,
+    range_decode_from_prob,
     range_encode,
+    range_encode_from_prob,
+    rans_decode_from_prob,
+    rans_encode_from_prob,
 )
 from mlx_lattice.ops.feature import (
     batch_norm,
@@ -131,7 +135,11 @@ __all__ = [
     'prune_mask',
     'radius_relation',
     'range_decode',
+    'range_decode_from_prob',
     'range_encode',
+    'range_encode_from_prob',
+    'rans_decode_from_prob',
+    'rans_encode_from_prob',
     'relu',
     'rms_norm',
     'sigmoid',

@@ -53,6 +53,75 @@ void register_entropy(nb::module_& module) {
         ),
         "Decode int32 symbols from a range-coded stream."
     );
+    module.def(
+        "range_encode_from_prob",
+        [](const mx::array& prob, const mx::array& symbols) {
+            auto encoded = mlx_lattice::range_encode_from_prob(prob, symbols);
+            return nb::bytes(encoded.data(), encoded.size());
+        },
+        "prob"_a,
+        "symbols"_a,
+        nb::sig(
+            "def range_encode_from_prob(prob: mlx.core.array, "
+            "symbols: mlx.core.array) -> bytes"
+        ),
+        "Encode int32 symbols directly from probability rows."
+    );
+    module.def(
+        "range_decode_from_prob",
+        [](const mx::array& prob, const nb::bytes& stream) {
+            char* data = nullptr;
+            Py_ssize_t size = 0;
+            if (PyBytes_AsStringAndSize(stream.ptr(), &data, &size) != 0) {
+                throw std::invalid_argument("stream must be bytes.");
+            }
+            return mlx_lattice::range_decode_from_prob(
+                prob, std::string(data, static_cast<size_t>(size))
+            );
+        },
+        "prob"_a,
+        "stream"_a,
+        nb::sig(
+            "def range_decode_from_prob(prob: mlx.core.array, stream: bytes) "
+            "-> "
+            "mlx.core.array"
+        ),
+        "Decode int32 symbols directly from probability rows."
+    );
+    module.def(
+        "rans_encode_from_prob",
+        [](const mx::array& prob, const mx::array& symbols) {
+            auto encoded = mlx_lattice::rans_encode_from_prob(prob, symbols);
+            return nb::bytes(encoded.data(), encoded.size());
+        },
+        "prob"_a,
+        "symbols"_a,
+        nb::sig(
+            "def rans_encode_from_prob(prob: mlx.core.array, "
+            "symbols: mlx.core.array) -> bytes"
+        ),
+        "Encode int32 symbols with byte-oriented rANS from probability rows."
+    );
+    module.def(
+        "rans_decode_from_prob",
+        [](const mx::array& prob, const nb::bytes& stream) {
+            char* data = nullptr;
+            Py_ssize_t size = 0;
+            if (PyBytes_AsStringAndSize(stream.ptr(), &data, &size) != 0) {
+                throw std::invalid_argument("stream must be bytes.");
+            }
+            return mlx_lattice::rans_decode_from_prob(
+                prob, std::string(data, static_cast<size_t>(size))
+            );
+        },
+        "prob"_a,
+        "stream"_a,
+        nb::sig(
+            "def rans_decode_from_prob(prob: mlx.core.array, stream: bytes) -> "
+            "mlx.core.array"
+        ),
+        "Decode int32 symbols with byte-oriented rANS from probability rows."
+    );
 }
 
 } // namespace mlx_lattice::bindings
