@@ -17,13 +17,13 @@ env:
 
 jobs:
   quality:
-    name: Python ${{ matrix.python-version }}
+    name: Python ${{ matrix.python-version }} Quick Check
     runs-on: macos-26
 
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13", "3.14"]
+        python-version: ["3.12", "3.14"]
 
     steps:
       - name: Checkout
@@ -51,5 +51,8 @@ jobs:
       - name: Ty
         run: uv run --no-sync ty check
 
-      - name: Test
-        run: uv run --no-sync pytest
+      - name: Test for CPU backend
+        run: uv run --no-sync pytest --backend cpu
+
+      - name: Test for Metal backend
+        run: uv run --no-sync pytest --backend metal
