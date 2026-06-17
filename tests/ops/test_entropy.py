@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from itertools import pairwise
+from typing import cast
 
 import mlx.core as mx
 
@@ -26,7 +27,7 @@ def test_normalized_cdf_is_strictly_monotonic() -> None:
 
     cdf = normalized_cdf(prob)
     mx.eval(cdf)
-    rows = cdf.tolist()
+    rows = cast('list[list[int]]', cdf.tolist())
 
     assert cdf.shape == (2, 4)
     for row in rows:
@@ -41,7 +42,8 @@ def test_normalized_cdf_uses_probability_values() -> None:
     cdf = normalized_cdf(prob)
     mx.eval(cdf)
 
-    unsigned = [value & 0xFFFF for value in cdf.tolist()[0][:-1]]
+    cdf_rows = cast('list[list[int]]', cdf.tolist())
+    unsigned = [value & 0xFFFF for value in cdf_rows[0][:-1]]
     assert unsigned[:4] == [0, 4096, 8192, 12288]
 
 

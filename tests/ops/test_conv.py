@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
 
 from mlx_lattice import SparseTensor
@@ -428,7 +430,7 @@ def test_conv3d_generic_forward_matches_cpu_at_large_relation_boundary() -> (
         ((index % 23) - 11) / 23.0 for index in range(16 * 3 * 3 * 3 * 16)
     ]
 
-    def forward() -> list[object]:
+    def forward() -> list[Any]:
         coords = mx.array(coords_values, dtype=mx.int32)
         feats = mx.array(feats_values, dtype=mx.float32)
         weight = mx.array(weight_values, dtype=mx.float32).reshape(
@@ -437,7 +439,7 @@ def test_conv3d_generic_forward_matches_cpu_at_large_relation_boundary() -> (
         x = SparseTensor(coords, feats)
         out = conv3d(x, weight, kernel_size=3).feats
         mx.eval(out)
-        return out.tolist()
+        return cast('list[Any]', out.tolist())
 
     previous = mx.default_device()
     try:
@@ -758,12 +760,12 @@ def test_metal_convolution_modes_match_cpu_contract_when_available() -> (
             generated.feats,
         )
         return (
-            active_feats(generic).tolist(),
-            subm.feats.tolist(),
+            cast('list[list[float]]', active_feats(generic).tolist()),
+            cast('list[list[float]]', subm.feats.tolist()),
             active_coords(transposed),
-            active_feats(transposed).tolist(),
+            cast('list[list[float]]', active_feats(transposed).tolist()),
             active_coords(generated),
-            active_feats(generated).tolist(),
+            cast('list[list[float]]', active_feats(generated).tolist()),
         )
 
     assert run_with_gpu_default(run) == (
@@ -978,8 +980,8 @@ def test_metal_convolution_respects_active_rows_capacity_contract() -> None:
         mx.eval(out.coords, out.feats, out.active_rows)
         return (
             active_coords(out),
-            active_feats(out).tolist(),
-            out.active_rows.tolist(),
+            cast('list[list[float]]', active_feats(out).tolist()),
+            cast('list[int]', out.active_rows.tolist()),
         )
 
     assert run_with_gpu_default(run) == (

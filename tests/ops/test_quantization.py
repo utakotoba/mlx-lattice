@@ -185,7 +185,7 @@ def test_quantization_ops_reject_ambiguous_contracts() -> None:
     with pytest.raises(ValueError, match='voxel_size'):
         sparse_quantize(points, voxel_size=0.0)
     with pytest.raises(ValueError, match='reduction'):
-        voxelize(points, feats, reduction=cast('object', 'max'))
+        voxelize(points, feats, reduction=cast('str', 'max'))
     with pytest.raises(ValueError, match='matching rows'):
         voxelize(points, mx.ones((3, 1), dtype=mx.float32))
 

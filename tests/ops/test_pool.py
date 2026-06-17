@@ -357,8 +357,8 @@ def test_metal_pooling_respects_active_rows_capacity_contract() -> None:
         mx.eval(out.coords, out.feats, out.active_rows)
         return (
             active_coords(out),
-            active_feats(out).tolist(),
-            out.active_rows.tolist(),
+            cast('list[list[float]]', active_feats(out).tolist()),
+            cast('list[int]', out.active_rows.tolist()),
         )
 
     assert run_with_gpu_default(run) == (

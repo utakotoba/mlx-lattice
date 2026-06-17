@@ -130,17 +130,20 @@ def _float_triple(
     name: str,
 ) -> tuple[float, float, float]:
     if isinstance(value, int | float):
-        values = (float(value),) * 3
+        return (float(value), float(value), float(value))
     else:
-        values = tuple(float(item) for item in value)
-        if len(values) != 3:
+        raw = tuple(float(item) for item in value)
+        if len(raw) != 3:
             raise ValueError(f'{name} must contain exactly 3 values.')
+        values = (raw[0], raw[1], raw[2])
     if name == 'voxel_size' and any(item <= 0.0 for item in values):
         raise ValueError('voxel_size values must be positive.')
     return values
 
 
-def _validate_reduction(value: VoxelReduction) -> VoxelReduction:
-    if value not in ('sum', 'mean'):
-        raise ValueError("reduction must be 'sum' or 'mean'.")
-    return value
+def _validate_reduction(value: str) -> VoxelReduction:
+    if value == 'sum':
+        return 'sum'
+    if value == 'mean':
+        return 'mean'
+    raise ValueError("reduction must be 'sum' or 'mean'.")

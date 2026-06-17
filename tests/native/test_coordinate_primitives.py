@@ -4,7 +4,13 @@ from typing import cast
 
 import pytest
 
-from mlx_lattice.core import CoordinateManager, SparseTensor
+from mlx_lattice.core import (
+    CoordinateManager,
+    CoordinateSet,
+    OccupancyExpansion,
+    SparseOccupancy,
+    SparseTensor,
+)
 from mlx_lattice.ops import (
     build_generative_relation,
     build_kernel_relation,
@@ -49,7 +55,9 @@ def _active_coords(values: mx.array, count: mx.array) -> list[list[int]]:
     )
 
 
-def _coord_set_rows(value: object) -> list[list[int]]:
+def _coord_set_rows(
+    value: CoordinateSet | SparseOccupancy | OccupancyExpansion,
+) -> list[list[int]]:
     coords = value.coords
     count = value.active_rows
     return _active_coords(coords, count)
@@ -172,10 +180,13 @@ def test_occupancy_helpers_round_trip_child_layout() -> None:
         mx.array([7, 0], dtype=mx.int32),
     )
 
-    assert downsampled.coords.tolist()[:2] == [[0, 0, 0, 0], [0, 1, 0, 0]]
+    assert cast('list[list[int]]', downsampled.coords.tolist())[:2] == [
+        [0, 0, 0, 0],
+        [0, 1, 0, 0],
+    ]
     assert downsampled.active_rows.tolist() == [2]
-    assert downsampled.occupancy.tolist()[:2] == [255, 1]
-    assert expanded.coords.tolist()[:9] == [
+    assert cast('list[int]', downsampled.occupancy.tolist())[:2] == [255, 1]
+    assert cast('list[list[int]]', expanded.coords.tolist())[:9] == [
         [0, 0, 0, 0],
         [0, 1, 0, 0],
         [0, 0, 1, 0],
@@ -187,8 +198,18 @@ def test_occupancy_helpers_round_trip_child_layout() -> None:
         [0, 2, 0, 0],
     ]
     assert expanded.active_rows.tolist() == [9]
-    assert expanded.parent_rows.tolist()[:9] == [0, 0, 0, 0, 0, 0, 0, 0, 1]
-    assert expanded.child_indices.tolist()[:9] == [
+    assert cast('list[int]', expanded.parent_rows.tolist())[:9] == [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+    ]
+    assert cast('list[int]', expanded.child_indices.tolist())[:9] == [
         0,
         1,
         2,
@@ -237,7 +258,7 @@ def test_occupancy_helpers_support_gpu_when_available() -> None:
         child_coords,
     )
     assert downsampled.active_rows.tolist() == [2]
-    assert downsampled.occupancy.tolist()[:2] == [255, 1]
+    assert cast('list[int]', downsampled.occupancy.tolist())[:2] == [255, 1]
     assert expanded.active_rows.tolist() == [9]
     assert child_coords.tolist() == [[0, 1, 1, 1], [0, 2, 0, 0]]
 
@@ -458,7 +479,13 @@ def test_knn_and_radius_relations_define_neighbor_query_contract() -> None:
     assert knn.n_query_capacity == 3
     assert knn.n_source_capacity == 4
     assert knn.max_neighbors == 2
-    assert gathered.tolist()[:5] == [[10.0], [20.0], [30.0], [20.0], [40.0]]
+    assert cast('list[list[float]]', gathered.tolist())[:5] == [
+        [10.0],
+        [20.0],
+        [30.0],
+        [20.0],
+        [40.0],
+    ]
 
     assert radius.counts.tolist() == [4, 3]
     assert _active_rows(radius.edges.query_rows, radius.edge_count) == [

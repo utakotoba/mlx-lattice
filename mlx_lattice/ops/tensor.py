@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import cast
 
 import mlx.core as mx
 
@@ -88,7 +89,7 @@ def prune_mask(x: SparseTensor, mask: mx.array) -> SparseTensor:
         raise ValueError('mask must be boolean.')
 
     ordering = mx.argsort(mask.astype(mx.int32)).astype(mx.int32)
-    count = int(mx.sum(mask).tolist())
+    count = int(cast('int', mx.sum(mask).tolist()))
     rows = mx.array([], dtype=mx.int32) if count == 0 else ordering[-count:]
     return prune(x, rows)
 

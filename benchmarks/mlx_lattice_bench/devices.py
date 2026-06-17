@@ -21,9 +21,9 @@ def available_devices(selection: str) -> tuple[BenchDevice, ...]:
 
     devices = []
     if selection in ('cpu', 'all'):
-        devices.append(BenchDevice('cpu', mx.cpu))
+        devices.append(BenchDevice('cpu', mx.Device(mx.cpu)))
     if selection in ('metal', 'all') and metal_available():
-        devices.append(BenchDevice('metal', mx.gpu))
+        devices.append(BenchDevice('metal', mx.Device(mx.gpu)))
     return tuple(devices)
 
 

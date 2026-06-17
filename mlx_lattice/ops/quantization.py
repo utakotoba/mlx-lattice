@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import overload
 
 import mlx.core as mx
 
 from mlx_lattice.core.coords.quantization import (
     SparseQuantization,
     VoxelReduction,
+    _validate_reduction,
     sparse_quantize,
 )
 from mlx_lattice.core.coords.quantization import (
@@ -18,6 +20,7 @@ from mlx_lattice.core.types import triple
 __all__ = ['voxelize', 'voxelize_with_quantization']
 
 
+@overload
 def voxelize(
     points: mx.array,
     feats: mx.array,
@@ -27,6 +30,33 @@ def voxelize(
     origin: float | Sequence[float] = 0.0,
     active_rows: mx.array | None = None,
     reduction: VoxelReduction = 'mean',
+    stride: int | Sequence[int] = 1,
+) -> SparseTensor: ...
+
+
+@overload
+def voxelize(
+    points: mx.array,
+    feats: mx.array,
+    voxel_size: float | Sequence[float] = 1.0,
+    *,
+    batch_indices: mx.array | None = None,
+    origin: float | Sequence[float] = 0.0,
+    active_rows: mx.array | None = None,
+    reduction: str,
+    stride: int | Sequence[int] = 1,
+) -> SparseTensor: ...
+
+
+def voxelize(
+    points: mx.array,
+    feats: mx.array,
+    voxel_size: float | Sequence[float] = 1.0,
+    *,
+    batch_indices: mx.array | None = None,
+    origin: float | Sequence[float] = 0.0,
+    active_rows: mx.array | None = None,
+    reduction: str = 'mean',
     stride: int | Sequence[int] = 1,
 ) -> SparseTensor:
     if feats.ndim != 2:
@@ -45,11 +75,12 @@ def voxelize(
         quantization,
         feats,
         active_rows=active_rows,
-        reduction=reduction,
+        reduction=_validate_reduction(reduction),
         stride=stride,
     )
 
 
+@overload
 def voxelize_with_quantization(
     quantization: SparseQuantization,
     feats: mx.array,
@@ -58,13 +89,36 @@ def voxelize_with_quantization(
     reduction: VoxelReduction = 'mean',
     stride: int | Sequence[int] = 1,
     template: SparseTensor | None = None,
+) -> SparseTensor: ...
+
+
+@overload
+def voxelize_with_quantization(
+    quantization: SparseQuantization,
+    feats: mx.array,
+    *,
+    active_rows: mx.array | None = None,
+    reduction: str,
+    stride: int | Sequence[int] = 1,
+    template: SparseTensor | None = None,
+) -> SparseTensor: ...
+
+
+def voxelize_with_quantization(
+    quantization: SparseQuantization,
+    feats: mx.array,
+    *,
+    active_rows: mx.array | None = None,
+    reduction: str = 'mean',
+    stride: int | Sequence[int] = 1,
+    template: SparseTensor | None = None,
 ) -> SparseTensor:
     """Apply a precomputed native point-to-voxel map to feature rows."""
     voxel_feats = _voxelize_features(
         feats,
         quantization,
         active_rows=active_rows,
-        reduction=reduction,
+        reduction=_validate_reduction(reduction),
     )
     if template is not None:
         if template.coords is not quantization.coords:

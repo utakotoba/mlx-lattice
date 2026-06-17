@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import mlx.core as mx
 from mlx_lattice.core import SparseTensor
@@ -47,7 +47,10 @@ def cases(
 def _setup(params: Mapping[str, Any]) -> tuple[SparseArrays, mx.array]:
     rows = benchmark_n(params)
     arrays = sparse_arrays(rows=rows, channels=int(params['channels']))
-    mask = mx.remainder(mx.arange(rows, dtype=mx.int32), 2) == 0
+    mask = cast(
+        mx.array,
+        mx.remainder(mx.arange(rows, dtype=mx.int32), 2) == 0,
+    )
     return arrays, mask
 
 

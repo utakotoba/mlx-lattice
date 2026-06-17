@@ -243,14 +243,12 @@ def _compiled(
             out = _run(kind, inputs)
             return out.feats
 
-        points = (
-            _point_fixture(fixture) if kind in _POINT_WORKLOADS else None
-        )
-        return fn, (
-            points.feats
+        feats = (
+            _point_fixture(fixture).feats
             if kind in _POINT_FEATURE_WORKLOADS
-            else fixture.sparse.feats,
+            else fixture.sparse.feats
         )
+        return fn, (feats,)
 
     return factory
 
@@ -265,11 +263,8 @@ def _backward(
             inputs = _compiled_inputs(kind, fixture, feats, base=base)
             return mx.sum(_run(kind, inputs).feats)
 
-        points = (
-            _point_fixture(fixture) if kind in _POINT_WORKLOADS else None
-        )
         args = (
-            points.feats
+            _point_fixture(fixture).feats
             if kind in _POINT_FEATURE_WORKLOADS
             else fixture.sparse.feats
         )

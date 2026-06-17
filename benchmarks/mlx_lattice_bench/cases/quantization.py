@@ -6,6 +6,7 @@ from typing import Any
 
 import mlx.core as mx
 from mlx_lattice.core import SparseQuantization, SparseTensor
+from mlx_lattice.core.coords.quantization import VoxelReduction
 from mlx_lattice.ops import (
     sparse_quantize,
     voxelize,
@@ -170,9 +171,7 @@ def _prepare_fixed(fixture: FixedVoxelFixture) -> FixedVoxelInputs:
     )
 
 
-def _compiled_voxelize(
-    reduction: str,
-) -> Any:
+def _compiled_voxelize(reduction: VoxelReduction) -> Any:
     def factory(fixture: PointArrays) -> tuple[Any, tuple[Any, ...]]:
         def fn(feats: mx.array) -> mx.array:
             return voxelize(
@@ -188,7 +187,7 @@ def _compiled_voxelize(
     return factory
 
 
-def _compiled_voxelize_fixed(reduction: str) -> Any:
+def _compiled_voxelize_fixed(reduction: VoxelReduction) -> Any:
     def factory(fixture: FixedVoxelFixture) -> tuple[Any, tuple[Any, ...]]:
         def fn(feats: mx.array) -> mx.array:
             return voxelize_with_quantization(
@@ -203,9 +202,7 @@ def _compiled_voxelize_fixed(reduction: str) -> Any:
     return factory
 
 
-def _backward_voxelize(
-    reduction: str,
-) -> Any:
+def _backward_voxelize(reduction: VoxelReduction) -> Any:
     def factory(fixture: PointArrays) -> tuple[Any, tuple[Any, ...]]:
         def loss(feats: mx.array) -> mx.array:
             out = voxelize(
@@ -222,7 +219,7 @@ def _backward_voxelize(
     return factory
 
 
-def _backward_voxelize_fixed(reduction: str) -> Any:
+def _backward_voxelize_fixed(reduction: VoxelReduction) -> Any:
     def factory(fixture: FixedVoxelFixture) -> tuple[Any, tuple[Any, ...]]:
         def loss(feats: mx.array) -> mx.array:
             out = voxelize_with_quantization(

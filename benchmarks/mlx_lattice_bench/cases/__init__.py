@@ -25,16 +25,6 @@ def all_cases(
     dtype: str = 'float32',
 ) -> tuple[BenchmarkCase, ...]:
     selected = []
-    modules = {
-        'quantization': quantization,
-        'coords': coords,
-        'relations': relations,
-        'conv': conv,
-        'pool': pool,
-        'feature': feature,
-        'tensor': tensor,
-        'workloads': workloads,
-    }
     for group in groups:
         if group == 'conv':
             selected.extend(
@@ -46,22 +36,36 @@ def all_cases(
                     dtype=dtype,
                 )
             )
-        elif group in {
-            'quantization',
-            'pool',
-            'feature',
-            'tensor',
-            'workloads',
-        }:
+        elif group == 'quantization':
             selected.extend(
-                modules[group].cases(
-                    preset,
-                    n_values=n_values,
-                    channels=channels,
+                quantization.cases(
+                    preset, n_values=n_values, channels=channels
                 )
             )
+        elif group == 'pool':
+            selected.extend(
+                pool.cases(preset, n_values=n_values, channels=channels)
+            )
+        elif group == 'feature':
+            selected.extend(
+                feature.cases(preset, n_values=n_values, channels=channels)
+            )
+        elif group == 'tensor':
+            selected.extend(
+                tensor.cases(preset, n_values=n_values, channels=channels)
+            )
+        elif group == 'workloads':
+            selected.extend(
+                workloads.cases(
+                    preset, n_values=n_values, channels=channels
+                )
+            )
+        elif group == 'coords':
+            selected.extend(coords.cases(preset, n_values=n_values))
+        elif group == 'relations':
+            selected.extend(relations.cases(preset, n_values=n_values))
         else:
-            selected.extend(modules[group].cases(preset, n_values=n_values))
+            raise ValueError(f'unknown benchmark group: {group}')
     return tuple(selected)
 
 

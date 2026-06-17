@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import mlx.nn as mxnn
 
 import mlx_lattice
@@ -292,7 +294,7 @@ def test_convolution_modules_support_mlx_transform_surface_across_modes() -> (
     ]
 
     def make_features(
-        module: object,
+        module: Any,
         coords: mx.array,
         stride: tuple[int, int, int],
     ):
@@ -304,7 +306,7 @@ def test_convolution_modules_support_mlx_transform_surface_across_modes() -> (
         return features
 
     def make_loss(coords: mx.array, stride: tuple[int, int, int]):
-        def loss(model: object, feats_arg: mx.array) -> mx.array:
+        def loss(model: Any, feats_arg: mx.array) -> mx.array:
             return mx.sum(
                 model(SparseTensor(coords, feats_arg, stride=stride)).feats
             )
