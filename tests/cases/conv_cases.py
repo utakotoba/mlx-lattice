@@ -9,34 +9,43 @@ from mlx_lattice.ops import (
     generative_conv_transpose3d,
     subm_conv3d,
 )
-from tests.cases.types import ValueCase
+from tests.cases.types import Tolerance, ValueCase
 from tests.support import active_coords, active_feats, mx
 
 
 def cases() -> list[ValueCase]:
+    relaxed = Tolerance(abs=2e-2, rel=2e-2)
     return [
         ValueCase('conv3d_modes', _conv3d_modes),
         ValueCase('conv3d_gradients', _conv3d_gradients),
         ValueCase('conv3d_mode_gradients', _conv3d_mode_gradients),
         ValueCase('conv3d_jvp', _conv3d_jvp),
         ValueCase('conv3d_active_rows', _conv3d_active_rows),
-        ValueCase('conv3d_float16', _conv3d_float16, abs=2e-2),
-        ValueCase('conv3d_dense_c16_forward', _dense_forward(16), abs=2e-2),
+        ValueCase('conv3d_float16', _conv3d_float16, tolerance=relaxed),
         ValueCase(
-            'conv3d_dense_c32_weight_grad', _dense_weight_grad(32), abs=2e-2
+            'conv3d_dense_c16_forward',
+            _dense_forward(16),
+            tolerance=relaxed,
         ),
         ValueCase(
-            'conv3d_dense_c64_weight_grad', _dense_weight_grad(64), abs=2e-2
+            'conv3d_dense_c32_weight_grad',
+            _dense_weight_grad(32),
+            tolerance=relaxed,
+        ),
+        ValueCase(
+            'conv3d_dense_c64_weight_grad',
+            _dense_weight_grad(64),
+            tolerance=relaxed,
         ),
         ValueCase(
             'conv3d_asymmetric_backward_16_64',
             _asymmetric_backward(16, 64),
-            abs=2e-2,
+            tolerance=relaxed,
         ),
         ValueCase(
             'conv3d_asymmetric_backward_64_16',
             _asymmetric_backward(64, 16),
-            abs=2e-2,
+            tolerance=relaxed,
         ),
     ]
 

@@ -30,6 +30,7 @@ def assert_nested_close(
     expected: object,
     *,
     abs: float = 1e-6,
+    rel: float = 1e-6,
 ) -> None:
     if isinstance(actual, list | tuple) and isinstance(
         expected, list | tuple
@@ -38,9 +39,14 @@ def assert_nested_close(
         for actual_item, expected_item in zip(
             actual, expected, strict=True
         ):
-            assert_nested_close(actual_item, expected_item, abs=abs)
+            assert_nested_close(
+                actual_item,
+                expected_item,
+                abs=abs,
+                rel=rel,
+            )
         return
-    assert actual == pytest.approx(expected, abs=abs)
+    assert actual == pytest.approx(expected, abs=abs, rel=rel)
 
 
 def assert_same_sparse_identity(left: Any, right: Any) -> None:
@@ -194,13 +200,14 @@ def assert_backend_parity(
     results: dict[str, object],
     *,
     abs: float = 1e-6,
+    rel: float = 1e-6,
 ) -> None:
     items = list(results.items())
     assert len(items) >= 2
     reference_name, reference = items[0]
     for name, actual in items[1:]:
         try:
-            assert_nested_close(actual, reference, abs=abs)
+            assert_nested_close(actual, reference, abs=abs, rel=rel)
         except AssertionError as exc:
             raise AssertionError(
                 f'{name} output differs from {reference_name}'

@@ -27,5 +27,6 @@ def test_nn_backend_parity(
 ) -> None:
     assert_backend_parity(
         run_on_backends(parity_backends, case.run),
-        abs=case.abs,
+        abs=case.tolerance.abs,
+        rel=case.tolerance.rel,
     )

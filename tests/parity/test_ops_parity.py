@@ -37,7 +37,8 @@ def test_conv_backend_parity(
 ) -> None:
     assert_backend_parity(
         run_on_backends(parity_backends, case.run),
-        abs=case.abs,
+        abs=case.tolerance.abs,
+        rel=case.tolerance.rel,
     )
 
 
@@ -49,7 +50,8 @@ def test_pool_backend_parity(
 ) -> None:
     assert_backend_parity(
         run_on_backends(parity_backends, case.run),
-        abs=case.abs,
+        abs=case.tolerance.abs,
+        rel=case.tolerance.rel,
     )
 
 
@@ -61,7 +63,8 @@ def test_quantization_backend_parity(
 ) -> None:
     assert_backend_parity(
         run_on_backends(parity_backends, case.run),
-        abs=case.abs,
+        abs=case.tolerance.abs,
+        rel=case.tolerance.rel,
     )
 
 
@@ -74,5 +77,6 @@ def test_coordinate_backend_parity(
 ) -> None:
     assert_backend_parity(
         run_on_backends(parity_backends, case.run),
-        abs=case.abs,
+        abs=case.tolerance.abs,
+        rel=case.tolerance.rel,
     )
