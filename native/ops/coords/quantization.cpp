@@ -28,7 +28,9 @@ class SparseQuantize final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        coords::cpu::eval_sparse_quantize(spec_, stream(), inputs, outputs);
+        backend::cpu::coords::eval_sparse_quantize(
+            spec_, stream(), inputs, outputs
+        );
     }
 
     void eval_gpu(
@@ -80,7 +82,7 @@ class VoxelizeFeatures final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        coords::cpu::eval_voxelize_features(
+        backend::cpu::coords::eval_voxelize_features(
             reduce_, shape_, stream(), inputs, outputs
         );
     }
@@ -165,7 +167,7 @@ class VoxelizeFeatureGrad final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        coords::cpu::eval_voxelize_feature_grad(
+        backend::cpu::coords::eval_voxelize_feature_grad(
             reduce_, shape_, stream(), inputs, outputs
         );
     }

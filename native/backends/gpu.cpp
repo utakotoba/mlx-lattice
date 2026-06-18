@@ -1,6 +1,7 @@
 #include "backends/gpu.h"
 
 #include <stdexcept>
+#include <utility>
 
 #include "backends/cuda/conv/runtime.h"
 #include "backends/cuda/coords/runtime.h"
@@ -36,6 +37,16 @@ NativeGpuBackend current_backend(const mx::Stream& stream) {
 #endif
 }
 
+template <typename MetalFn, typename CudaFn>
+void dispatch(const mx::Stream& stream, MetalFn&& metal_fn, CudaFn&& cuda_fn) {
+    switch (current_backend(stream)) {
+    case NativeGpuBackend::Metal:
+        return metal_fn();
+    case NativeGpuBackend::Cuda:
+        return cuda_fn();
+    }
+}
+
 namespace conv {
 
 void eval(
@@ -44,12 +55,11 @@ void eval(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return backend::metal::conv::eval(shape, stream, inputs, outputs);
-    case NativeGpuBackend::Cuda:
-        return backend::cuda::conv::eval(shape, stream, inputs, outputs);
-    }
+    dispatch(
+        stream,
+        [&]() { backend::metal::conv::eval(shape, stream, inputs, outputs); },
+        [&]() { backend::cuda::conv::eval(shape, stream, inputs, outputs); }
+    );
 }
 
 void eval_input_grad(
@@ -58,16 +68,19 @@ void eval_input_grad(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return backend::metal::conv::eval_input_grad(
-            shape, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return backend::cuda::conv::eval_input_grad(
-            shape, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::conv::eval_input_grad(
+                shape, stream, inputs, outputs
+            );
+        },
+        [&]() {
+            backend::cuda::conv::eval_input_grad(
+                shape, stream, inputs, outputs
+            );
+        }
+    );
 }
 
 void eval_weight_grad(
@@ -76,16 +89,19 @@ void eval_weight_grad(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return backend::metal::conv::eval_weight_grad(
-            shape, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return backend::cuda::conv::eval_weight_grad(
-            shape, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::conv::eval_weight_grad(
+                shape, stream, inputs, outputs
+            );
+        },
+        [&]() {
+            backend::cuda::conv::eval_weight_grad(
+                shape, stream, inputs, outputs
+            );
+        }
+    );
 }
 
 } // namespace conv
@@ -99,16 +115,15 @@ void eval(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return backend::metal::pool::eval(
-            reduce, shape, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return backend::cuda::pool::eval(
-            reduce, shape, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::pool::eval(reduce, shape, stream, inputs, outputs);
+        },
+        [&]() {
+            backend::cuda::pool::eval(reduce, shape, stream, inputs, outputs);
+        }
+    );
 }
 
 void eval_grad(
@@ -118,16 +133,19 @@ void eval_grad(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return backend::metal::pool::eval_grad(
-            reduce, shape, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return backend::cuda::pool::eval_grad(
-            reduce, shape, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::pool::eval_grad(
+                reduce, shape, stream, inputs, outputs
+            );
+        },
+        [&]() {
+            backend::cuda::pool::eval_grad(
+                reduce, shape, stream, inputs, outputs
+            );
+        }
+    );
 }
 
 void eval_jvp(
@@ -137,16 +155,19 @@ void eval_jvp(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return backend::metal::pool::eval_jvp(
-            reduce, shape, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return backend::cuda::pool::eval_jvp(
-            reduce, shape, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::pool::eval_jvp(
+                reduce, shape, stream, inputs, outputs
+            );
+        },
+        [&]() {
+            backend::cuda::pool::eval_jvp(
+                reduce, shape, stream, inputs, outputs
+            );
+        }
+    );
 }
 
 } // namespace pool
@@ -161,16 +182,19 @@ void eval_set_coords(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return mlx_lattice::coords::metal::eval_set_coords(
-            op, stride, shape, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return mlx_lattice::coords::cuda::eval_set_coords(
-            op, stride, shape, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::coords::eval_set_coords(
+                op, stride, shape, stream, inputs, outputs
+            );
+        },
+        [&]() {
+            backend::cuda::coords::eval_set_coords(
+                op, stride, shape, stream, inputs, outputs
+            );
+        }
+    );
 }
 
 void eval_lookup_coords(
@@ -179,16 +203,19 @@ void eval_lookup_coords(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return mlx_lattice::coords::metal::eval_lookup_coords(
-            shape, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return mlx_lattice::coords::cuda::eval_lookup_coords(
-            shape, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::coords::eval_lookup_coords(
+                shape, stream, inputs, outputs
+            );
+        },
+        [&]() {
+            backend::cuda::coords::eval_lookup_coords(
+                shape, stream, inputs, outputs
+            );
+        }
+    );
 }
 
 void eval_morton_codes(
@@ -197,16 +224,19 @@ void eval_morton_codes(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return mlx_lattice::coords::metal::eval_morton_codes(
-            shape, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return mlx_lattice::coords::cuda::eval_morton_codes(
-            shape, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::coords::eval_morton_codes(
+                shape, stream, inputs, outputs
+            );
+        },
+        [&]() {
+            backend::cuda::coords::eval_morton_codes(
+                shape, stream, inputs, outputs
+            );
+        }
+    );
 }
 
 void eval_occupancy_downsample(
@@ -215,16 +245,19 @@ void eval_occupancy_downsample(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return mlx_lattice::coords::metal::eval_occupancy_downsample(
-            shape, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return mlx_lattice::coords::cuda::eval_occupancy_downsample(
-            shape, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::coords::eval_occupancy_downsample(
+                shape, stream, inputs, outputs
+            );
+        },
+        [&]() {
+            backend::cuda::coords::eval_occupancy_downsample(
+                shape, stream, inputs, outputs
+            );
+        }
+    );
 }
 
 void eval_occupancy_expand(
@@ -233,16 +266,19 @@ void eval_occupancy_expand(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return mlx_lattice::coords::metal::eval_occupancy_expand(
-            shape, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return mlx_lattice::coords::cuda::eval_occupancy_expand(
-            shape, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::coords::eval_occupancy_expand(
+                shape, stream, inputs, outputs
+            );
+        },
+        [&]() {
+            backend::cuda::coords::eval_occupancy_expand(
+                shape, stream, inputs, outputs
+            );
+        }
+    );
 }
 
 void eval_child_coords_from_indices(
@@ -251,16 +287,19 @@ void eval_child_coords_from_indices(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return mlx_lattice::coords::metal::eval_child_coords_from_indices(
-            shape, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return mlx_lattice::coords::cuda::eval_child_coords_from_indices(
-            shape, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::coords::eval_child_coords_from_indices(
+                shape, stream, inputs, outputs
+            );
+        },
+        [&]() {
+            backend::cuda::coords::eval_child_coords_from_indices(
+                shape, stream, inputs, outputs
+            );
+        }
+    );
 }
 
 void eval_sparse_quantize(
@@ -270,16 +309,19 @@ void eval_sparse_quantize(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return mlx_lattice::coords::metal::eval_sparse_quantize(
-            spec, rows, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return mlx_lattice::coords::cuda::eval_sparse_quantize(
-            spec, rows, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::coords::eval_sparse_quantize(
+                spec, rows, stream, inputs, outputs
+            );
+        },
+        [&]() {
+            backend::cuda::coords::eval_sparse_quantize(
+                spec, rows, stream, inputs, outputs
+            );
+        }
+    );
 }
 
 void eval_voxelize_features(
@@ -289,16 +331,19 @@ void eval_voxelize_features(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return mlx_lattice::coords::metal::eval_voxelize_features(
-            reduce, shape, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return mlx_lattice::coords::cuda::eval_voxelize_features(
-            reduce, shape, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::coords::eval_voxelize_features(
+                reduce, shape, stream, inputs, outputs
+            );
+        },
+        [&]() {
+            backend::cuda::coords::eval_voxelize_features(
+                reduce, shape, stream, inputs, outputs
+            );
+        }
+    );
 }
 
 void eval_voxelize_feature_grad(
@@ -308,16 +353,19 @@ void eval_voxelize_feature_grad(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return mlx_lattice::coords::metal::eval_voxelize_feature_grad(
-            reduce, shape, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return mlx_lattice::coords::cuda::eval_voxelize_feature_grad(
-            reduce, shape, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::coords::eval_voxelize_feature_grad(
+                reduce, shape, stream, inputs, outputs
+            );
+        },
+        [&]() {
+            backend::cuda::coords::eval_voxelize_feature_grad(
+                reduce, shape, stream, inputs, outputs
+            );
+        }
+    );
 }
 
 void eval_generic_kernel_relation(
@@ -331,32 +379,35 @@ void eval_generic_kernel_relation(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return mlx_lattice::coords::metal::eval_generic_kernel_relation(
-            op,
-            rows,
-            kernel_count,
-            stride,
-            padding,
-            direct,
-            stream,
-            inputs,
-            outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return mlx_lattice::coords::cuda::eval_generic_kernel_relation(
-            op,
-            rows,
-            kernel_count,
-            stride,
-            padding,
-            direct,
-            stream,
-            inputs,
-            outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::coords::eval_generic_kernel_relation(
+                op,
+                rows,
+                kernel_count,
+                stride,
+                padding,
+                direct,
+                stream,
+                inputs,
+                outputs
+            );
+        },
+        [&]() {
+            backend::cuda::coords::eval_generic_kernel_relation(
+                op,
+                rows,
+                kernel_count,
+                stride,
+                padding,
+                direct,
+                stream,
+                inputs,
+                outputs
+            );
+        }
+    );
 }
 
 void eval_target_kernel_relation(
@@ -369,30 +420,33 @@ void eval_target_kernel_relation(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return mlx_lattice::coords::metal::eval_target_kernel_relation(
-            rows,
-            target_rows,
-            kernel_count,
-            stride,
-            padding,
-            stream,
-            inputs,
-            outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return mlx_lattice::coords::cuda::eval_target_kernel_relation(
-            rows,
-            target_rows,
-            kernel_count,
-            stride,
-            padding,
-            stream,
-            inputs,
-            outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::coords::eval_target_kernel_relation(
+                rows,
+                target_rows,
+                kernel_count,
+                stride,
+                padding,
+                stream,
+                inputs,
+                outputs
+            );
+        },
+        [&]() {
+            backend::cuda::coords::eval_target_kernel_relation(
+                rows,
+                target_rows,
+                kernel_count,
+                stride,
+                padding,
+                stream,
+                inputs,
+                outputs
+            );
+        }
+    );
 }
 
 void eval_generative_kernel_relation(
@@ -403,16 +457,19 @@ void eval_generative_kernel_relation(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return mlx_lattice::coords::metal::eval_generative_kernel_relation(
-            rows, kernel_count, stride, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return mlx_lattice::coords::cuda::eval_generative_kernel_relation(
-            rows, kernel_count, stride, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::coords::eval_generative_kernel_relation(
+                rows, kernel_count, stride, stream, inputs, outputs
+            );
+        },
+        [&]() {
+            backend::cuda::coords::eval_generative_kernel_relation(
+                rows, kernel_count, stride, stream, inputs, outputs
+            );
+        }
+    );
 }
 
 void eval_relation_grouped_view(
@@ -421,16 +478,19 @@ void eval_relation_grouped_view(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return mlx_lattice::coords::metal::eval_relation_grouped_view(
-            shape, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return mlx_lattice::coords::cuda::eval_relation_grouped_view(
-            shape, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::coords::eval_relation_grouped_view(
+                shape, stream, inputs, outputs
+            );
+        },
+        [&]() {
+            backend::cuda::coords::eval_relation_grouped_view(
+                shape, stream, inputs, outputs
+            );
+        }
+    );
 }
 
 void eval_relation_direct_view(
@@ -439,16 +499,19 @@ void eval_relation_direct_view(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return mlx_lattice::coords::metal::eval_relation_direct_view(
-            shape, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return mlx_lattice::coords::cuda::eval_relation_direct_view(
-            shape, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::coords::eval_relation_direct_view(
+                shape, stream, inputs, outputs
+            );
+        },
+        [&]() {
+            backend::cuda::coords::eval_relation_direct_view(
+                shape, stream, inputs, outputs
+            );
+        }
+    );
 }
 
 void eval_neighbor_relation(
@@ -459,16 +522,19 @@ void eval_neighbor_relation(
     const std::vector<mx::array>& inputs,
     std::vector<mx::array>& outputs
 ) {
-    switch (current_backend(stream)) {
-    case NativeGpuBackend::Metal:
-        return mlx_lattice::coords::metal::eval_neighbor_relation(
-            op, shape, radius_squared, stream, inputs, outputs
-        );
-    case NativeGpuBackend::Cuda:
-        return mlx_lattice::coords::cuda::eval_neighbor_relation(
-            op, shape, radius_squared, stream, inputs, outputs
-        );
-    }
+    dispatch(
+        stream,
+        [&]() {
+            backend::metal::coords::eval_neighbor_relation(
+                op, shape, radius_squared, stream, inputs, outputs
+            );
+        },
+        [&]() {
+            backend::cuda::coords::eval_neighbor_relation(
+                op, shape, radius_squared, stream, inputs, outputs
+            );
+        }
+    );
 }
 
 } // namespace coords

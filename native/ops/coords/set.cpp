@@ -28,7 +28,9 @@ class SetCoords final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        coords::cpu::eval_set_coords(op_, stride_, stream(), inputs, outputs);
+        backend::cpu::coords::eval_set_coords(
+            op_, stride_, stream(), inputs, outputs
+        );
     }
 
     void eval_gpu(

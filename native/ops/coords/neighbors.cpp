@@ -105,7 +105,7 @@ class NeighborRelationPrimitive final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        coords::cpu::eval_neighbor_relation(
+        backend::cpu::coords::eval_neighbor_relation(
             op_, shape_, radius_squared_, stream(), inputs, outputs
         );
     }

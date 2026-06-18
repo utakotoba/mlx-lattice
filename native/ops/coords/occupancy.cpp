@@ -33,7 +33,9 @@ class OccupancyDownsample final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        coords::cpu::eval_occupancy_downsample(stream(), inputs, outputs);
+        backend::cpu::coords::eval_occupancy_downsample(
+            stream(), inputs, outputs
+        );
     }
 
     void eval_gpu(
@@ -68,7 +70,7 @@ class OccupancyExpand final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        coords::cpu::eval_occupancy_expand(stream(), inputs, outputs);
+        backend::cpu::coords::eval_occupancy_expand(stream(), inputs, outputs);
     }
 
     void eval_gpu(
@@ -103,7 +105,9 @@ class ChildCoordsFromIndices final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        coords::cpu::eval_child_coords_from_indices(stream(), inputs, outputs);
+        backend::cpu::coords::eval_child_coords_from_indices(
+            stream(), inputs, outputs
+        );
     }
 
     void eval_gpu(

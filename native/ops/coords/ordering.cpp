@@ -23,7 +23,7 @@ class MortonCodes final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        coords::cpu::eval_morton_codes(stream(), inputs, outputs);
+        backend::cpu::coords::eval_morton_codes(stream(), inputs, outputs);
     }
 
     void eval_gpu(

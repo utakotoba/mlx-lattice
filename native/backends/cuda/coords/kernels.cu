@@ -2,7 +2,7 @@
 
 #include <cuda_runtime.h>
 
-namespace mlx_lattice::coords::cuda {
+namespace mlx_lattice::backend::cuda::coords {
 namespace {
 
 __device__ int elem_1d() { return int(blockIdx.x * blockDim.x + threadIdx.x); }
@@ -581,58 +581,6 @@ __global__ void generic_kernel_relation_i32(
     counts[1] = out_count;
 }
 
-__global__ void target_kernel_relation_i32(
-    const int* coords,
-    const int* offsets,
-    const int* active_rows,
-    const int* target_coords,
-    const int* target_active_rows,
-    int* in_rows,
-    int* out_rows,
-    int* kernel_ids,
-    int* row_offsets,
-    int* out_coords,
-    int* counts,
-    int rows,
-    int target_rows,
-    int kernel_count,
-    TripleArgs stride,
-    TripleArgs padding
-) {
-    (void)out_coords;
-    if (elem_1d() != 0) {
-        return;
-    }
-    int source_count = min(active_rows[0], rows);
-    int out_count = min(target_active_rows[0], target_rows);
-    int edge = 0;
-    for (int out_row = 0; out_row < out_count; ++out_row) {
-        row_offsets[out_row] = edge;
-        int out_base = out_row * 4;
-        for (int kernel = 0; kernel < kernel_count; ++kernel) {
-            int candidate[4];
-            kernel_input_coord(
-                &target_coords[out_base],
-                &offsets[kernel * 3],
-                stride,
-                padding,
-                candidate
-            );
-            int in_row = find_coord(coords, source_count, candidate);
-            if (in_row < 0) {
-                continue;
-            }
-            in_rows[edge] = in_row;
-            out_rows[edge] = out_row;
-            kernel_ids[edge] = kernel;
-            ++edge;
-        }
-    }
-    row_offsets[out_count] = edge;
-    counts[0] = edge;
-    counts[1] = out_count;
-}
-
 __global__ void count_target_kernel_relation_i32(
     const int* coords,
     const int* offsets,
@@ -856,43 +804,6 @@ __global__ void fill_relation_grouped_view_i32(
     edge_ids[slot] = edge;
 }
 
-__global__ void relation_grouped_view_i32(
-    const int* group_ids,
-    const int* counts,
-    int* row_offsets,
-    int* edge_ids,
-    int edge_capacity,
-    int group_count
-) {
-    if (elem_1d() != 0) {
-        return;
-    }
-    int edge_count = min(counts[0], edge_capacity);
-    clear_i32(row_offsets, group_count + 1, 0);
-    clear_i32(edge_ids, edge_capacity, -1);
-    for (int edge = 0; edge < edge_count; ++edge) {
-        int group = group_ids[edge];
-        if (group >= 0 && group < group_count) {
-            ++row_offsets[group + 1];
-        }
-    }
-    for (int group = 0; group < group_count; ++group) {
-        row_offsets[group + 1] += row_offsets[group];
-    }
-    for (int edge = 0; edge < edge_count; ++edge) {
-        int group = group_ids[edge];
-        if (group < 0 || group >= group_count) {
-            continue;
-        }
-        int slot = row_offsets[group]++;
-        edge_ids[slot] = edge;
-    }
-    for (int group = group_count; group > 0; --group) {
-        row_offsets[group] = row_offsets[group - 1];
-    }
-    row_offsets[0] = 0;
-}
-
 __global__ void clear_relation_direct_view_i32(int* edge_ids, int group_count) {
     int elem = elem_1d();
     if (elem < group_count) {
@@ -915,26 +826,6 @@ __global__ void fill_relation_direct_view_i32(
     int group = group_ids[edge];
     if (group >= 0 && group < group_count) {
         edge_ids[group] = edge;
-    }
-}
-
-__global__ void relation_direct_view_i32(
-    const int* group_ids,
-    const int* counts,
-    int* edge_ids,
-    int edge_capacity,
-    int group_count
-) {
-    if (elem_1d() != 0) {
-        return;
-    }
-    int edge_count = min(counts[0], edge_capacity);
-    clear_i32(edge_ids, group_count, -1);
-    for (int edge = 0; edge < edge_count; ++edge) {
-        int group = group_ids[edge];
-        if (group >= 0 && group < group_count) {
-            edge_ids[group] = edge;
-        }
     }
 }
 
@@ -1004,4 +895,4 @@ __global__ void neighbor_relation_i32(
     counts[1] = active_queries;
 }
 
-} // namespace mlx_lattice::coords::cuda
+} // namespace mlx_lattice::backend::cuda::coords

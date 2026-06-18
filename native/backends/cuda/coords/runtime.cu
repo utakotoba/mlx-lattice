@@ -8,7 +8,7 @@
 #include "backends/cuda/runtime_utils.h"
 #include "mlx/backend/cuda/utils.h"
 
-namespace mlx_lattice::coords::cuda {
+namespace mlx_lattice::backend::cuda::coords {
 namespace {
 
 void require_i32(const mx::array& input, const char* name) {
@@ -586,4 +586,4 @@ void eval_neighbor_relation(
     );
 }
 
-} // namespace mlx_lattice::coords::cuda
+} // namespace mlx_lattice::backend::cuda::coords

@@ -1,6 +1,6 @@
 #pragma once
 
-namespace mlx_lattice::coords::cuda {
+namespace mlx_lattice::backend::cuda::coords {
 
 struct TripleArgs {
     int x;
@@ -122,25 +122,6 @@ __global__ void generic_kernel_relation_i32(
     bool direct
 );
 
-__global__ void target_kernel_relation_i32(
-    const int* coords,
-    const int* offsets,
-    const int* active_rows,
-    const int* target_coords,
-    const int* target_active_rows,
-    int* in_rows,
-    int* out_rows,
-    int* kernel_ids,
-    int* row_offsets,
-    int* out_coords,
-    int* counts,
-    int rows,
-    int target_rows,
-    int kernel_count,
-    TripleArgs stride,
-    TripleArgs padding
-);
-
 __global__ void count_target_kernel_relation_i32(
     const int* coords,
     const int* offsets,
@@ -227,26 +208,9 @@ __global__ void fill_relation_grouped_view_i32(
     int group_count
 );
 
-__global__ void relation_grouped_view_i32(
-    const int* group_ids,
-    const int* counts,
-    int* row_offsets,
-    int* edge_ids,
-    int edge_capacity,
-    int group_count
-);
-
 __global__ void clear_relation_direct_view_i32(int* edge_ids, int group_count);
 
 __global__ void fill_relation_direct_view_i32(
-    const int* group_ids,
-    const int* counts,
-    int* edge_ids,
-    int edge_capacity,
-    int group_count
-);
-
-__global__ void relation_direct_view_i32(
     const int* group_ids,
     const int* counts,
     int* edge_ids,
@@ -272,4 +236,4 @@ __global__ void neighbor_relation_i32(
     float radius_squared
 );
 
-} // namespace mlx_lattice::coords::cuda
+} // namespace mlx_lattice::backend::cuda::coords

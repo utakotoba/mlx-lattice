@@ -105,7 +105,7 @@ void eval_jvp(
 
 } // namespace mlx_lattice::backend::cuda::pool
 
-namespace mlx_lattice::coords::cuda {
+namespace mlx_lattice::backend::cuda::coords {
 
 void eval_set_coords(
     CoordSetOp op,
@@ -338,4 +338,4 @@ void eval_neighbor_relation(
     unavailable();
 }
 
-} // namespace mlx_lattice::coords::cuda
+} // namespace mlx_lattice::backend::cuda::coords

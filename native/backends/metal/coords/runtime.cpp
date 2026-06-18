@@ -13,7 +13,7 @@
 #include "mlx/backend/metal/device.h"
 #endif
 
-namespace mlx_lattice::coords::metal {
+namespace mlx_lattice::backend::metal::coords {
 
 namespace {
 
@@ -1938,4 +1938,4 @@ void eval_neighbor_relation(
 #endif
 }
 
-} // namespace mlx_lattice::coords::metal
+} // namespace mlx_lattice::backend::metal::coords

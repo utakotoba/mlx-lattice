@@ -160,7 +160,7 @@ class GenericKernelRelation final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        coords::cpu::eval_generic_kernel_relation(
+        backend::cpu::coords::eval_generic_kernel_relation(
             op_, stride_, padding_, direct_, stream(), inputs, outputs
         );
     }
@@ -221,7 +221,7 @@ class GenerativeKernelRelation final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        coords::cpu::eval_generative_kernel_relation(
+        backend::cpu::coords::eval_generative_kernel_relation(
             stride_, stream(), inputs, outputs
         );
     }
@@ -273,7 +273,7 @@ class TargetKernelRelation final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        coords::cpu::eval_target_kernel_relation(
+        backend::cpu::coords::eval_target_kernel_relation(
             stride_, padding_, stream(), inputs, outputs
         );
     }
@@ -326,7 +326,7 @@ class RelationGroupedView final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        coords::cpu::eval_relation_grouped_view(
+        backend::cpu::coords::eval_relation_grouped_view(
             shape_, stream(), inputs, outputs
         );
     }
@@ -363,7 +363,7 @@ class RelationDirectView final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        coords::cpu::eval_relation_direct_view(
+        backend::cpu::coords::eval_relation_direct_view(
             shape_, stream(), inputs, outputs
         );
     }
