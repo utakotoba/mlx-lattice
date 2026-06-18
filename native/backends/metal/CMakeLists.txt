@@ -4,14 +4,14 @@ add_library(mlx_lattice_backend_metal STATIC)
 
 target_sources(
   mlx_lattice_backend_metal
-  PRIVATE
-    conv/runtime.cpp
-    coords/runtime.cpp
-    pool/runtime.cpp
-    runtime_utils.cpp
-    tensor_ops/capabilities.cpp
-    tensor_ops/conv/input_grad/runtime.cpp
-    tensor_ops/conv/weight_grad/runtime.cpp)
+  PRIVATE $<$<BOOL:${MLX_LATTICE_HAS_METAL}>:conv/runtime.cpp>
+          $<$<BOOL:${MLX_LATTICE_HAS_METAL}>:coords/runtime.cpp>
+          $<$<BOOL:${MLX_LATTICE_HAS_METAL}>:pool/runtime.cpp>
+          $<$<BOOL:${MLX_LATTICE_HAS_METAL}>:runtime_utils.cpp>
+          $<$<BOOL:${MLX_LATTICE_HAS_METAL}>:tensor_ops/capabilities.cpp>
+          $<$<BOOL:${MLX_LATTICE_HAS_METAL}>:tensor_ops/conv/input_grad/runtime.cpp>
+          $<$<BOOL:${MLX_LATTICE_HAS_METAL}>:tensor_ops/conv/weight_grad/runtime.cpp>
+          $<$<NOT:$<BOOL:${MLX_LATTICE_HAS_METAL}>>:stub.cpp>)
 
 target_include_directories(
   mlx_lattice_backend_metal
