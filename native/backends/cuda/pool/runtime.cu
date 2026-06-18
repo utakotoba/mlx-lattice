@@ -1,5 +1,6 @@
 #include "backends/cuda/pool/runtime.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 
@@ -56,6 +57,37 @@ void add_1d(
     );
 }
 
+template <typename Kernel, typename... Args>
+void add_pool_blocks(
+    const mx::Stream& stream,
+    Kernel kernel,
+    int out_capacity,
+    int channels,
+    Args&&... args
+) {
+    auto& encoder = mx::cu::get_command_encoder(stream);
+    encoder.add_kernel_node(
+        kernel,
+        dim3(
+            static_cast<unsigned int>(std::max(out_capacity, 1)),
+            static_cast<unsigned int>(std::max(channels, 1)),
+            1
+        ),
+        dim3(128, 1, 1),
+        std::forward<Args>(args)...
+    );
+}
+
+bool should_use_block_forward(SparsePoolShape shape) {
+    if (shape.out_capacity <= 0 || shape.channels <= 0) {
+        return false;
+    }
+    auto average_degree = shape.n_kernels > 8
+                              ? shape.n_kernels
+                              : shape.in_capacity / shape.out_capacity;
+    return average_degree >= 8 && shape.channels <= 256;
+}
+
 template <typename Array> auto ptr(const Array& array) {
     return mx::gpu_ptr<void>(array);
 }
@@ -81,6 +113,31 @@ void eval(
         encoder.set_input_array(input);
     }
     encoder.set_output_array(out);
+
+    if (should_use_block_forward(shape)) {
+        auto kernel = sparse_pool_relation_block_sum_f32_i32;
+        if (reduce == PoolReduceOp::Max) {
+            kernel = sparse_pool_relation_block_max_f32_i32;
+        } else if (reduce == PoolReduceOp::Avg) {
+            kernel = sparse_pool_relation_block_avg_f32_i32;
+        }
+        add_pool_blocks(
+            stream,
+            kernel,
+            shape.out_capacity,
+            shape.channels,
+            static_cast<const float*>(ptr(inputs[0])),
+            static_cast<const int*>(ptr(inputs[1])),
+            static_cast<const int*>(ptr(inputs[4])),
+            static_cast<const int*>(ptr(inputs[5])),
+            static_cast<float*>(ptr(out)),
+            shape.out_capacity,
+            shape.channels,
+            stride_at(inputs[0], 0),
+            stride_at(inputs[0], 1)
+        );
+        return;
+    }
 
     add_1d(
         stream,

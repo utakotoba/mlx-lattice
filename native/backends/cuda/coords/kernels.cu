@@ -364,6 +364,13 @@ __global__ void clear_f32(float* out, int elements) {
     }
 }
 
+__global__ void clear_i32_kernel(int* out, int elements, int value) {
+    int elem = elem_1d();
+    if (elem < elements) {
+        out[elem] = value;
+    }
+}
+
 __global__ void voxelize_features_f32(
     const float* feats,
     const int* inverse_rows,
@@ -626,6 +633,130 @@ __global__ void target_kernel_relation_i32(
     counts[1] = out_count;
 }
 
+__global__ void count_target_kernel_relation_i32(
+    const int* coords,
+    const int* offsets,
+    const int* active_rows,
+    const int* target_coords,
+    const int* target_active_rows,
+    int* row_offsets,
+    int rows,
+    int target_rows,
+    int kernel_count,
+    TripleArgs stride,
+    TripleArgs padding
+) {
+    int elem = elem_1d();
+    int source_count = min(active_rows[0], rows);
+    int out_count = min(target_active_rows[0], target_rows);
+    int total = out_count * kernel_count;
+    if (elem >= total) {
+        return;
+    }
+
+    int out_row = elem / kernel_count;
+    int kernel = elem - out_row * kernel_count;
+    int candidate[4];
+    kernel_input_coord(
+        &target_coords[out_row * 4],
+        &offsets[kernel * 3],
+        stride,
+        padding,
+        candidate
+    );
+    if (find_coord(coords, source_count, candidate) >= 0) {
+        atomicAdd(&row_offsets[out_row + 1], 1);
+    }
+}
+
+__global__ void prefix_relation_rows_i32(
+    int* row_offsets,
+    int* counts,
+    int row_count,
+    int edge_capacity
+) {
+    if (elem_1d() != 0) {
+        return;
+    }
+    int running = 0;
+    for (int row = 0; row < row_count; ++row) {
+        int degree = row_offsets[row + 1];
+        row_offsets[row] = running;
+        running += degree;
+    }
+    row_offsets[row_count] = running;
+    counts[0] = min(running, edge_capacity);
+    counts[1] = row_count;
+}
+
+__global__ void prefix_relation_rows_active_i32(
+    int* row_offsets,
+    int* counts,
+    const int* active_rows,
+    int row_capacity,
+    int edge_capacity
+) {
+    int row_count = min(active_rows[0], row_capacity);
+    if (elem_1d() != 0) {
+        return;
+    }
+    int running = 0;
+    for (int row = 0; row < row_count; ++row) {
+        int degree = row_offsets[row + 1];
+        row_offsets[row] = running;
+        running += degree;
+    }
+    row_offsets[row_count] = running;
+    counts[0] = min(running, edge_capacity);
+    counts[1] = row_count;
+}
+
+__global__ void fill_target_kernel_relation_i32(
+    const int* coords,
+    const int* offsets,
+    const int* active_rows,
+    const int* target_coords,
+    const int* target_active_rows,
+    const int* row_offsets,
+    int* row_cursors,
+    int* in_rows,
+    int* out_rows,
+    int* kernel_ids,
+    int rows,
+    int target_rows,
+    int kernel_count,
+    TripleArgs stride,
+    TripleArgs padding
+) {
+    int elem = elem_1d();
+    int source_count = min(active_rows[0], rows);
+    int out_count = min(target_active_rows[0], target_rows);
+    int total = out_count * kernel_count;
+    if (elem >= total) {
+        return;
+    }
+
+    int out_row = elem / kernel_count;
+    int kernel = elem - out_row * kernel_count;
+    int candidate[4];
+    kernel_input_coord(
+        &target_coords[out_row * 4],
+        &offsets[kernel * 3],
+        stride,
+        padding,
+        candidate
+    );
+    int in_row = find_coord(coords, source_count, candidate);
+    if (in_row < 0) {
+        return;
+    }
+
+    int slot = row_offsets[out_row] + atomicAdd(&row_cursors[out_row], 1);
+    in_rows[slot] = in_row;
+    out_rows[slot] = out_row;
+    kernel_ids[slot] = kernel;
+}
+
 __global__ void generative_kernel_relation_i32(
     const int* coords,
     const int* offsets,
@@ -668,6 +799,63 @@ __global__ void generative_kernel_relation_i32(
     );
 }
 
+__global__ void clear_relation_grouped_view_i32(
+    int* row_offsets,
+    int* edge_ids,
+    int edge_capacity,
+    int group_count
+) {
+    int elem = elem_1d();
+    int total = max(edge_capacity, group_count + 1);
+    if (elem >= total) {
+        return;
+    }
+    if (elem <= group_count) {
+        row_offsets[elem] = 0;
+    }
+    if (elem < edge_capacity) {
+        edge_ids[elem] = -1;
+    }
+}
+
+__global__ void count_relation_grouped_view_i32(
+    const int* group_ids,
+    const int* counts,
+    int* row_offsets,
+    int edge_capacity,
+    int group_count
+) {
+    int edge = elem_1d();
+    int edge_count = min(counts[0], edge_capacity);
+    if (edge >= edge_count) {
+        return;
+    }
+    int group = group_ids[edge];
+    if (group >= 0 && group < group_count) {
+        atomicAdd(&row_offsets[group + 1], 1);
+    }
+}
+
+__global__ void fill_relation_grouped_view_i32(
+    const int* group_ids,
+    const int* row_offsets,
+    int* row_cursors,
+    int* edge_ids,
+    int edge_capacity,
+    int group_count
+) {
+    int edge = elem_1d();
+    if (edge >= edge_capacity) {
+        return;
+    }
+    int group = group_ids[edge];
+    if (group < 0 || group >= group_count) {
+        return;
+    }
+    int slot = row_offsets[group] + atomicAdd(&row_cursors[group], 1);
+    edge_ids[slot] = edge;
+}
+
 __global__ void relation_grouped_view_i32(
     const int* group_ids,
     const int* counts,
@@ -703,6 +891,31 @@ __global__ void relation_grouped_view_i32(
         row_offsets[group] = row_offsets[group - 1];
     }
     row_offsets[0] = 0;
+}
+
+__global__ void clear_relation_direct_view_i32(int* edge_ids, int group_count) {
+    int elem = elem_1d();
+    if (elem < group_count) {
+        edge_ids[elem] = -1;
+    }
+}
+
+__global__ void fill_relation_direct_view_i32(
+    const int* group_ids,
+    const int* counts,
+    int* edge_ids,
+    int edge_capacity,
+    int group_count
+) {
+    int edge = elem_1d();
+    int edge_count = min(counts[0], edge_capacity);
+    if (edge >= edge_count) {
+        return;
+    }
+    int group = group_ids[edge];
+    if (group >= 0 && group < group_count) {
+        edge_ids[group] = edge;
+    }
 }
 
 __global__ void relation_direct_view_i32(

@@ -19,6 +19,42 @@ __global__ void sparse_pool_relation_f32_i32(
     int feat_s1
 );
 
+__global__ void sparse_pool_relation_block_sum_f32_i32(
+    const float* feats,
+    const int* in_rows,
+    const int* row_offsets,
+    const int* counts,
+    float* out,
+    int out_capacity,
+    int channels,
+    int feat_s0,
+    int feat_s1
+);
+
+__global__ void sparse_pool_relation_block_max_f32_i32(
+    const float* feats,
+    const int* in_rows,
+    const int* row_offsets,
+    const int* counts,
+    float* out,
+    int out_capacity,
+    int channels,
+    int feat_s0,
+    int feat_s1
+);
+
+__global__ void sparse_pool_relation_block_avg_f32_i32(
+    const float* feats,
+    const int* in_rows,
+    const int* row_offsets,
+    const int* counts,
+    float* out,
+    int out_capacity,
+    int channels,
+    int feat_s0,
+    int feat_s1
+);
+
 __global__ void sparse_pool_relation_sum_avg_input_grad_f32_i32(
     const float* cotangent,
     const float* feats,

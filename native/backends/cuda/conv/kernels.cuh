@@ -60,6 +60,84 @@ __global__ void sparse_conv_forward_f16(
     ConvStrideArgs strides
 );
 
+__global__ void sparse_conv_forward_f32_c16(
+    const float* feats,
+    const float* weights,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    float* out,
+    ConvShapeArgs shape,
+    ConvStrideArgs strides
+);
+
+__global__ void sparse_conv_forward_f32_c32(
+    const float* feats,
+    const float* weights,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    float* out,
+    ConvShapeArgs shape,
+    ConvStrideArgs strides
+);
+
+__global__ void sparse_conv_forward_f32_c64(
+    const float* feats,
+    const float* weights,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    float* out,
+    ConvShapeArgs shape,
+    ConvStrideArgs strides
+);
+
+__global__ void sparse_conv_forward_f16_c16(
+    const __half* feats,
+    const __half* weights,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    __half* out,
+    ConvShapeArgs shape,
+    ConvStrideArgs strides
+);
+
+__global__ void sparse_conv_forward_f16_c32(
+    const __half* feats,
+    const __half* weights,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    __half* out,
+    ConvShapeArgs shape,
+    ConvStrideArgs strides
+);
+
+__global__ void sparse_conv_forward_f16_c64(
+    const __half* feats,
+    const __half* weights,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    __half* out,
+    ConvShapeArgs shape,
+    ConvStrideArgs strides
+);
+
 __global__ void sparse_conv_input_grad_f32(
     const float* cotangent,
     const float* weights,

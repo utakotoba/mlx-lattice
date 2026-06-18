@@ -52,6 +52,22 @@ template <typename T> const T* device_ptr(const mx::array& array) {
     return mx::gpu_ptr<T>(array);
 }
 
+void add_clear_i32(
+    const mx::Stream& stream,
+    mx::array& out,
+    int elements,
+    int value = 0
+) {
+    add_1d(
+        stream,
+        clear_i32_kernel,
+        static_cast<std::size_t>(elements),
+        device_ptr<int>(out),
+        elements,
+        value
+    );
+}
+
 void bind_arrays(
     const mx::Stream& stream,
     const std::vector<mx::array>& inputs,
@@ -371,21 +387,55 @@ void eval_target_kernel_relation(
 ) {
     backend::allocate_all(outputs);
     bind_arrays(stream, inputs, outputs);
+    auto active_targets =
+        std::min(target_rows, int(outputs[RelationOutCoords].shape(0)));
+    auto row_cursors = backend::cuda::make_int32_temp(active_targets + 1);
+    auto row_offsets = outputs[RelationRowOffsets];
+    mx::cu::get_command_encoder(stream).set_output_array(row_cursors);
+    add_clear_i32(stream, row_offsets, active_targets + 1);
     add_1d(
         stream,
-        target_kernel_relation_i32,
-        1,
+        count_target_kernel_relation_i32,
+        static_cast<std::size_t>(target_rows) *
+            static_cast<std::size_t>(kernel_count),
         device_ptr<int>(inputs[0]),
         device_ptr<int>(inputs[1]),
         device_ptr<int>(inputs[2]),
         device_ptr<int>(inputs[3]),
         device_ptr<int>(inputs[4]),
+        device_ptr<int>(row_offsets),
+        rows,
+        target_rows,
+        kernel_count,
+        triple_args(stride),
+        triple_args(padding)
+    );
+    add_1d(
+        stream,
+        prefix_relation_rows_active_i32,
+        1,
+        device_ptr<int>(row_offsets),
+        device_ptr<int>(outputs[RelationCounts]),
+        device_ptr<int>(inputs[4]),
+        active_targets,
+        static_cast<int>(outputs[RelationInRows].shape(0))
+    );
+    add_clear_i32(stream, row_cursors, active_targets + 1);
+    add_1d(
+        stream,
+        fill_target_kernel_relation_i32,
+        static_cast<std::size_t>(target_rows) *
+            static_cast<std::size_t>(kernel_count),
+        device_ptr<int>(inputs[0]),
+        device_ptr<int>(inputs[1]),
+        device_ptr<int>(inputs[2]),
+        device_ptr<int>(inputs[3]),
+        device_ptr<int>(inputs[4]),
+        device_ptr<int>(row_offsets),
+        device_ptr<int>(row_cursors),
         device_ptr<int>(outputs[RelationInRows]),
         device_ptr<int>(outputs[RelationOutRows]),
         device_ptr<int>(outputs[RelationKernelIds]),
-        device_ptr<int>(outputs[RelationRowOffsets]),
-        device_ptr<int>(outputs[RelationOutCoords]),
-        device_ptr<int>(outputs[RelationCounts]),
         rows,
         target_rows,
         kernel_count,
@@ -431,13 +481,46 @@ void eval_relation_grouped_view(
 ) {
     backend::allocate_all(outputs);
     bind_arrays(stream, inputs, outputs);
+    auto row_cursors = backend::cuda::make_int32_temp(shape.group_count + 1);
+    mx::cu::get_command_encoder(stream).set_output_array(row_cursors);
     add_1d(
         stream,
-        relation_grouped_view_i32,
-        1,
+        clear_relation_grouped_view_i32,
+        static_cast<std::size_t>(
+            std::max(shape.edge_capacity, shape.group_count + 1)
+        ),
+        device_ptr<int>(outputs[RelationViewRowOffsets]),
+        device_ptr<int>(outputs[RelationViewEdgeIds]),
+        shape.edge_capacity,
+        shape.group_count
+    );
+    add_1d(
+        stream,
+        count_relation_grouped_view_i32,
+        static_cast<std::size_t>(shape.edge_capacity),
         device_ptr<int>(inputs[0]),
         device_ptr<int>(inputs[1]),
         device_ptr<int>(outputs[RelationViewRowOffsets]),
+        shape.edge_capacity,
+        shape.group_count
+    );
+    add_1d(
+        stream,
+        prefix_relation_rows_i32,
+        1,
+        device_ptr<int>(outputs[RelationViewRowOffsets]),
+        device_ptr<int>(row_cursors),
+        shape.group_count,
+        shape.edge_capacity
+    );
+    add_clear_i32(stream, row_cursors, shape.group_count + 1);
+    add_1d(
+        stream,
+        fill_relation_grouped_view_i32,
+        static_cast<std::size_t>(shape.edge_capacity),
+        device_ptr<int>(inputs[0]),
+        device_ptr<int>(outputs[RelationViewRowOffsets]),
+        device_ptr<int>(row_cursors),
         device_ptr<int>(outputs[RelationViewEdgeIds]),
         shape.edge_capacity,
         shape.group_count
@@ -454,8 +537,15 @@ void eval_relation_direct_view(
     bind_arrays(stream, inputs, outputs);
     add_1d(
         stream,
-        relation_direct_view_i32,
-        1,
+        clear_relation_direct_view_i32,
+        static_cast<std::size_t>(shape.group_count),
+        device_ptr<int>(outputs[0]),
+        shape.group_count
+    );
+    add_1d(
+        stream,
+        fill_relation_direct_view_i32,
+        static_cast<std::size_t>(shape.edge_capacity),
         device_ptr<int>(inputs[0]),
         device_ptr<int>(inputs[1]),
         device_ptr<int>(outputs[0]),

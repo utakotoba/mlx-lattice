@@ -117,6 +117,61 @@ __device__ void forward_kernel(
     store_value(out, elem, acc);
 }
 
+template <typename T, int InChannels, int OutChannels>
+__device__ void forward_channels_kernel(
+    const T* feats,
+    const T* weights,
+    const int* in_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    T* out,
+    ConvShapeArgs shape,
+    ConvStrideArgs strides
+) {
+    int out_row = elem_1d();
+    if (out_row >= shape.out_capacity) {
+        return;
+    }
+
+    float acc[OutChannels];
+    for (int co = 0; co < OutChannels; ++co) {
+        acc[co] = 0.0f;
+    }
+
+    int active_out = min(counts[1], shape.out_capacity);
+    int active_edges = min(counts[0], shape.edge_capacity);
+    if (out_row < active_out) {
+        for (int edge = row_offsets[out_row]; edge < row_offsets[out_row + 1];
+             ++edge) {
+            if (edge < 0 || edge >= active_edges) {
+                continue;
+            }
+            int in_row = in_rows[edge];
+            int kernel = kernel_ids[edge];
+            if (in_row < 0 || kernel < 0) {
+                continue;
+            }
+            for (int ci = 0; ci < InChannels; ++ci) {
+                float feat = load_value(
+                    feats, in_row * strides.feat_s0 + ci * strides.feat_s1
+                );
+                for (int co = 0; co < OutChannels; ++co) {
+                    acc[co] +=
+                        feat * load_value(
+                                   weights,
+                                   weight_offset(shape, strides, kernel, ci, co)
+                               );
+                }
+            }
+        }
+    }
+
+    for (int co = 0; co < OutChannels; ++co) {
+        store_value(out, out_row * OutChannels + co, acc[co]);
+    }
+}
+
 template <typename T>
 __device__ void input_grad_kernel(
     const T* cotangent,
@@ -261,6 +316,189 @@ __global__ void sparse_conv_forward_f16(
         feats,
         weights,
         in_rows,
+        kernel_ids,
+        counts,
+        row_offsets,
+        out,
+        shape,
+        strides
+    );
+}
+
+template <typename T, int Channels>
+__device__ void forward_square_channels_entry(
+    const T* feats,
+    const T* weights,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    T* out,
+    ConvShapeArgs shape,
+    ConvStrideArgs strides
+) {
+    (void)out_rows;
+    forward_channels_kernel<T, Channels, Channels>(
+        feats,
+        weights,
+        in_rows,
+        kernel_ids,
+        counts,
+        row_offsets,
+        out,
+        shape,
+        strides
+    );
+}
+
+__global__ void sparse_conv_forward_f32_c16(
+    const float* feats,
+    const float* weights,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    float* out,
+    ConvShapeArgs shape,
+    ConvStrideArgs strides
+) {
+    forward_square_channels_entry<float, 16>(
+        feats,
+        weights,
+        in_rows,
+        out_rows,
+        kernel_ids,
+        counts,
+        row_offsets,
+        out,
+        shape,
+        strides
+    );
+}
+
+__global__ void sparse_conv_forward_f32_c32(
+    const float* feats,
+    const float* weights,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    float* out,
+    ConvShapeArgs shape,
+    ConvStrideArgs strides
+) {
+    forward_square_channels_entry<float, 32>(
+        feats,
+        weights,
+        in_rows,
+        out_rows,
+        kernel_ids,
+        counts,
+        row_offsets,
+        out,
+        shape,
+        strides
+    );
+}
+
+__global__ void sparse_conv_forward_f32_c64(
+    const float* feats,
+    const float* weights,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    float* out,
+    ConvShapeArgs shape,
+    ConvStrideArgs strides
+) {
+    forward_square_channels_entry<float, 64>(
+        feats,
+        weights,
+        in_rows,
+        out_rows,
+        kernel_ids,
+        counts,
+        row_offsets,
+        out,
+        shape,
+        strides
+    );
+}
+
+__global__ void sparse_conv_forward_f16_c16(
+    const __half* feats,
+    const __half* weights,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    __half* out,
+    ConvShapeArgs shape,
+    ConvStrideArgs strides
+) {
+    forward_square_channels_entry<__half, 16>(
+        feats,
+        weights,
+        in_rows,
+        out_rows,
+        kernel_ids,
+        counts,
+        row_offsets,
+        out,
+        shape,
+        strides
+    );
+}
+
+__global__ void sparse_conv_forward_f16_c32(
+    const __half* feats,
+    const __half* weights,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    __half* out,
+    ConvShapeArgs shape,
+    ConvStrideArgs strides
+) {
+    forward_square_channels_entry<__half, 32>(
+        feats,
+        weights,
+        in_rows,
+        out_rows,
+        kernel_ids,
+        counts,
+        row_offsets,
+        out,
+        shape,
+        strides
+    );
+}
+
+__global__ void sparse_conv_forward_f16_c64(
+    const __half* feats,
+    const __half* weights,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    __half* out,
+    ConvShapeArgs shape,
+    ConvStrideArgs strides
+) {
+    forward_square_channels_entry<__half, 64>(
+        feats,
+        weights,
+        in_rows,
+        out_rows,
         kernel_ids,
         counts,
         row_offsets,

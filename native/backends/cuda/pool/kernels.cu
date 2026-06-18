@@ -8,6 +8,26 @@ namespace {
 
 __device__ int elem_1d() { return int(blockIdx.x * blockDim.x + threadIdx.x); }
 
+template <int Reduce> __device__ float reduce_init();
+
+template <> __device__ float reduce_init<0>() { return 0.0f; }
+template <> __device__ float reduce_init<1>() { return -CUDART_INF_F; }
+template <> __device__ float reduce_init<2>() { return 0.0f; }
+
+template <int Reduce> __device__ float reduce_combine(float lhs, float rhs) {
+    if constexpr (Reduce == 1) {
+        return fmaxf(lhs, rhs);
+    }
+    return lhs + rhs;
+}
+
+template <int Reduce> __device__ float reduce_finish(float value, int degree) {
+    if constexpr (Reduce == 2) {
+        return value / float(max(degree, 1));
+    }
+    return value;
+}
+
 } // namespace
 
 __global__ void sparse_pool_relation_f32_i32(
@@ -49,6 +69,128 @@ __global__ void sparse_pool_relation_f32_i32(
         ++degree;
     }
     out[elem] = reduce == 2 ? acc / float(max(degree, 1)) : acc;
+}
+
+template <int Reduce>
+__device__ void sparse_pool_relation_block_typed_f32_i32(
+    const float* feats,
+    const int* in_rows,
+    const int* row_offsets,
+    const int* counts,
+    float* out,
+    int out_capacity,
+    int channels,
+    int feat_s0,
+    int feat_s1
+) {
+    __shared__ float scratch[128];
+    int out_row = int(blockIdx.x);
+    int channel = int(blockIdx.y);
+    int lane = int(threadIdx.x);
+    if (out_row >= out_capacity || channel >= channels) {
+        return;
+    }
+    if (out_row >= counts[1]) {
+        if (lane == 0) {
+            out[out_row * channels + channel] = reduce_init<Reduce>();
+        }
+        return;
+    }
+
+    int begin = row_offsets[out_row];
+    int end = row_offsets[out_row + 1];
+    float acc = reduce_init<Reduce>();
+    for (int edge = begin + lane; edge < end; edge += int(blockDim.x)) {
+        int in_row = in_rows[edge];
+        float value = feats[in_row * feat_s0 + channel * feat_s1];
+        acc = reduce_combine<Reduce>(acc, value);
+    }
+    scratch[lane] = acc;
+    __syncthreads();
+
+    for (int stride = int(blockDim.x) / 2; stride > 0; stride >>= 1) {
+        if (lane < stride) {
+            scratch[lane] =
+                reduce_combine<Reduce>(scratch[lane], scratch[lane + stride]);
+        }
+        __syncthreads();
+    }
+    if (lane == 0) {
+        out[out_row * channels + channel] =
+            reduce_finish<Reduce>(scratch[0], end - begin);
+    }
+}
+
+__global__ void sparse_pool_relation_block_sum_f32_i32(
+    const float* feats,
+    const int* in_rows,
+    const int* row_offsets,
+    const int* counts,
+    float* out,
+    int out_capacity,
+    int channels,
+    int feat_s0,
+    int feat_s1
+) {
+    sparse_pool_relation_block_typed_f32_i32<0>(
+        feats,
+        in_rows,
+        row_offsets,
+        counts,
+        out,
+        out_capacity,
+        channels,
+        feat_s0,
+        feat_s1
+    );
+}
+
+__global__ void sparse_pool_relation_block_max_f32_i32(
+    const float* feats,
+    const int* in_rows,
+    const int* row_offsets,
+    const int* counts,
+    float* out,
+    int out_capacity,
+    int channels,
+    int feat_s0,
+    int feat_s1
+) {
+    sparse_pool_relation_block_typed_f32_i32<1>(
+        feats,
+        in_rows,
+        row_offsets,
+        counts,
+        out,
+        out_capacity,
+        channels,
+        feat_s0,
+        feat_s1
+    );
+}
+
+__global__ void sparse_pool_relation_block_avg_f32_i32(
+    const float* feats,
+    const int* in_rows,
+    const int* row_offsets,
+    const int* counts,
+    float* out,
+    int out_capacity,
+    int channels,
+    int feat_s0,
+    int feat_s1
+) {
+    sparse_pool_relation_block_typed_f32_i32<2>(
+        feats,
+        in_rows,
+        row_offsets,
+        counts,
+        out,
+        out_capacity,
+        channels,
+        feat_s0,
+        feat_s1
+    );
 }
 
 __global__ void sparse_pool_relation_sum_avg_input_grad_f32_i32(

@@ -236,9 +236,9 @@ void eval_voxelize_feature_grad(
 
 void eval_generic_kernel_relation(
     CoordRelationOp op,
-    int rows,
+    int rows, // NOLINT(bugprone-easily-swappable-parameters)
     int kernel_count,
-    Triple stride,
+    Triple stride, // NOLINT(bugprone-easily-swappable-parameters)
     Triple padding,
     bool direct,
     const mx::Stream& stream,
@@ -258,10 +258,10 @@ void eval_generic_kernel_relation(
 }
 
 void eval_target_kernel_relation(
-    int rows,
+    int rows, // NOLINT(bugprone-easily-swappable-parameters)
     int target_rows,
     int kernel_count,
-    Triple stride,
+    Triple stride, // NOLINT(bugprone-easily-swappable-parameters)
     Triple padding,
     const mx::Stream& stream,
     const std::vector<mx::array>& inputs,
@@ -279,7 +279,7 @@ void eval_target_kernel_relation(
 }
 
 void eval_generative_kernel_relation(
-    int rows,
+    int rows, // NOLINT(bugprone-easily-swappable-parameters)
     int kernel_count,
     Triple stride,
     const mx::Stream& stream,

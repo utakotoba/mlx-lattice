@@ -78,6 +78,7 @@ __global__ void sparse_quantize_i32(
 );
 
 __global__ void clear_f32(float* out, int elements);
+__global__ void clear_i32_kernel(int* out, int elements, int value);
 
 __global__ void voxelize_features_f32(
     const float* feats,
@@ -140,6 +141,53 @@ __global__ void target_kernel_relation_i32(
     TripleArgs padding
 );
 
+__global__ void count_target_kernel_relation_i32(
+    const int* coords,
+    const int* offsets,
+    const int* active_rows,
+    const int* target_coords,
+    const int* target_active_rows,
+    int* row_offsets,
+    int rows,
+    int target_rows,
+    int kernel_count,
+    TripleArgs stride,
+    TripleArgs padding
+);
+
+__global__ void prefix_relation_rows_i32(
+    int* row_offsets,
+    int* counts,
+    int row_count,
+    int edge_capacity
+);
+
+__global__ void prefix_relation_rows_active_i32(
+    int* row_offsets,
+    int* counts,
+    const int* active_rows,
+    int row_capacity,
+    int edge_capacity
+);
+
+__global__ void fill_target_kernel_relation_i32(
+    const int* coords,
+    const int* offsets,
+    const int* active_rows,
+    const int* target_coords,
+    const int* target_active_rows,
+    const int* row_offsets,
+    int* row_cursors,
+    int* in_rows,
+    int* out_rows,
+    int* kernel_ids,
+    int rows,
+    int target_rows,
+    int kernel_count,
+    TripleArgs stride,
+    TripleArgs padding
+);
+
 __global__ void generative_kernel_relation_i32(
     const int* coords,
     const int* offsets,
@@ -155,10 +203,44 @@ __global__ void generative_kernel_relation_i32(
     TripleArgs stride
 );
 
+__global__ void clear_relation_grouped_view_i32(
+    int* row_offsets,
+    int* edge_ids,
+    int edge_capacity,
+    int group_count
+);
+
+__global__ void count_relation_grouped_view_i32(
+    const int* group_ids,
+    const int* counts,
+    int* row_offsets,
+    int edge_capacity,
+    int group_count
+);
+
+__global__ void fill_relation_grouped_view_i32(
+    const int* group_ids,
+    const int* row_offsets,
+    int* row_cursors,
+    int* edge_ids,
+    int edge_capacity,
+    int group_count
+);
+
 __global__ void relation_grouped_view_i32(
     const int* group_ids,
     const int* counts,
     int* row_offsets,
+    int* edge_ids,
+    int edge_capacity,
+    int group_count
+);
+
+__global__ void clear_relation_direct_view_i32(int* edge_ids, int group_count);
+
+__global__ void fill_relation_direct_view_i32(
+    const int* group_ids,
+    const int* counts,
     int* edge_ids,
     int edge_capacity,
     int group_count

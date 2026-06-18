@@ -106,6 +106,16 @@ template <typename T> const T* device_ptr(const mx::array& array) {
     return mx::gpu_ptr<T>(array);
 }
 
+bool can_use_square_channel_forward(
+    SparseConvShape shape,
+    const mx::array& out
+) {
+    return shape.in_channels == shape.out_channels && out.ndim() == 2 &&
+           out.strides(1) == 1 && out.strides(0) == shape.out_channels &&
+           (shape.out_channels == 16 || shape.out_channels == 32 ||
+            shape.out_channels == 64);
+}
+
 } // namespace
 
 void eval(
@@ -133,9 +143,20 @@ void eval(
                     static_cast<std::size_t>(shape.out_channels);
 
     if (inputs[0].dtype() == mx::float32) {
+        auto kernel = sparse_conv_forward_f32;
+        if (can_use_square_channel_forward(shape, out)) {
+            if (shape.out_channels == 16) {
+                kernel = sparse_conv_forward_f32_c16;
+            } else if (shape.out_channels == 32) {
+                kernel = sparse_conv_forward_f32_c32;
+            } else {
+                kernel = sparse_conv_forward_f32_c64;
+            }
+            elements = static_cast<std::size_t>(shape.out_capacity);
+        }
         add_1d(
             stream,
-            sparse_conv_forward_f32,
+            kernel,
             elements,
             device_ptr<float>(inputs[0]),
             device_ptr<float>(inputs[1]),
@@ -151,9 +172,20 @@ void eval(
         return;
     }
 
+    auto kernel = sparse_conv_forward_f16;
+    if (can_use_square_channel_forward(shape, out)) {
+        if (shape.out_channels == 16) {
+            kernel = sparse_conv_forward_f16_c16;
+        } else if (shape.out_channels == 32) {
+            kernel = sparse_conv_forward_f16_c32;
+        } else {
+            kernel = sparse_conv_forward_f16_c64;
+        }
+        elements = static_cast<std::size_t>(shape.out_capacity);
+    }
     add_1d(
         stream,
-        sparse_conv_forward_f16,
+        kernel,
         elements,
         device_ptr<__half>(inputs[0]),
         device_ptr<__half>(inputs[1]),
