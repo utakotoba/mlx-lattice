@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import platform
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import cache
 from typing import Any, cast
 
 import pytest
@@ -16,7 +16,6 @@ class Backend:
     name: str
     device: Any
     supported_dtypes: tuple[Any, ...]
-    supports_compile: bool
 
 
 @dataclass(frozen=True)
@@ -82,29 +81,20 @@ def available_backends() -> list[Backend]:
     info = cast('dict[str, Any]', backend_info())
     capabilities = cast('dict[str, bool]', info['capabilities'])
     backends = [
-        Backend(
-            'cpu',
-            mx.cpu,
-            (mx.float32, mx.float16),
-            platform.system() == 'Darwin',
-        ),
+        Backend('cpu', mx.cpu, (mx.float32, mx.float16)),
     ]
     if (
         capabilities.get('metal', False)
         and hasattr(mx, 'metal')
         and mx.metal.is_available()
     ):
-        backends.append(
-            Backend('metal', mx.gpu, (mx.float32, mx.float16), True)
-        )
+        backends.append(Backend('metal', mx.gpu, (mx.float32, mx.float16)))
     if (
         capabilities.get('cuda', False)
         and hasattr(mx, 'cuda')
         and mx.cuda.is_available()
     ):
-        backends.append(
-            Backend('cuda', mx.gpu, (mx.float32, mx.float16), True)
-        )
+        backends.append(Backend('cuda', mx.gpu, (mx.float32, mx.float16)))
     return backends
 
 
@@ -171,7 +161,16 @@ def backend(request: pytest.FixtureRequest) -> BackendRun:
 
 
 @pytest.fixture
-def selected_backend(request: pytest.FixtureRequest):
+def compile_backend(selected_backend: Backend) -> Backend:
+    if not backend_supports_compile(selected_backend):
+        pytest.skip(
+            f'{selected_backend.name} backend does not support mx.compile'
+        )
+    return selected_backend
+
+
+@pytest.fixture
+def selected_backend(request: pytest.FixtureRequest) -> Iterator[Backend]:
     name = cast('str', request.param)
     selected = backend_by_name(name)
     with backend_default(selected):
@@ -197,6 +196,10 @@ def backend_default(backend: Backend):
 def run_on_backend[T](backend: Backend, fn: Callable[[], T]) -> T:
     with backend_default(backend):
         return fn()
+
+
+def backend_supports_compile(backend: Backend) -> bool:
+    return _backend_supports_compile(backend.name)
 
 
 def run_on_backends[T](
@@ -236,6 +239,26 @@ def line_tensor() -> Any:
         ),
         mx.array([[1.0], [2.0], [3.0]], dtype=mx.float32),
     )
+
+
+@cache
+def _backend_supports_compile(name: str) -> bool:
+    backend = backend_by_name(name)
+    with backend_default(backend):
+        from mlx_lattice import SparseTensor
+        from mlx_lattice.ops import relu
+
+        coords = mx.array([[0, 0, 0, 0]], dtype=mx.int32)
+        feats = mx.array([[-1.0]], dtype=mx.float32)
+
+        def sparse_relu(value: mx.array) -> mx.array:
+            return relu(SparseTensor(coords, value)).feats
+
+        try:
+            mx.eval(mx.compile(sparse_relu)(feats))
+        except RuntimeError:
+            return False
+    return True
 
 
 def _option_names(config: pytest.Config, option: str) -> list[str]:

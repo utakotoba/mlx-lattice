@@ -7,13 +7,19 @@ import pytest
 from tests.support import (
     backend,
     backend_params,
+    compile_backend,
     dtype_params,
     parity_backend_params,
     parity_backends,
     selected_backend,
 )
 
-__all__ = ['backend', 'parity_backends', 'selected_backend']
+__all__ = [
+    'backend',
+    'compile_backend',
+    'parity_backends',
+    'selected_backend',
+]
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

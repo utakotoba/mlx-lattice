@@ -18,7 +18,6 @@ from mlx_lattice.ops import (
     sparse_collate,
 )
 from tests.support import (
-    Backend,
     active_coords,
     active_feats,
     assert_nested_close,
@@ -174,9 +173,7 @@ def test_sparse_operator_modules_are_autogradable() -> None:
     assert mx.grad(pool_loss)(feats).tolist() == [[2.0], [3.0], [2.0]]
 
 
-def test_feature_modules_support_mlx_transform_surface(
-    selected_backend: Backend,
-) -> None:
+def _feature_module_transform_case():
     coords = mx.array([[0, 0, 0, 0], [0, 1, 0, 0]], dtype=mx.int32)
     feats = mx.array([[-1.0, 2.0], [3.0, -4.0]], dtype=mx.float32)
     tangent = mx.ones_like(feats)
@@ -194,6 +191,13 @@ def test_feature_modules_support_mlx_transform_surface(
     def loss(model: lnn.Linear, feats_arg: mx.array) -> mx.array:
         return mx.sum(relu(model(SparseTensor(coords, feats_arg))).feats)
 
+    return feats, tangent, module, features, loss
+
+
+def test_feature_modules_support_mlx_transform_surface() -> None:
+    feats, tangent, module, features, loss = (
+        _feature_module_transform_case()
+    )
     value, param_grads = mxnn.value_and_grad(module, loss)(module, feats)
     outputs, input_vjps = mx.vjp(
         features,
@@ -211,13 +215,15 @@ def test_feature_modules_support_mlx_transform_surface(
     assert param_grads['bias'].tolist() == [1.0, 1.0]
     assert input_vjps[0].tolist() == [[7.0, 10.0], [0.0, 0.0]]
     assert input_jvps[0].tolist() == [[5.0, 12.0], [0.0, 0.0]]
-    if selected_backend.supports_compile:
-        assert mx.compile(features)(feats).tolist() == outputs[0].tolist()
 
 
-def test_convolution_modules_support_mlx_transform_surface_across_modes(
-    selected_backend: Backend,
-) -> None:
+def test_feature_modules_support_mx_compile(compile_backend) -> None:
+    feats, _, _, features, _ = _feature_module_transform_case()
+
+    assert mx.compile(features)(feats).tolist() == [[5.0, 8.0], [0.0, 0.0]]
+
+
+def _convolution_module_transform_cases():
     conv_coords = mx.array(
         [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
         dtype=mx.int32,
@@ -298,6 +304,13 @@ def test_convolution_modules_support_mlx_transform_surface_across_modes(
             [[[[[4.0]]], [[[4.0]]]]],
         ),
     ]
+    return cases
+
+
+def test_convolution_modules_support_mlx_transform_surface_across_modes() -> (
+    None
+):
+    cases = _convolution_module_transform_cases()
 
     def make_features(
         module: Any,
@@ -350,13 +363,39 @@ def test_convolution_modules_support_mlx_transform_surface_across_modes(
         assert input_vjps[0].tolist() == expected_input_grad
         assert input_jvps[0].tolist() == expected_jvp
         assert param_grads['weight'].tolist() == expected_weight_grad
-        if selected_backend.supports_compile:
-            assert mx.compile(features)(feats).tolist() == expected_out
 
 
-def test_pool_modules_support_mlx_transform_surface(
-    selected_backend: Backend,
-) -> None:
+def test_convolution_modules_support_mx_compile(compile_backend) -> None:
+    cases = _convolution_module_transform_cases()
+
+    def make_features(
+        module: Any,
+        coords: mx.array,
+        stride: tuple[int, int, int],
+    ):
+        def features(feats_arg: mx.array) -> mx.array:
+            return module(
+                SparseTensor(coords, feats_arg, stride=stride)
+            ).feats
+
+        return features
+
+    for (
+        module,
+        coords,
+        feats,
+        stride,
+        weight,
+        expected_out,
+        *_,
+    ) in cases:
+        module.weight = weight
+        features = make_features(module, coords, stride)
+
+        assert mx.compile(features)(feats).tolist() == expected_out
+
+
+def _pool_module_transform_case():
     coords = mx.array(
         [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
         dtype=mx.int32,
@@ -368,6 +407,19 @@ def test_pool_modules_support_mlx_transform_surface(
     def maxed(feats_arg: mx.array) -> mx.array:
         return max_pool(SparseTensor(coords, feats_arg)).feats
 
+    def summed(feats_arg: mx.array) -> mx.array:
+        module = lnn.SumPool3d(kernel_size=(3, 1, 1), stride=1)
+        return module(SparseTensor(coords, feats_arg)).feats
+
+    def averaged(feats_arg: mx.array) -> mx.array:
+        module = lnn.AvgPool3d(kernel_size=(3, 1, 1), stride=1)
+        return module(SparseTensor(coords, feats_arg)).feats
+
+    return feats, tangent, maxed, summed, averaged
+
+
+def test_pool_modules_support_mlx_transform_surface() -> None:
+    feats, tangent, maxed, _, _ = _pool_module_transform_case()
     outputs, input_vjps = mx.vjp(
         maxed,
         [feats],
@@ -378,23 +430,17 @@ def test_pool_modules_support_mlx_transform_surface(
     assert outputs[0].tolist() == [[2.0], [2.0], [2.0]]
     assert input_vjps[0].tolist() == [[1.0], [2.0], [0.0]]
     assert input_jvps[0].tolist() == [[10.0], [10.0], [20.0]]
-    if selected_backend.supports_compile:
-        assert mx.compile(maxed)(feats).tolist() == outputs[0].tolist()
 
-    def summed(feats_arg: mx.array) -> mx.array:
-        module = lnn.SumPool3d(kernel_size=(3, 1, 1), stride=1)
-        return module(SparseTensor(coords, feats_arg)).feats
 
-    def averaged(feats_arg: mx.array) -> mx.array:
-        module = lnn.AvgPool3d(kernel_size=(3, 1, 1), stride=1)
-        return module(SparseTensor(coords, feats_arg)).feats
+def test_pool_modules_support_mx_compile(compile_backend) -> None:
+    feats, _, maxed, summed, averaged = _pool_module_transform_case()
 
-    if selected_backend.supports_compile:
-        assert mx.compile(summed)(feats).tolist() == [[4.0], [5.0], [3.0]]
-        assert_nested_close(
-            mx.compile(averaged)(feats).tolist(),
-            [[2.0], [5.0 / 3.0], [1.5]],
-        )
+    assert mx.compile(maxed)(feats).tolist() == [[2.0], [2.0], [2.0]]
+    assert mx.compile(summed)(feats).tolist() == [[4.0], [5.0], [3.0]]
+    assert_nested_close(
+        mx.compile(averaged)(feats).tolist(),
+        [[2.0], [5.0 / 3.0], [1.5]],
+    )
 
 
 def test_transpose_and_pool_modules_wrap_sparse_policies() -> None:

@@ -20,7 +20,6 @@ from mlx_lattice.ops import (
     tanh,
 )
 from tests.support import (
-    Backend,
     assert_nested_close,
     assert_same_sparse_identity,
     mx,
@@ -109,9 +108,7 @@ def test_normalization_feature_ops_apply_affine_parameters() -> None:
     assert_same_sparse_identity(rms, x)
 
 
-def test_feature_ops_support_grad_vjp_jvp_and_compile(
-    selected_backend: Backend,
-) -> None:
+def _feature_transform_case():
     coords = mx.array([[0, 0, 0, 0], [0, 1, 0, 0]], dtype=mx.int32)
     feats = mx.array([[-1.0, 2.0], [3.0, -4.0]], dtype=mx.float32)
     weight = mx.array([[2.0, 3.0], [5.0, 7.0]], dtype=mx.float32)
@@ -132,6 +129,11 @@ def test_feature_ops_support_grad_vjp_jvp_and_compile(
     ) -> mx.array:
         return mx.sum(features(feats_arg, weight_arg, bias_arg))
 
+    return feats, weight, bias, features, loss
+
+
+def test_feature_ops_support_grad_vjp_and_jvp() -> None:
+    feats, weight, bias, features, loss = _feature_transform_case()
     grad_feats, grad_weight, grad_bias = mx.grad(
         loss,
         argnums=(0, 1, 2),
@@ -156,11 +158,15 @@ def test_feature_ops_support_grad_vjp_jvp_and_compile(
         [1.0, 1.0],
     ]
     assert jvps[0].tolist() == [[7.0, 14.0], [0.0, 0.0]]
-    if selected_backend.supports_compile:
-        assert (
-            mx.compile(features)(feats, weight, bias).tolist()
-            == outputs[0].tolist()
-        )
+
+
+def test_feature_ops_support_mx_compile(compile_backend) -> None:
+    feats, weight, bias, features, _ = _feature_transform_case()
+
+    assert mx.compile(features)(feats, weight, bias).tolist() == [
+        [5.0, 8.0],
+        [0.0, 0.0],
+    ]
 
 
 def test_feature_ops_reject_invalid_contracts() -> None:
