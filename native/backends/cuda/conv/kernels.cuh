@@ -1,6 +1,18 @@
 #pragma once
 
+#if __has_include(<cuda_fp16.h>)
 #include <cuda_fp16.h>
+#else
+struct __half {
+    unsigned short value;
+};
+#endif
+
+#ifdef __CUDACC__
+#define MLX_LATTICE_CUDA_KERNEL __global__
+#else
+#define MLX_LATTICE_CUDA_KERNEL
+#endif
 
 namespace mlx_lattice::backend::cuda::conv {
 
@@ -34,7 +46,7 @@ struct ConvStrideArgs {
     int out_s4;
 };
 
-__global__ void sparse_conv_forward_f32(
+MLX_LATTICE_CUDA_KERNEL void sparse_conv_forward_f32(
     const float* feats,
     const float* weights,
     const int* in_rows,
@@ -47,7 +59,7 @@ __global__ void sparse_conv_forward_f32(
     ConvStrideArgs strides
 );
 
-__global__ void sparse_conv_forward_f16(
+MLX_LATTICE_CUDA_KERNEL void sparse_conv_forward_f16(
     const __half* feats,
     const __half* weights,
     const int* in_rows,
@@ -60,7 +72,7 @@ __global__ void sparse_conv_forward_f16(
     ConvStrideArgs strides
 );
 
-__global__ void sparse_conv_forward_f32_c16(
+MLX_LATTICE_CUDA_KERNEL void sparse_conv_forward_f32_c16(
     const float* feats,
     const float* weights,
     const int* in_rows,
@@ -73,7 +85,7 @@ __global__ void sparse_conv_forward_f32_c16(
     ConvStrideArgs strides
 );
 
-__global__ void sparse_conv_forward_f32_c32(
+MLX_LATTICE_CUDA_KERNEL void sparse_conv_forward_f32_c32(
     const float* feats,
     const float* weights,
     const int* in_rows,
@@ -86,7 +98,7 @@ __global__ void sparse_conv_forward_f32_c32(
     ConvStrideArgs strides
 );
 
-__global__ void sparse_conv_forward_f32_c64(
+MLX_LATTICE_CUDA_KERNEL void sparse_conv_forward_f32_c64(
     const float* feats,
     const float* weights,
     const int* in_rows,
@@ -99,7 +111,7 @@ __global__ void sparse_conv_forward_f32_c64(
     ConvStrideArgs strides
 );
 
-__global__ void sparse_conv_forward_f16_c16(
+MLX_LATTICE_CUDA_KERNEL void sparse_conv_forward_f16_c16(
     const __half* feats,
     const __half* weights,
     const int* in_rows,
@@ -112,7 +124,7 @@ __global__ void sparse_conv_forward_f16_c16(
     ConvStrideArgs strides
 );
 
-__global__ void sparse_conv_forward_f16_c32(
+MLX_LATTICE_CUDA_KERNEL void sparse_conv_forward_f16_c32(
     const __half* feats,
     const __half* weights,
     const int* in_rows,
@@ -125,7 +137,7 @@ __global__ void sparse_conv_forward_f16_c32(
     ConvStrideArgs strides
 );
 
-__global__ void sparse_conv_forward_f16_c64(
+MLX_LATTICE_CUDA_KERNEL void sparse_conv_forward_f16_c64(
     const __half* feats,
     const __half* weights,
     const int* in_rows,
@@ -138,7 +150,7 @@ __global__ void sparse_conv_forward_f16_c64(
     ConvStrideArgs strides
 );
 
-__global__ void sparse_conv_input_grad_f32(
+MLX_LATTICE_CUDA_KERNEL void sparse_conv_input_grad_f32(
     const float* cotangent,
     const float* weights,
     const int* in_rows,
@@ -153,7 +165,7 @@ __global__ void sparse_conv_input_grad_f32(
     ConvStrideArgs strides
 );
 
-__global__ void sparse_conv_input_grad_f16(
+MLX_LATTICE_CUDA_KERNEL void sparse_conv_input_grad_f16(
     const __half* cotangent,
     const __half* weights,
     const int* in_rows,
@@ -168,7 +180,7 @@ __global__ void sparse_conv_input_grad_f16(
     ConvStrideArgs strides
 );
 
-__global__ void sparse_conv_weight_grad_f32(
+MLX_LATTICE_CUDA_KERNEL void sparse_conv_weight_grad_f32(
     const float* feats,
     const float* cotangent,
     const int* in_rows,
@@ -183,7 +195,7 @@ __global__ void sparse_conv_weight_grad_f32(
     ConvStrideArgs strides
 );
 
-__global__ void sparse_conv_weight_grad_f16(
+MLX_LATTICE_CUDA_KERNEL void sparse_conv_weight_grad_f16(
     const __half* feats,
     const __half* cotangent,
     const int* in_rows,

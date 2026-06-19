@@ -1,10 +1,18 @@
 #pragma once
 
+#if __has_include(<cuda_runtime_api.h>)
 #include <cuda_runtime_api.h>
+#endif
+
+#ifdef __CUDACC__
+#define MLX_LATTICE_CUDA_KERNEL __global__
+#else
+#define MLX_LATTICE_CUDA_KERNEL
+#endif
 
 namespace mlx_lattice::backend::cuda::pool {
 
-__global__ void sparse_pool_relation_f32_i32(
+MLX_LATTICE_CUDA_KERNEL void sparse_pool_relation_f32_i32(
     const float* feats,
     const int* in_rows,
     const int* out_rows,
@@ -19,7 +27,7 @@ __global__ void sparse_pool_relation_f32_i32(
     int feat_s1
 );
 
-__global__ void sparse_pool_relation_block_sum_f32_i32(
+MLX_LATTICE_CUDA_KERNEL void sparse_pool_relation_block_sum_f32_i32(
     const float* feats,
     const int* in_rows,
     const int* row_offsets,
@@ -31,7 +39,7 @@ __global__ void sparse_pool_relation_block_sum_f32_i32(
     int feat_s1
 );
 
-__global__ void sparse_pool_relation_block_max_f32_i32(
+MLX_LATTICE_CUDA_KERNEL void sparse_pool_relation_block_max_f32_i32(
     const float* feats,
     const int* in_rows,
     const int* row_offsets,
@@ -43,7 +51,7 @@ __global__ void sparse_pool_relation_block_max_f32_i32(
     int feat_s1
 );
 
-__global__ void sparse_pool_relation_block_avg_f32_i32(
+MLX_LATTICE_CUDA_KERNEL void sparse_pool_relation_block_avg_f32_i32(
     const float* feats,
     const int* in_rows,
     const int* row_offsets,
@@ -55,7 +63,7 @@ __global__ void sparse_pool_relation_block_avg_f32_i32(
     int feat_s1
 );
 
-__global__ void sparse_pool_relation_sum_avg_input_grad_f32_i32(
+MLX_LATTICE_CUDA_KERNEL void sparse_pool_relation_sum_avg_input_grad_f32_i32(
     const float* cotangent,
     const float* feats,
     const float* pooled,
@@ -80,7 +88,7 @@ __global__ void sparse_pool_relation_sum_avg_input_grad_f32_i32(
     int pooled_s1
 );
 
-__global__ void sparse_pool_relation_max_input_grad_f32_i32(
+MLX_LATTICE_CUDA_KERNEL void sparse_pool_relation_max_input_grad_f32_i32(
     const float* cotangent,
     const float* feats,
     const float* pooled,
@@ -105,7 +113,7 @@ __global__ void sparse_pool_relation_max_input_grad_f32_i32(
     int pooled_s1
 );
 
-__global__ void sparse_pool_relation_exclusive_input_grad_f32_i32(
+MLX_LATTICE_CUDA_KERNEL void sparse_pool_relation_exclusive_input_grad_f32_i32(
     const float* cotangent,
     const float* feats,
     const float* pooled,
@@ -130,7 +138,7 @@ __global__ void sparse_pool_relation_exclusive_input_grad_f32_i32(
     int pooled_s1
 );
 
-__global__ void sparse_pool_relation_jvp_f32_i32(
+MLX_LATTICE_CUDA_KERNEL void sparse_pool_relation_jvp_f32_i32(
     const float* tangent,
     const float* feats,
     const float* pooled,

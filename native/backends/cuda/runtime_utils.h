@@ -2,7 +2,22 @@
 
 #include <cstddef>
 
+#if __has_include(<cuda_runtime_api.h>)
 #include <cuda_runtime_api.h>
+#else
+struct dim3 {
+    unsigned int x;
+    unsigned int y;
+    unsigned int z;
+
+    constexpr explicit dim3(
+        unsigned int x_value = 1,
+        unsigned int y_value = 1,
+        unsigned int z_value = 1
+    )
+        : x(x_value), y(y_value), z(z_value) {}
+};
+#endif
 
 #include "mlx/array.h"
 #include "mlx/stream.h"

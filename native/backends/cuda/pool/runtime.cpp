@@ -6,9 +6,8 @@
 
 #include "backends/array_utils.h"
 #include "backends/cuda/pool/kernels.cuh"
+#include "backends/cuda/runtime_api.h"
 #include "backends/cuda/runtime_utils.h"
-#include "mlx/backend/cuda/device.h"
-#include "mlx/backend/cuda/utils.h"
 
 namespace mlx_lattice::backend::cuda::pool {
 namespace {

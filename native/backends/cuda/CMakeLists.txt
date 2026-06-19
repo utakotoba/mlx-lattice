@@ -4,13 +4,13 @@ add_library(mlx_lattice_backend_cuda STATIC)
 
 target_sources(
   mlx_lattice_backend_cuda
-  PRIVATE $<$<BOOL:${MLX_LATTICE_HAS_CUDA}>:conv/runtime.cu>
+  PRIVATE $<$<BOOL:${MLX_LATTICE_HAS_CUDA}>:conv/runtime.cpp>
           $<$<BOOL:${MLX_LATTICE_HAS_CUDA}>:conv/kernels.cu>
-          $<$<BOOL:${MLX_LATTICE_HAS_CUDA}>:coords/runtime.cu>
+          $<$<BOOL:${MLX_LATTICE_HAS_CUDA}>:coords/runtime.cpp>
           $<$<BOOL:${MLX_LATTICE_HAS_CUDA}>:coords/kernels.cu>
           $<$<BOOL:${MLX_LATTICE_HAS_CUDA}>:pool/kernels.cu>
-          $<$<BOOL:${MLX_LATTICE_HAS_CUDA}>:pool/runtime.cu>
-          $<$<BOOL:${MLX_LATTICE_HAS_CUDA}>:runtime_utils.cu>
+          $<$<BOOL:${MLX_LATTICE_HAS_CUDA}>:pool/runtime.cpp>
+          $<$<BOOL:${MLX_LATTICE_HAS_CUDA}>:runtime_utils.cpp>
           $<$<NOT:$<BOOL:${MLX_LATTICE_HAS_CUDA}>>:stub.cpp>)
 
 target_include_directories(

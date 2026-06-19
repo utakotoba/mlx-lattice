@@ -1,5 +1,11 @@
 #pragma once
 
+#ifdef __CUDACC__
+#define MLX_LATTICE_CUDA_KERNEL __global__
+#else
+#define MLX_LATTICE_CUDA_KERNEL
+#endif
+
 namespace mlx_lattice::backend::cuda::coords {
 
 struct TripleArgs {
@@ -17,7 +23,7 @@ struct QuantizeArgs {
     float origin_z;
 };
 
-__global__ void set_coords_i32(
+MLX_LATTICE_CUDA_KERNEL void set_coords_i32(
     const int* lhs,
     const int* rhs,
     int* out_coords,
@@ -28,7 +34,7 @@ __global__ void set_coords_i32(
     int rhs_rows
 );
 
-__global__ void lookup_coords_i32(
+MLX_LATTICE_CUDA_KERNEL void lookup_coords_i32(
     const int* coords,
     const int* queries,
     int* out,
@@ -36,9 +42,10 @@ __global__ void lookup_coords_i32(
     int query_rows
 );
 
-__global__ void morton_codes_i32(const int* coords, long long* out, int rows);
+MLX_LATTICE_CUDA_KERNEL void
+morton_codes_i32(const int* coords, long long* out, int rows);
 
-__global__ void occupancy_downsample_i32(
+MLX_LATTICE_CUDA_KERNEL void occupancy_downsample_i32(
     const int* coords,
     const int* active_rows,
     int* out_coords,
@@ -47,7 +54,7 @@ __global__ void occupancy_downsample_i32(
     int rows
 );
 
-__global__ void occupancy_expand_i32(
+MLX_LATTICE_CUDA_KERNEL void occupancy_expand_i32(
     const int* coords,
     const int* active_rows,
     const int* occupancy,
@@ -58,14 +65,14 @@ __global__ void occupancy_expand_i32(
     int rows
 );
 
-__global__ void child_coords_from_indices_i32(
+MLX_LATTICE_CUDA_KERNEL void child_coords_from_indices_i32(
     const int* parent_coords,
     const int* child_indices,
     int* out,
     int rows
 );
 
-__global__ void sparse_quantize_i32(
+MLX_LATTICE_CUDA_KERNEL void sparse_quantize_i32(
     const float* points,
     const int* batch_indices,
     const int* active_rows,
@@ -77,10 +84,11 @@ __global__ void sparse_quantize_i32(
     int rows
 );
 
-__global__ void clear_f32(float* out, int elements);
-__global__ void clear_i32_kernel(int* out, int elements, int value);
+MLX_LATTICE_CUDA_KERNEL void clear_f32(float* out, int elements);
+MLX_LATTICE_CUDA_KERNEL void
+clear_i32_kernel(int* out, int elements, int value);
 
-__global__ void voxelize_features_f32(
+MLX_LATTICE_CUDA_KERNEL void voxelize_features_f32(
     const float* feats,
     const int* inverse_rows,
     const int* voxel_counts,
@@ -92,7 +100,7 @@ __global__ void voxelize_features_f32(
     int channels
 );
 
-__global__ void voxelize_feature_grad_f32(
+MLX_LATTICE_CUDA_KERNEL void voxelize_feature_grad_f32(
     const float* cotangent,
     const int* inverse_rows,
     const int* voxel_counts,
@@ -104,7 +112,7 @@ __global__ void voxelize_feature_grad_f32(
     int channels
 );
 
-__global__ void generic_kernel_relation_i32(
+MLX_LATTICE_CUDA_KERNEL void generic_kernel_relation_i32(
     const int* coords,
     const int* offsets,
     const int* active_rows,
@@ -122,7 +130,7 @@ __global__ void generic_kernel_relation_i32(
     bool direct
 );
 
-__global__ void count_target_kernel_relation_i32(
+MLX_LATTICE_CUDA_KERNEL void count_target_kernel_relation_i32(
     const int* coords,
     const int* offsets,
     const int* active_rows,
@@ -136,14 +144,14 @@ __global__ void count_target_kernel_relation_i32(
     TripleArgs padding
 );
 
-__global__ void prefix_relation_rows_i32(
+MLX_LATTICE_CUDA_KERNEL void prefix_relation_rows_i32(
     int* row_offsets,
     int* counts,
     int row_count,
     int edge_capacity
 );
 
-__global__ void prefix_relation_rows_active_i32(
+MLX_LATTICE_CUDA_KERNEL void prefix_relation_rows_active_i32(
     int* row_offsets,
     int* counts,
     const int* active_rows,
@@ -151,7 +159,7 @@ __global__ void prefix_relation_rows_active_i32(
     int edge_capacity
 );
 
-__global__ void fill_target_kernel_relation_i32(
+MLX_LATTICE_CUDA_KERNEL void fill_target_kernel_relation_i32(
     const int* coords,
     const int* offsets,
     const int* active_rows,
@@ -169,7 +177,7 @@ __global__ void fill_target_kernel_relation_i32(
     TripleArgs padding
 );
 
-__global__ void generative_kernel_relation_i32(
+MLX_LATTICE_CUDA_KERNEL void generative_kernel_relation_i32(
     const int* coords,
     const int* offsets,
     const int* active_rows,
@@ -184,14 +192,14 @@ __global__ void generative_kernel_relation_i32(
     TripleArgs stride
 );
 
-__global__ void clear_relation_grouped_view_i32(
+MLX_LATTICE_CUDA_KERNEL void clear_relation_grouped_view_i32(
     int* row_offsets,
     int* edge_ids,
     int edge_capacity,
     int group_count
 );
 
-__global__ void count_relation_grouped_view_i32(
+MLX_LATTICE_CUDA_KERNEL void count_relation_grouped_view_i32(
     const int* group_ids,
     const int* counts,
     int* row_offsets,
@@ -199,7 +207,7 @@ __global__ void count_relation_grouped_view_i32(
     int group_count
 );
 
-__global__ void fill_relation_grouped_view_i32(
+MLX_LATTICE_CUDA_KERNEL void fill_relation_grouped_view_i32(
     const int* group_ids,
     const int* row_offsets,
     int* row_cursors,
@@ -208,9 +216,10 @@ __global__ void fill_relation_grouped_view_i32(
     int group_count
 );
 
-__global__ void clear_relation_direct_view_i32(int* edge_ids, int group_count);
+MLX_LATTICE_CUDA_KERNEL void
+clear_relation_direct_view_i32(int* edge_ids, int group_count);
 
-__global__ void fill_relation_direct_view_i32(
+MLX_LATTICE_CUDA_KERNEL void fill_relation_direct_view_i32(
     const int* group_ids,
     const int* counts,
     int* edge_ids,
@@ -218,7 +227,7 @@ __global__ void fill_relation_direct_view_i32(
     int group_count
 );
 
-__global__ void neighbor_relation_i32(
+MLX_LATTICE_CUDA_KERNEL void neighbor_relation_i32(
     const int* source_coords,
     const int* query_coords,
     const int* source_active_rows,

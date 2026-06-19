@@ -5,9 +5,8 @@
 
 #include "backends/array_utils.h"
 #include "backends/cuda/coords/kernels.cuh"
+#include "backends/cuda/runtime_api.h"
 #include "backends/cuda/runtime_utils.h"
-#include "mlx/backend/cuda/device.h"
-#include "mlx/backend/cuda/utils.h"
 
 namespace mlx_lattice::backend::cuda::coords {
 namespace {
@@ -345,7 +344,7 @@ void eval_generic_kernel_relation(
     CoordRelationOp op,
     int rows,
     int kernel_count,
-    Triple stride,
+    Triple stride, // NOLINT(bugprone-easily-swappable-parameters)
     Triple padding,
     bool direct,
     const mx::Stream& stream,
@@ -380,7 +379,7 @@ void eval_target_kernel_relation(
     int rows,
     int target_rows,
     int kernel_count,
-    Triple stride,
+    Triple stride, // NOLINT(bugprone-easily-swappable-parameters)
     Triple padding,
     const mx::Stream& stream,
     const std::vector<mx::array>& inputs,
