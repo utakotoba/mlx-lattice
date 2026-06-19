@@ -6,7 +6,7 @@ from typing import Literal
 
 import mlx.core as mx
 
-from mlx_lattice._native import ext
+from mlx_lattice._native import native
 from mlx_lattice.core.coords.validation import validate_coords
 
 type VoxelReduction = Literal['sum', 'mean']
@@ -65,14 +65,16 @@ def sparse_quantize(
     _validate_points(points)
     batches = _batch_indices(batch_indices, points.shape[0])
     point_rows = _active_rows(active_rows, points.shape[0])
-    native = ext.sparse_quantize(
+    voxel = _float_triple(voxel_size, 'voxel_size')
+    offset = _float_triple(origin, 'origin')
+    out = native.sparse_quantize(
         points,
         batches,
         point_rows,
-        _float_triple(voxel_size, 'voxel_size'),
-        _float_triple(origin, 'origin'),
+        voxel,
+        offset,
     )
-    return SparseQuantization(*native)
+    return SparseQuantization(*out)
 
 
 def voxelize_features(
@@ -89,12 +91,13 @@ def voxelize_features(
     if feats.shape[0] != quantization.capacity:
         raise ValueError('feats and quantization metadata must share rows.')
     point_rows = _active_rows(active_rows, feats.shape[0])
-    return ext.voxelize_features(
+    reduce = _validate_reduction(reduction)
+    return native.voxelize_features(
         feats,
         quantization.inverse_rows,
         quantization.counts,
         point_rows,
-        _validate_reduction(reduction),
+        reduce,
     )
 
 

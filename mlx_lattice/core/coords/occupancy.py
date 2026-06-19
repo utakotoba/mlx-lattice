@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import mlx.core as mx
 
-from mlx_lattice._native import ext
+from mlx_lattice._native import native
 from mlx_lattice.core.coords.validation import validate_coords
 
 
@@ -67,7 +67,9 @@ def occupancy_downsample(
 ) -> SparseOccupancy:
     coords = _coords_for_native(coords)
     active_rows = _active_rows_for(coords, active_rows)
-    return SparseOccupancy(*ext.occupancy_downsample(coords, active_rows))
+    return SparseOccupancy(
+        *native.occupancy_downsample(coords, active_rows)
+    )
 
 
 def occupancy_expand(
@@ -81,7 +83,7 @@ def occupancy_expand(
     if occupancy.shape[0] != coords.shape[0]:
         raise ValueError('occupancy must have shape (N,).')
     return OccupancyExpansion(
-        *ext.occupancy_expand(coords, active_rows, occupancy)
+        *native.occupancy_expand(coords, active_rows, occupancy)
     )
 
 
@@ -93,7 +95,7 @@ def child_coords_from_indices(
     _validate_row_array(child_indices, 'child_indices')
     if child_indices.shape[0] != parent_coords.shape[0]:
         raise ValueError('child_indices must have shape (N,).')
-    return ext.child_coords_from_indices(parent_coords, child_indices)
+    return native.child_coords_from_indices(parent_coords, child_indices)
 
 
 def _coords_for_native(coords: mx.array) -> mx.array:

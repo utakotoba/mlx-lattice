@@ -5,7 +5,7 @@ from typing import Literal
 
 import mlx.core as mx
 
-from mlx_lattice._native import ext
+from mlx_lattice._native import native
 from mlx_lattice.core import KernelSpec, SparseTensor
 from mlx_lattice.core.types import Triple
 
@@ -138,14 +138,17 @@ def _fused_pool(
         )
     if relation.out_coords is None:
         raise ValueError('kernel relation is missing output coordinates.')
-    feats = ext.sparse_pool_features(
+    input_exclusive = _input_exclusive(spec)
+    feats = native.sparse_pool_features(
         x.feats,
         relation.edges.in_rows,
         relation.edges.out_rows,
         relation.edges.kernel_ids,
         relation.row_offsets,
         relation.counts,
-        _input_exclusive(spec),
+        relation.in_row_offsets,
+        relation.in_edge_ids,
+        input_exclusive,
         mode,
         relation.n_out_capacity,
         relation.n_kernels,

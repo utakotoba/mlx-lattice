@@ -628,4 +628,194 @@ extern "C" __global__ void sparse_conv_weight_grad_f16(
     );
 }
 
+#define MLX_LATTICE_CONV_FLAT_ARGS                                             \
+    int edge_capacity, int in_capacity, int out_capacity, int n_kernels,       \
+        int in_channels, int out_channels, int weight_layout, int kernel_x,    \
+        int kernel_y, int kernel_z, int feat_s0, int feat_s1, int cot_s0,      \
+        int cot_s1, int weight_s0, int weight_s1, int weight_s2,               \
+        int weight_s3, int weight_s4, int out_s0, int out_s1, int out_s2,      \
+        int out_s3, int out_s4
+
+#define MLX_LATTICE_CONV_SHAPE                                                 \
+    ConvShapeArgs {                                                            \
+        edge_capacity, in_capacity, out_capacity, n_kernels, in_channels,      \
+            out_channels, weight_layout, kernel_x, kernel_y, kernel_z          \
+    }
+
+#define MLX_LATTICE_CONV_STRIDES                                               \
+    ConvStrideArgs {                                                           \
+        feat_s0, feat_s1, cot_s0, cot_s1, weight_s0, weight_s1, weight_s2,     \
+            weight_s3, weight_s4, out_s0, out_s1, out_s2, out_s3, out_s4       \
+    }
+
+extern "C" __global__ void sparse_conv_forward_f32_flat(
+    const float* feats,
+    const float* weights,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    float* out,
+    MLX_LATTICE_CONV_FLAT_ARGS
+) {
+    (void)out_rows;
+    forward_kernel(
+        feats,
+        weights,
+        in_rows,
+        kernel_ids,
+        counts,
+        row_offsets,
+        out,
+        MLX_LATTICE_CONV_SHAPE,
+        MLX_LATTICE_CONV_STRIDES
+    );
+}
+
+extern "C" __global__ void sparse_conv_forward_f16_flat(
+    const __half* feats,
+    const __half* weights,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    __half* out,
+    MLX_LATTICE_CONV_FLAT_ARGS
+) {
+    (void)out_rows;
+    forward_kernel(
+        feats,
+        weights,
+        in_rows,
+        kernel_ids,
+        counts,
+        row_offsets,
+        out,
+        MLX_LATTICE_CONV_SHAPE,
+        MLX_LATTICE_CONV_STRIDES
+    );
+}
+
+extern "C" __global__ void sparse_conv_input_grad_f32_flat(
+    const float* cotangent,
+    const float* weights,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    const int* in_row_offsets,
+    const int* in_edge_ids,
+    float* out,
+    MLX_LATTICE_CONV_FLAT_ARGS
+) {
+    (void)in_rows;
+    (void)row_offsets;
+    input_grad_kernel(
+        cotangent,
+        weights,
+        out_rows,
+        kernel_ids,
+        counts,
+        in_row_offsets,
+        in_edge_ids,
+        out,
+        MLX_LATTICE_CONV_SHAPE,
+        MLX_LATTICE_CONV_STRIDES
+    );
+}
+
+extern "C" __global__ void sparse_conv_input_grad_f16_flat(
+    const __half* cotangent,
+    const __half* weights,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    const int* in_row_offsets,
+    const int* in_edge_ids,
+    __half* out,
+    MLX_LATTICE_CONV_FLAT_ARGS
+) {
+    (void)in_rows;
+    (void)row_offsets;
+    input_grad_kernel(
+        cotangent,
+        weights,
+        out_rows,
+        kernel_ids,
+        counts,
+        in_row_offsets,
+        in_edge_ids,
+        out,
+        MLX_LATTICE_CONV_SHAPE,
+        MLX_LATTICE_CONV_STRIDES
+    );
+}
+
+extern "C" __global__ void sparse_conv_weight_grad_f32_flat(
+    const float* feats,
+    const float* cotangent,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    const int* kernel_row_offsets,
+    const int* kernel_edge_ids,
+    float* out,
+    MLX_LATTICE_CONV_FLAT_ARGS
+) {
+    (void)kernel_ids;
+    (void)row_offsets;
+    weight_grad_kernel(
+        feats,
+        cotangent,
+        in_rows,
+        out_rows,
+        counts,
+        kernel_row_offsets,
+        kernel_edge_ids,
+        out,
+        MLX_LATTICE_CONV_SHAPE,
+        MLX_LATTICE_CONV_STRIDES
+    );
+}
+
+extern "C" __global__ void sparse_conv_weight_grad_f16_flat(
+    const __half* feats,
+    const __half* cotangent,
+    const int* in_rows,
+    const int* out_rows,
+    const int* kernel_ids,
+    const int* counts,
+    const int* row_offsets,
+    const int* kernel_row_offsets,
+    const int* kernel_edge_ids,
+    __half* out,
+    MLX_LATTICE_CONV_FLAT_ARGS
+) {
+    (void)kernel_ids;
+    (void)row_offsets;
+    weight_grad_kernel(
+        feats,
+        cotangent,
+        in_rows,
+        out_rows,
+        counts,
+        kernel_row_offsets,
+        kernel_edge_ids,
+        out,
+        MLX_LATTICE_CONV_SHAPE,
+        MLX_LATTICE_CONV_STRIDES
+    );
+}
+
+#undef MLX_LATTICE_CONV_STRIDES
+#undef MLX_LATTICE_CONV_SHAPE
+#undef MLX_LATTICE_CONV_FLAT_ARGS
+
 } // namespace mlx_lattice::backend::cuda::conv
