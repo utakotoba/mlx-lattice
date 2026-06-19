@@ -1,6 +1,8 @@
 #include "backends/cuda/runtime_utils.h"
 
 #include <algorithm>
+#include <memory>
+#include <vector>
 
 #include "backends/array_utils.h"
 
@@ -18,14 +20,23 @@ Launch1D launch_1d(std::size_t elements, int block_size) {
 }
 
 mx::array make_int32_temp(int elements) {
-    auto out = mx::array(mx::Shape{std::max(elements, 1)}, mx::int32, nullptr);
+    auto out = mx::array(
+        mx::Shape{std::max(elements, 1)},
+        mx::int32,
+        std::shared_ptr<mx::Primitive>{},
+        {}
+    );
     backend::allocate(out);
     return out;
 }
 
 mx::array make_float32_temp(int elements) {
-    auto out =
-        mx::array(mx::Shape{std::max(elements, 1)}, mx::float32, nullptr);
+    auto out = mx::array(
+        mx::Shape{std::max(elements, 1)},
+        mx::float32,
+        std::shared_ptr<mx::Primitive>{},
+        {}
+    );
     backend::allocate(out);
     return out;
 }
