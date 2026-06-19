@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "backends/cpu/coords/algorithms.h"
-#include "backends/gpu.h"
+#include "backends/metal/coords/runtime.h"
 #include "mlx/ops.h"
 #include "mlx/primitives.h"
 #include "ops/coords/streams.h"
@@ -28,16 +28,14 @@ class SparseQuantize final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::cpu::coords::eval_sparse_quantize(
-            spec_, stream(), inputs, outputs
-        );
+        coords::cpu::eval_sparse_quantize(spec_, stream(), inputs, outputs);
     }
 
     void eval_gpu(
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::gpu::coords::eval_sparse_quantize(
+        coords::metal::eval_sparse_quantize(
             spec_, rows_, stream(), inputs, outputs
         );
     }
@@ -82,7 +80,7 @@ class VoxelizeFeatures final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::cpu::coords::eval_voxelize_features(
+        coords::cpu::eval_voxelize_features(
             reduce_, shape_, stream(), inputs, outputs
         );
     }
@@ -91,7 +89,7 @@ class VoxelizeFeatures final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::gpu::coords::eval_voxelize_features(
+        coords::metal::eval_voxelize_features(
             reduce_, shape_, stream(), inputs, outputs
         );
     }
@@ -167,7 +165,7 @@ class VoxelizeFeatureGrad final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::cpu::coords::eval_voxelize_feature_grad(
+        coords::cpu::eval_voxelize_feature_grad(
             reduce_, shape_, stream(), inputs, outputs
         );
     }
@@ -176,7 +174,7 @@ class VoxelizeFeatureGrad final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::gpu::coords::eval_voxelize_feature_grad(
+        coords::metal::eval_voxelize_feature_grad(
             reduce_, shape_, stream(), inputs, outputs
         );
     }

@@ -3,7 +3,6 @@ from __future__ import annotations
 import statistics
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from contextlib import contextmanager
 from dataclasses import dataclass, fields, is_dataclass
 from typing import Any, Literal
 
@@ -106,58 +105,57 @@ def run_case(
     warmup: int,
     repeats: int,
 ) -> BenchmarkResult | None:
-    with _device_default(device):
-        if not case.supports(mode):
-            return None
+    if not case.supports(mode):
+        return None
 
-        fixture = case.setup(params)
-        _force(fixture)
-        execution = _execution_for(case, fixture, mode)
-        _force(execution.prepared)
+    fixture = case.setup(params)
+    _force(fixture)
+    execution = _execution_for(case, fixture, mode)
+    _force(execution.prepared)
 
-        last_output: Any | None = None
-        for _ in range(warmup):
-            last_output = execution.action()
-            _force(last_output)
+    last_output: Any | None = None
+    for _ in range(warmup):
+        last_output = execution.action()
+        _force(last_output)
 
-        samples = []
-        for _ in range(repeats):
-            start = time.perf_counter_ns()
-            last_output = execution.action()
-            _force(last_output)
-            stop = time.perf_counter_ns()
-            samples.append((stop - start) / 1_000_000.0)
+    samples = []
+    for _ in range(repeats):
+        start = time.perf_counter_ns()
+        last_output = execution.action()
+        _force(last_output)
+        stop = time.perf_counter_ns()
+        samples.append((stop - start) / 1_000_000.0)
 
-        sample_tuple = tuple(samples)
-        metric_prepared = execution.prepared
-        metric_output = last_output
-        if mode in ('compiled_hot', 'backward'):
-            metric_prepared = case.prepare(fixture)
-            _force(metric_prepared)
-            metric_output = case.run(metric_prepared)
-            _force(metric_output)
-        workload = _derive_workload_metrics(
-            params,
-            fixture=fixture,
-            prepared=metric_prepared,
-            output=metric_output,
-        )
-        return BenchmarkResult(
-            case=case.name,
-            group=case.group,
-            mode=mode,
-            device=device,
-            params=dict(params),
-            warmup=warmup,
-            repeats=repeats,
-            median_ms=statistics.median(sample_tuple),
-            min_ms=min(sample_tuple),
-            p90_ms=_percentile(sample_tuple, 90),
-            p95_ms=_percentile(sample_tuple, 95),
-            samples_ms=sample_tuple,
-            workload=workload,
-            units=_derive_units(sample_tuple, params, workload, case.units),
-        )
+    sample_tuple = tuple(samples)
+    metric_prepared = execution.prepared
+    metric_output = last_output
+    if mode in ('compiled_hot', 'backward'):
+        metric_prepared = case.prepare(fixture)
+        _force(metric_prepared)
+        metric_output = case.run(metric_prepared)
+        _force(metric_output)
+    workload = _derive_workload_metrics(
+        params,
+        fixture=fixture,
+        prepared=metric_prepared,
+        output=metric_output,
+    )
+    return BenchmarkResult(
+        case=case.name,
+        group=case.group,
+        mode=mode,
+        device=device,
+        params=dict(params),
+        warmup=warmup,
+        repeats=repeats,
+        median_ms=statistics.median(sample_tuple),
+        min_ms=min(sample_tuple),
+        p90_ms=_percentile(sample_tuple, 90),
+        p95_ms=_percentile(sample_tuple, 95),
+        samples_ms=sample_tuple,
+        workload=workload,
+        units=_derive_units(sample_tuple, params, workload, case.units),
+    )
 
 
 def run_cases(
@@ -242,24 +240,6 @@ def _execution_for(
     fn, args = case.backward(fixture)
     _force(args)
     return _Execution(action=lambda: fn(*args), prepared=args)
-
-
-@contextmanager
-def _device_default(device: str):
-    previous = mx.default_device()
-    try:
-        mx.set_default_device(_device_for_name(device))
-        yield
-    finally:
-        mx.set_default_device(previous)
-
-
-def _device_for_name(device: str):
-    if device == 'cpu':
-        return mx.cpu
-    if device in {'metal', 'cuda', 'gpu'}:
-        return mx.gpu
-    raise ValueError(f'unknown benchmark device {device!r}.')
 
 
 def _force(value: Any) -> None:

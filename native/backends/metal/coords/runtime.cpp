@@ -13,7 +13,7 @@
 #include "mlx/backend/metal/device.h"
 #endif
 
-namespace mlx_lattice::backend::metal::coords {
+namespace mlx_lattice::coords::metal {
 
 namespace {
 
@@ -142,7 +142,7 @@ void encode_stable_compact_offsets(
     StableCompactBuffers& buffers,
     int rows
 ) {
-    keep_temporaries(encoder, {buffers.local_offsets, buffers.block_offsets});
+    encoder.add_temporaries({buffers.local_offsets, buffers.block_offsets});
     auto scan =
         device.get_kernel("scan_coord_set_selected_blocks_i32", library);
     encoder.set_compute_pipeline_state(scan);
@@ -174,7 +174,7 @@ void encode_relation_compact_offsets(
     StableCompactBuffers& buffers,
     int rows
 ) {
-    keep_temporaries(encoder, {buffers.local_offsets, buffers.block_offsets});
+    encoder.add_temporaries({buffers.local_offsets, buffers.block_offsets});
     auto scan =
         device.get_kernel("scan_coord_set_selected_blocks_i32", library);
     encoder.set_compute_pipeline_state(scan);
@@ -216,7 +216,7 @@ void encode_neighbor_row_offsets(
     }
 
     auto buffers = make_stable_compact_buffers(query_rows);
-    keep_temporaries(encoder, {buffers.local_offsets, buffers.block_offsets});
+    encoder.add_temporaries({buffers.local_offsets, buffers.block_offsets});
     auto scan =
         device.get_kernel("scan_relation_row_degrees_blocks_i32", library);
     encoder.set_compute_pipeline_state(scan);
@@ -291,7 +291,7 @@ void encode_relation_grouped_view(
     RelationGroupedViewShape shape
 ) {
     auto cursors = make_int32_temp(shape.group_count + 1);
-    keep_temporaries(encoder, {cursors});
+    encoder.add_temporaries({cursors});
 
     auto clear = device.get_kernel("clear_relation_grouped_view_i32", library);
     encoder.set_compute_pipeline_state(clear);
@@ -313,8 +313,8 @@ void encode_relation_grouped_view(
     if (shape.group_count >= kParallelCompactThreshold) {
         auto buffers = make_stable_compact_buffers(shape.group_count);
         auto total_count = make_int32_temp(1);
-        keep_temporaries(
-            encoder, {buffers.local_offsets, buffers.block_offsets, total_count}
+        encoder.add_temporaries(
+            {buffers.local_offsets, buffers.block_offsets, total_count}
         );
 
         auto scan =
@@ -409,8 +409,8 @@ void compact_forward_relation_slots(
     if (shape.rows >= kParallelCompactThreshold) {
         auto row_degrees = make_int32_temp(shape.rows);
         auto buffers = make_stable_compact_buffers(shape.rows);
-        keep_temporaries(
-            encoder, {row_degrees, buffers.local_offsets, buffers.block_offsets}
+        encoder.add_temporaries(
+            {row_degrees, buffers.local_offsets, buffers.block_offsets}
         );
 
         auto count = device.get_kernel(
@@ -550,13 +550,13 @@ void eval_set_coords(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
 
     if (op == CoordSetOp::Downsample) {
         auto table_capacity = coord_hash_capacity(shape.lhs_rows);
         auto table = make_int32_temp(table_capacity);
         auto selected = make_int32_temp(shape.lhs_rows);
-        keep_temporaries(encoder, {table, selected});
+        encoder.add_temporaries({table, selected});
         clear_coord_hash(device, library, encoder, table, table_capacity);
         auto build =
             device.get_kernel("build_downsample_coord_hash_i32", library);
@@ -621,7 +621,7 @@ void eval_set_coords(
         auto lhs_table = make_int32_temp(lhs_table_capacity);
         auto rhs_table = make_int32_temp(rhs_table_capacity);
         auto selected = make_int32_temp(total_rows);
-        keep_temporaries(encoder, {lhs_table, rhs_table, selected});
+        encoder.add_temporaries({lhs_table, rhs_table, selected});
         clear_coord_hash(
             device, library, encoder, lhs_table, lhs_table_capacity
         );
@@ -696,7 +696,7 @@ void eval_set_coords(
         auto rhs_table = make_int32_temp(rhs_table_capacity);
         auto lhs_table = make_int32_temp(lhs_table_capacity);
         auto selected = make_int32_temp(shape.lhs_rows);
-        keep_temporaries(encoder, {rhs_table, lhs_table, selected});
+        encoder.add_temporaries({rhs_table, lhs_table, selected});
         clear_coord_hash(
             device, library, encoder, rhs_table, rhs_table_capacity
         );
@@ -793,10 +793,10 @@ void eval_lookup_coords(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
     auto table_capacity = coord_hash_capacity(shape.rows);
     auto table = make_int32_temp(table_capacity);
-    keep_temporary(encoder, table);
+    encoder.add_temporary(table);
     clear_coord_hash(device, library, encoder, table, table_capacity);
     insert_coord_hash(
         device,
@@ -840,7 +840,7 @@ void eval_morton_codes(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
     auto kernel = device.get_kernel("morton_codes_i32", library);
     encoder.set_compute_pipeline_state(kernel);
     encoder.set_input_array(inputs[0], 0);
@@ -870,11 +870,11 @@ void eval_occupancy_downsample(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
     auto table_capacity = coord_hash_capacity(shape.rows);
     auto table = make_int32_temp(table_capacity);
     auto selected = make_int32_temp(shape.rows);
-    keep_temporaries(encoder, {table, selected});
+    encoder.add_temporaries({table, selected});
     clear_coord_hash(device, library, encoder, table, table_capacity);
 
     auto clear = device.get_kernel("clear_occupancy_downsample_i32", library);
@@ -953,10 +953,10 @@ void eval_occupancy_expand(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
     auto total_rows = shape.rows * 8;
     auto selected = make_int32_temp(total_rows);
-    keep_temporary(encoder, selected);
+    encoder.add_temporary(selected);
 
     auto plan = device.get_kernel("plan_occupancy_expand_i32", library);
     encoder.set_compute_pipeline_state(plan);
@@ -1006,7 +1006,7 @@ void eval_child_coords_from_indices(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
     auto kernel = device.get_kernel("child_coords_from_indices_i32", library);
     encoder.set_compute_pipeline_state(kernel);
     encoder.set_input_array(inputs[0], 0);
@@ -1042,13 +1042,13 @@ void eval_sparse_quantize(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
     auto table_capacity = coord_hash_capacity(rows);
     auto table = make_int32_temp(table_capacity);
     auto quantized_coords = make_int32_temp(rows * 4);
     auto selected = make_int32_temp(rows);
     auto compact_buffers = make_stable_compact_buffers(rows);
-    keep_temporaries(encoder, {table, quantized_coords, selected});
+    encoder.add_temporaries({table, quantized_coords, selected});
     clear_coord_hash(device, library, encoder, table, table_capacity);
 
     auto clear = device.get_kernel("clear_sparse_quantization_i32", library);
@@ -1149,7 +1149,7 @@ void eval_voxelize_features(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
     auto elements = shape.voxel_rows * shape.channels;
     auto clear = device.get_kernel("clear_voxelized_features_f32", library);
     encoder.set_compute_pipeline_state(clear);
@@ -1200,7 +1200,7 @@ void eval_voxelize_feature_grad(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
     auto kernel = device.get_kernel("voxelize_feature_grad_f32_i32", library);
 
     encoder.set_compute_pipeline_state(kernel);
@@ -1247,7 +1247,7 @@ void eval_generic_kernel_relation(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
 
     if (op == CoordRelationOp::Forward &&
         outputs.size() > RelationBaseOutputCount) {
@@ -1274,7 +1274,7 @@ void eval_generic_kernel_relation(
         if (!is_identity_forward_relation(stride, padding)) {
             auto out_table = make_int32_temp(table_capacity);
             auto selected = make_int32_temp(rows);
-            keep_temporaries(encoder, {out_table, selected});
+            encoder.add_temporaries({out_table, selected});
             clear_coord_hash(
                 device, library, encoder, out_table, table_capacity
             );
@@ -1346,8 +1346,8 @@ void eval_generic_kernel_relation(
             auto slot_in_rows = make_int32_temp(rows * kernel_count);
             auto slot_out_rows = make_int32_temp(rows * kernel_count);
             auto slot_kernel_ids = make_int32_temp(rows * kernel_count);
-            keep_temporaries(
-                encoder, {slot_in_rows, slot_out_rows, slot_kernel_ids}
+            encoder.add_temporaries(
+                {slot_in_rows, slot_out_rows, slot_kernel_ids}
             );
 
             auto slots = device.get_kernel(
@@ -1394,8 +1394,8 @@ void eval_generic_kernel_relation(
 
         auto row_degrees = make_int32_temp(rows);
         auto buffers = make_stable_compact_buffers(rows);
-        keep_temporaries(
-            encoder, {row_degrees, buffers.local_offsets, buffers.block_offsets}
+        encoder.add_temporaries(
+            {row_degrees, buffers.local_offsets, buffers.block_offsets}
         );
 
         auto count = device.get_kernel(
@@ -1537,7 +1537,7 @@ void eval_target_kernel_relation(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
     auto table_capacity =
         static_cast<int>(outputs[RelationBaseOutputCount].shape(0));
     clear_coord_hash(
@@ -1561,7 +1561,7 @@ void eval_target_kernel_relation(
     auto slot_in_rows = make_int32_temp(target_rows * kernel_count);
     auto slot_out_rows = make_int32_temp(target_rows * kernel_count);
     auto slot_kernel_ids = make_int32_temp(target_rows * kernel_count);
-    keep_temporaries(encoder, {slot_in_rows, slot_out_rows, slot_kernel_ids});
+    encoder.add_temporaries({slot_in_rows, slot_out_rows, slot_kernel_ids});
 
     auto slots =
         device.get_kernel("build_target_forward_relation_slots_i32", library);
@@ -1633,7 +1633,7 @@ void eval_generative_kernel_relation(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
     auto kernel =
         device.get_kernel("build_generative_kernel_relation_i32", library);
     auto group = std::min(
@@ -1677,7 +1677,7 @@ void eval_relation_grouped_view(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
     encode_relation_grouped_view(
         device, library, encoder, inputs, outputs, shape
     );
@@ -1703,7 +1703,7 @@ void eval_relation_direct_view(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
     encode_relation_direct_view(
         device, library, encoder, inputs, outputs, shape
     );
@@ -1738,7 +1738,7 @@ void eval_neighbor_relation(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
     auto clear = device.get_kernel("build_neighbor_relation_i32", library);
     constexpr int kKnnHashThreshold = 512;
     auto use_knn_hash = op == NeighborRelationOp::Knn &&
@@ -1768,7 +1768,7 @@ void eval_neighbor_relation(
     if (use_knn_hash) {
         auto table_capacity = coord_hash_capacity(shape.source_rows);
         auto table = make_int32_temp(table_capacity);
-        keep_temporary(encoder, table);
+        encoder.add_temporary(table);
         clear_coord_hash(device, library, encoder, table, table_capacity);
 
         auto insert =
@@ -1845,7 +1845,7 @@ void eval_neighbor_relation(
     } else if (use_radius_hash) {
         auto table_capacity = coord_hash_capacity(shape.source_rows);
         auto table = make_int32_temp(table_capacity);
-        keep_temporary(encoder, table);
+        encoder.add_temporary(table);
         clear_coord_hash(device, library, encoder, table, table_capacity);
 
         auto insert =
@@ -1938,4 +1938,4 @@ void eval_neighbor_relation(
 #endif
 }
 
-} // namespace mlx_lattice::backend::metal::coords
+} // namespace mlx_lattice::coords::metal

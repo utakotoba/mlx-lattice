@@ -6,7 +6,7 @@ from typing import Literal
 
 import mlx.core as mx
 
-from mlx_lattice._native import native
+from mlx_lattice._native import ext
 from mlx_lattice.core.coords.validation import validate_coords
 
 type VoxelReduction = Literal['sum', 'mean']
@@ -65,16 +65,14 @@ def sparse_quantize(
     _validate_points(points)
     batches = _batch_indices(batch_indices, points.shape[0])
     point_rows = _active_rows(active_rows, points.shape[0])
-    voxel = _float_triple(voxel_size, 'voxel_size')
-    offset = _float_triple(origin, 'origin')
-    out = native.sparse_quantize(
+    native = ext.sparse_quantize(
         points,
         batches,
         point_rows,
-        voxel,
-        offset,
+        _float_triple(voxel_size, 'voxel_size'),
+        _float_triple(origin, 'origin'),
     )
-    return SparseQuantization(*out)
+    return SparseQuantization(*native)
 
 
 def voxelize_features(
@@ -91,13 +89,12 @@ def voxelize_features(
     if feats.shape[0] != quantization.capacity:
         raise ValueError('feats and quantization metadata must share rows.')
     point_rows = _active_rows(active_rows, feats.shape[0])
-    reduce = _validate_reduction(reduction)
-    return native.voxelize_features(
+    return ext.voxelize_features(
         feats,
         quantization.inverse_rows,
         quantization.counts,
         point_rows,
-        reduce,
+        _validate_reduction(reduction),
     )
 
 
@@ -133,7 +130,7 @@ def _float_triple(
     name: str,
 ) -> tuple[float, float, float]:
     if isinstance(value, int | float):
-        values = (float(value), float(value), float(value))
+        return (float(value), float(value), float(value))
     else:
         raw = tuple(float(item) for item in value)
         if len(raw) != 3:

@@ -72,8 +72,8 @@ void encode(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
-    keep_temporary(encoder, partials);
+    auto& encoder = mx::metal::get_command_encoder(stream);
+    encoder.add_temporary(partials);
 
     auto contract = device.get_kernel(
         is_float16(inputs[0])

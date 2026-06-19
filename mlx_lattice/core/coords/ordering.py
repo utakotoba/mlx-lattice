@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import mlx.core as mx
 
-from mlx_lattice._native import native
+from mlx_lattice._native import ext
 from mlx_lattice.core.coords.validation import validate_coords
 
 
@@ -34,10 +34,9 @@ class CoordinateOrdering:
 
 def morton_codes(coords: mx.array) -> mx.array:
     validate_coords(coords)
-    native_coords = (
-        coords if coords.dtype == mx.int32 else coords.astype(mx.int32)
-    )
-    return native.morton_codes(native_coords)
+    if coords.dtype == mx.int32:
+        return ext.morton_codes(coords)
+    return ext.morton_codes(coords.astype(mx.int32))
 
 
 def morton_order(coords: mx.array) -> mx.array:

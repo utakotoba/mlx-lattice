@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "backends/cpu/coords/algorithms.h"
-#include "backends/gpu.h"
+#include "backends/metal/coords/runtime.h"
 #include "mlx/ops.h"
 #include "mlx/primitives.h"
 #include "ops/coords/streams.h"
@@ -33,16 +33,14 @@ class OccupancyDownsample final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::cpu::coords::eval_occupancy_downsample(
-            stream(), inputs, outputs
-        );
+        coords::cpu::eval_occupancy_downsample(stream(), inputs, outputs);
     }
 
     void eval_gpu(
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::gpu::coords::eval_occupancy_downsample(
+        coords::metal::eval_occupancy_downsample(
             shape_, stream(), inputs, outputs
         );
     }
@@ -70,16 +68,14 @@ class OccupancyExpand final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::cpu::coords::eval_occupancy_expand(stream(), inputs, outputs);
+        coords::cpu::eval_occupancy_expand(stream(), inputs, outputs);
     }
 
     void eval_gpu(
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::gpu::coords::eval_occupancy_expand(
-            shape_, stream(), inputs, outputs
-        );
+        coords::metal::eval_occupancy_expand(shape_, stream(), inputs, outputs);
     }
 
     const char* name() const override { return "lattice::OccupancyExpand"; }
@@ -105,16 +101,14 @@ class ChildCoordsFromIndices final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::cpu::coords::eval_child_coords_from_indices(
-            stream(), inputs, outputs
-        );
+        coords::cpu::eval_child_coords_from_indices(stream(), inputs, outputs);
     }
 
     void eval_gpu(
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::gpu::coords::eval_child_coords_from_indices(
+        coords::metal::eval_child_coords_from_indices(
             shape_, stream(), inputs, outputs
         );
     }

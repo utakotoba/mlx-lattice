@@ -105,7 +105,7 @@ void eval_jvp(
 
 } // namespace mlx_lattice::backend::metal::pool
 
-namespace mlx_lattice::backend::metal::coords {
+namespace mlx_lattice::coords::metal {
 
 void eval_set_coords(
     CoordSetOp op,
@@ -338,4 +338,4 @@ void eval_neighbor_relation(
     unavailable();
 }
 
-} // namespace mlx_lattice::backend::metal::coords
+} // namespace mlx_lattice::coords::metal

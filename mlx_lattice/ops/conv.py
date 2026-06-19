@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 import mlx.core as mx
 
-from mlx_lattice._native import native
+from mlx_lattice._native import ext
 from mlx_lattice.core import CoordinateMapKey, KernelSpec, SparseTensor
 from mlx_lattice.core.types import Triple
 
@@ -162,7 +162,7 @@ def _relation_conv(
             'kernel relation is missing static shape metadata.'
         )
 
-    feats = native.sparse_conv_features(
+    feats = ext.sparse_conv_features(
         x.feats,
         weight,
         relation.edges.in_rows,

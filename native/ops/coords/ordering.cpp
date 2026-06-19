@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "backends/cpu/coords/algorithms.h"
-#include "backends/gpu.h"
+#include "backends/metal/coords/runtime.h"
 #include "mlx/ops.h"
 #include "mlx/primitives.h"
 #include "ops/coords/streams.h"
@@ -23,16 +23,14 @@ class MortonCodes final : public mx::Primitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::cpu::coords::eval_morton_codes(stream(), inputs, outputs);
+        coords::cpu::eval_morton_codes(stream(), inputs, outputs);
     }
 
     void eval_gpu(
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::gpu::coords::eval_morton_codes(
-            shape_, stream(), inputs, outputs
-        );
+        coords::metal::eval_morton_codes(shape_, stream(), inputs, outputs);
     }
 
     const char* name() const override { return "lattice::MortonCodes"; }

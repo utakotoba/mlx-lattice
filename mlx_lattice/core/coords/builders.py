@@ -5,7 +5,7 @@ from collections.abc import Sequence
 
 import mlx.core as mx
 
-from mlx_lattice._native import native
+from mlx_lattice._native import ext
 from mlx_lattice.core.coords.validation import validate_coords
 from mlx_lattice.core.relations import (
     KernelRelation,
@@ -57,7 +57,7 @@ def build_target_kernel_relation(
         dilation=dilation,
     )
     offsets = kernel_offsets(spec.size, spec.dilation)
-    native_relation = native.build_target_kernel_relation(
+    native = ext.build_target_kernel_relation(
         coords,
         _active_rows(active_rows, coords),
         target_coords,
@@ -68,7 +68,7 @@ def build_target_kernel_relation(
         spec.dilation,
     )
     return _kernel_relation_from_native(
-        native_relation,
+        native,
         offsets=offsets,
         in_capacity=int(coords.shape[0]),
     )
@@ -115,7 +115,7 @@ def build_kernel_relation(
         dilation=dilation,
     )
     offsets = kernel_offsets(spec.size, spec.dilation)
-    native_relation = native.build_kernel_relation(
+    native = ext.build_kernel_relation(
         coords,
         _active_rows(active_rows, coords),
         spec.size,
@@ -124,7 +124,7 @@ def build_kernel_relation(
         spec.dilation,
     )
     return _kernel_relation_from_native(
-        native_relation,
+        native,
         offsets=offsets,
         in_capacity=int(coords.shape[0]),
     )
@@ -143,14 +143,14 @@ def build_generative_relation(
     _require_positive(step, 'stride')
 
     offsets = kernel_offsets(kernel)
-    native_relation = native.build_generative_relation(
+    native = ext.build_generative_relation(
         coords,
         _active_rows(active_rows, coords),
         kernel,
         step,
     )
     return _kernel_relation_from_native(
-        native_relation,
+        native,
         offsets=offsets,
         in_capacity=int(coords.shape[0]),
     )
@@ -175,7 +175,7 @@ def build_transposed_kernel_relation(
     _require_positive(rate, 'dilation')
 
     offsets = kernel_offsets(kernel, rate)
-    native_relation = native.build_transposed_kernel_relation(
+    native = ext.build_transposed_kernel_relation(
         coords,
         _active_rows(active_rows, coords),
         kernel,
@@ -184,7 +184,7 @@ def build_transposed_kernel_relation(
         rate,
     )
     return _kernel_relation_from_native(
-        native_relation,
+        native,
         offsets=offsets,
         in_capacity=int(coords.shape[0]),
     )
@@ -209,7 +209,7 @@ def build_knn_relation(
     validate_coords(query_coords)
     _require_matching_coord_dtype(source_coords, query_coords)
     neighbor_count = _positive_int(k, 'k')
-    native_relation = native.build_knn_relation(
+    native = ext.build_knn_relation(
         source_coords,
         source_active_rows,
         query_coords,
@@ -217,7 +217,7 @@ def build_knn_relation(
         neighbor_count,
     )
     return _neighbor_relation_from_native(
-        native_relation,
+        native,
         query_capacity=int(query_coords.shape[0]),
         source_capacity=int(source_coords.shape[0]),
         max_neighbors=neighbor_count,
@@ -249,7 +249,7 @@ def build_radius_relation(
         if max_neighbors is None
         else _positive_int(max_neighbors, 'max_neighbors')
     )
-    native_relation = native.build_radius_relation(
+    native = ext.build_radius_relation(
         source_coords,
         source_active_rows,
         query_coords,
@@ -258,7 +258,7 @@ def build_radius_relation(
         neighbor_count,
     )
     return _neighbor_relation_from_native(
-        native_relation,
+        native,
         query_capacity=int(query_coords.shape[0]),
         source_capacity=int(source_coords.shape[0]),
         max_neighbors=(

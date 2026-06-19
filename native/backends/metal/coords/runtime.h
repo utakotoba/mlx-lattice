@@ -5,7 +5,7 @@
 #include "mlx/stream.h"
 #include "ops/coords/types.h"
 
-namespace mlx_lattice::backend::metal::coords {
+namespace mlx_lattice::coords::metal {
 
 void eval_set_coords(
     CoordSetOp op,
@@ -130,4 +130,4 @@ void eval_neighbor_relation(
     std::vector<mx::array>& outputs
 );
 
-} // namespace mlx_lattice::backend::metal::coords
+} // namespace mlx_lattice::coords::metal

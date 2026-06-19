@@ -87,7 +87,7 @@ void eval(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
     auto kernel = device.get_kernel("sparse_pool_relation_f32_i32", library);
     encoder.set_compute_pipeline_state(kernel);
     for (int index = 0; index < 6; ++index) {
@@ -124,7 +124,7 @@ void eval_grad(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
 
     auto kernel_name = "sparse_pool_relation_sum_avg_input_grad_f32_i32";
     if (shape.input_exclusive) {
@@ -168,7 +168,7 @@ void eval_jvp(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
     auto kernel =
         device.get_kernel("sparse_pool_relation_jvp_f32_i32", library);
     encoder.set_compute_pipeline_state(kernel);

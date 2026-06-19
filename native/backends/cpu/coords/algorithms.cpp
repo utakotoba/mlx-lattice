@@ -13,7 +13,7 @@
 #include "backends/array_utils.h"
 #include "backends/cpu/schedule.h"
 
-namespace mlx_lattice::backend::cpu::coords {
+namespace mlx_lattice::coords::cpu {
 
 namespace {
 
@@ -1363,4 +1363,4 @@ void eval_neighbor_relation(
     );
 }
 
-} // namespace mlx_lattice::backend::cpu::coords
+} // namespace mlx_lattice::coords::cpu

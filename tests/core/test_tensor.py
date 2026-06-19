@@ -14,7 +14,7 @@ from mlx_lattice.ops import (
     sparse_collate,
     topk_rows,
 )
-from tests.support import BackendRun, mx
+from tests.support import mx
 
 
 def test_sparse_tensor_owns_identity_and_validates_shape() -> None:
@@ -72,32 +72,27 @@ def test_sparse_tensor_reuses_and_rejects_coordinate_ownership() -> None:
         )
 
 
-def test_sparse_tensor_coordinate_queries_and_feature_replacement(
-    backend: BackendRun,
-) -> None:
-    def run() -> None:
-        coords = mx.array(
-            [[0, 0, 0, 0], [0, 1, 0, 0], [1, 0, 0, 0]],
-            dtype=mx.int32,
-        )
-        x = SparseTensor(coords, mx.ones((3, 1), dtype=mx.float32))
-        queries = mx.array(
-            [[0, 1, 0, 0], [0, 2, 0, 0], [1, 0, 0, 0]],
-            dtype=mx.int32,
-        )
+def test_sparse_tensor_coordinate_queries_and_feature_replacement() -> None:
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 1, 0, 0], [1, 0, 0, 0]],
+        dtype=mx.int32,
+    )
+    x = SparseTensor(coords, mx.ones((3, 1), dtype=mx.float32))
+    queries = mx.array(
+        [[0, 1, 0, 0], [0, 2, 0, 0], [1, 0, 0, 0]],
+        dtype=mx.int32,
+    )
 
-        out = x.replace(feats=x.feats + 1).astype(mx.float16)
+    out = x.replace(feats=x.feats + 1).astype(mx.float16)
 
-        assert lookup_coords(x.coords, queries).tolist() == [1, -1, 2]
-        assert contains_coords(x.coords, queries).tolist() == [
-            True,
-            False,
-            True,
-        ]
-        assert out.dtype == mx.float16
-        assert out.coord_key == x.coord_key
-
-    backend(run)
+    assert lookup_coords(x.coords, queries).tolist() == [1, -1, 2]
+    assert contains_coords(x.coords, queries).tolist() == [
+        True,
+        False,
+        True,
+    ]
+    assert out.dtype == mx.float16
+    assert out.coord_key == x.coord_key
 
 
 def test_tensor_ops_preserve_or_create_identity_intentionally() -> None:

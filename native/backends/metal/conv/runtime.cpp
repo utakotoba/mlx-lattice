@@ -269,7 +269,7 @@ void encode_weight_grad_classic(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
 
     auto fp16 = is_float16(inputs[0]);
     auto use_block4 = shape.in_channels % 4 == 0 &&
@@ -376,7 +376,7 @@ void eval(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
 
     auto fp16 = is_float16(inputs[0]);
     auto use_cout16 = shape.out_channels == 16 &&
@@ -457,7 +457,7 @@ void eval_input_grad(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
 
     auto fp16 = is_float16(inputs[0]);
     auto use_dense_c = shape.in_capacity >= 4096 &&

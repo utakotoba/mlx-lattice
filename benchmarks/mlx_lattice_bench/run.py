@@ -98,7 +98,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         '--device',
-        choices=('cpu', 'metal', 'cuda', 'all'),
+        choices=('cpu', 'metal', 'all'),
         default='cpu',
         help='backend device selection',
     )
@@ -217,9 +217,9 @@ def _import_runtime(*, preload_native: bool) -> _Runtime:
 
 
 def _preload_native_extension() -> None:
-    from mlx_lattice._native import native
+    from mlx_lattice._native import ext
 
-    native.preload()
+    ext.version()
 
 
 @contextmanager

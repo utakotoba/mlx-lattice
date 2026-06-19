@@ -15,7 +15,6 @@ nb::dict capabilities_dict() {
     nb::dict out;
     out["cpu"] = caps.cpu;
     out["metal"] = caps.metal;
-    out["cuda"] = caps.cuda;
     return out;
 }
 

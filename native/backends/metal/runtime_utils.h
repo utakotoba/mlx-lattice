@@ -12,7 +12,6 @@ std::string binary_dir();
 
 #ifdef _METAL_
 #include <algorithm>
-#include <initializer_list>
 
 #include "mlx/backend/metal/device.h"
 
@@ -31,30 +30,5 @@ template <typename Encoder, typename... Values>
 void set_bytes_range(Encoder& encoder, int first, Values&&... values) {
     int index = first;
     (encoder.set_bytes(std::forward<Values>(values), index++), ...);
-}
-
-template <typename Encoder, typename Array>
-void keep_temporary(Encoder& encoder, const Array& array) {
-    if constexpr (requires { encoder.add_temporary(array); }) {
-        encoder.add_temporary(array);
-    }
-}
-
-template <typename Encoder, typename Arrays>
-void keep_temporaries(Encoder& encoder, const Arrays& arrays) {
-    if constexpr (requires { encoder.add_temporaries(arrays); }) {
-        encoder.add_temporaries(arrays);
-    }
-}
-
-template <typename Encoder, typename Array>
-void keep_temporaries(Encoder& encoder, std::initializer_list<Array> arrays) {
-    if constexpr (requires { encoder.add_temporaries(arrays); }) {
-        encoder.add_temporaries(arrays);
-    } else {
-        for (const auto& array : arrays) {
-            keep_temporary(encoder, array);
-        }
-    }
 }
 #endif

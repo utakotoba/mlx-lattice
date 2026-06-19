@@ -16,16 +16,14 @@ class BenchDevice:
 
 
 def available_devices(selection: str) -> tuple[BenchDevice, ...]:
-    if selection not in ('cpu', 'metal', 'cuda', 'all'):
-        raise ValueError("device must be 'cpu', 'metal', 'cuda', or 'all'.")
+    if selection not in ('cpu', 'metal', 'all'):
+        raise ValueError("device must be 'cpu', 'metal', or 'all'.")
 
     devices = []
     if selection in ('cpu', 'all'):
         devices.append(BenchDevice('cpu', mx.Device(mx.cpu)))
     if selection in ('metal', 'all') and metal_available():
         devices.append(BenchDevice('metal', mx.Device(mx.gpu)))
-    if selection in ('cuda', 'all') and cuda_available():
-        devices.append(BenchDevice('cuda', mx.Device(mx.gpu)))
     return tuple(devices)
 
 
@@ -35,14 +33,6 @@ def metal_available() -> bool:
     if not capabilities.get('metal', False):
         return False
     return hasattr(mx, 'metal') and mx.metal.is_available()
-
-
-def cuda_available() -> bool:
-    info = cast('dict[str, Any]', backend_info())
-    capabilities = cast('dict[str, bool]', info['capabilities'])
-    if not capabilities.get('cuda', False):
-        return False
-    return hasattr(mx, 'cuda') and mx.cuda.is_available()
 
 
 @contextmanager

@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "backends/cpu/pool/algorithms.h"
-#include "backends/gpu.h"
+#include "backends/metal/pool/runtime.h"
 #include "mlx/ops.h"
 #include "ops/coords/factories.h"
 #include "ops/exec/primitive.h"
@@ -63,7 +63,7 @@ class SparsePoolFeatures final : public SparsePrimitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::gpu::pool::eval(reduce_, shape_, stream(), inputs, outputs);
+        backend::metal::pool::eval(reduce_, shape_, stream(), inputs, outputs);
     }
 
     const char* name() const override { return "lattice::SparsePoolFeatures"; }
@@ -196,7 +196,7 @@ class SparsePoolFeaturesGrad : public SparsePrimitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::gpu::pool::eval_grad(
+        backend::metal::pool::eval_grad(
             reduce_, shape_, stream(), inputs, outputs
         );
     }
@@ -235,7 +235,7 @@ class SparsePoolFeaturesJvp final : public SparsePoolFeaturesGrad {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::gpu::pool::eval_jvp(
+        backend::metal::pool::eval_jvp(
             reduce_, shape_, stream(), inputs, outputs
         );
     }

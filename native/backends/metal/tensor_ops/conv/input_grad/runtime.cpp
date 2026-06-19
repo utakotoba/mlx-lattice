@@ -41,7 +41,7 @@ void encode(
     auto& device = mx::metal::device(stream.device);
     auto library =
         device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
-    auto& encoder = device.get_command_encoder(stream.index);
+    auto& encoder = mx::metal::get_command_encoder(stream);
 
     auto kernel = device.get_kernel(
         "sparse_relation_conv_input_grad_tensor_ops_f32_i32", library
