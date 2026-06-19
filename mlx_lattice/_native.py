@@ -191,9 +191,12 @@ native = NativeOps()
 
 
 def backend_info() -> dict[str, object]:
-    capabilities = ext.capabilities()
+    native_capabilities = ext.capabilities()
+    capabilities = dict(native_capabilities)
+    capabilities['cuda'] = cuda.runtime_available()
     return {
         'version': ext.version(),
         'capabilities': capabilities,
+        'native_capabilities': native_capabilities,
         'cuda': cuda.info(),
     }

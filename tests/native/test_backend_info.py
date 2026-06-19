@@ -13,3 +13,5 @@ def test_native_backend_info_contract() -> None:
     assert capabilities['cpu'] is True
     assert set(capabilities) == {'cpu', 'metal', 'cuda'}
     assert all(isinstance(value, bool) for value in capabilities.values())
+    assert set(info['native_capabilities']) == {'cpu', 'metal', 'cuda'}
+    assert isinstance(info['cuda'], dict)

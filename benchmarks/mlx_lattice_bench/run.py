@@ -98,7 +98,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         '--device',
-        choices=('cpu', 'metal', 'all'),
+        choices=('cpu', 'metal', 'cuda', 'all'),
         default='cpu',
         help='backend device selection',
     )
