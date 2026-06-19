@@ -75,7 +75,7 @@ def downsample_coords(
         grid=(1, 1, 1),
         threadgroup=(1, 1, 1),
     )
-    return out[0], out[1]
+    return _metadata_tuple((out[0], out[1]))
 
 
 def union_coords(lhs: mx.array, rhs: mx.array) -> tuple[mx.array, mx.array]:
@@ -92,7 +92,7 @@ def union_coords(lhs: mx.array, rhs: mx.array) -> tuple[mx.array, mx.array]:
         grid=(1, 1, 1),
         threadgroup=(1, 1, 1),
     )
-    return out[0], out[1]
+    return _metadata_tuple((out[0], out[1]))
 
 
 def intersection_coords(
@@ -111,37 +111,41 @@ def intersection_coords(
         grid=(1, 1, 1),
         threadgroup=(1, 1, 1),
     )
-    return out[0], out[1]
+    return _metadata_tuple((out[0], out[1]))
 
 
 def lookup_coords(coords: mx.array, queries: mx.array) -> mx.array:
     _require_int32_coords(coords, 'coords')
     _require_int32_coords(queries, 'queries')
-    return _run(
-        artifact='coords.ptx',
-        name='lookup_coords_i32',
-        inputs=[coords, queries],
-        output_shapes=[(queries.shape[0],)],
-        output_dtypes=[mx.int32],
-        scalars=[coords.shape[0], queries.shape[0]],
-        grid=_grid_1d(queries.shape[0]),
-        threadgroup=(256, 1, 1),
-        init_value=-1.0,
-    )[0]
+    return _metadata(
+        _run(
+            artifact='coords.ptx',
+            name='lookup_coords_i32',
+            inputs=[coords, queries],
+            output_shapes=[(queries.shape[0],)],
+            output_dtypes=[mx.int32],
+            scalars=[coords.shape[0], queries.shape[0]],
+            grid=_grid_1d(queries.shape[0]),
+            threadgroup=(256, 1, 1),
+            init_value=-1.0,
+        )[0]
+    )
 
 
 def morton_codes(coords: mx.array) -> mx.array:
     _require_int32_coords(coords, 'coords')
-    return _run(
-        artifact='coords.ptx',
-        name='morton_codes_i32',
-        inputs=[coords],
-        output_shapes=[(coords.shape[0],)],
-        output_dtypes=[mx.int64],
-        scalars=[coords.shape[0]],
-        grid=_grid_1d(coords.shape[0]),
-        threadgroup=(256, 1, 1),
-    )[0]
+    return _metadata(
+        _run(
+            artifact='coords.ptx',
+            name='morton_codes_i32',
+            inputs=[coords],
+            output_shapes=[(coords.shape[0],)],
+            output_dtypes=[mx.int64],
+            scalars=[coords.shape[0]],
+            grid=_grid_1d(coords.shape[0]),
+            threadgroup=(256, 1, 1),
+        )[0]
+    )
 
 
 def occupancy_downsample(
@@ -160,7 +164,7 @@ def occupancy_downsample(
         threadgroup=(1, 1, 1),
         init_value=0.0,
     )
-    return out[0], out[1], out[2]
+    return _metadata_tuple((out[0], out[1], out[2]))
 
 
 def occupancy_expand(
@@ -181,7 +185,7 @@ def occupancy_expand(
         threadgroup=(1, 1, 1),
         init_value=0.0,
     )
-    return out[0], out[1], out[2], out[3]
+    return _metadata_tuple((out[0], out[1], out[2], out[3]))
 
 
 def child_coords_from_indices(
@@ -189,16 +193,18 @@ def child_coords_from_indices(
     child_indices: mx.array,
 ) -> mx.array:
     _require_int32_coords(parent_coords, 'parent_coords')
-    return _run(
-        artifact='coords.ptx',
-        name='child_coords_from_indices_i32',
-        inputs=[parent_coords, child_indices],
-        output_shapes=[parent_coords.shape],
-        output_dtypes=[mx.int32],
-        scalars=[parent_coords.shape[0]],
-        grid=_grid_1d(parent_coords.shape[0]),
-        threadgroup=(256, 1, 1),
-    )[0]
+    return _metadata(
+        _run(
+            artifact='coords.ptx',
+            name='child_coords_from_indices_i32',
+            inputs=[parent_coords, child_indices],
+            output_shapes=[parent_coords.shape],
+            output_dtypes=[mx.int32],
+            scalars=[parent_coords.shape[0]],
+            grid=_grid_1d(parent_coords.shape[0]),
+            threadgroup=(256, 1, 1),
+        )[0]
+    )
 
 
 # MARK: - quantization
@@ -233,7 +239,7 @@ def sparse_quantize(
         threadgroup=(1, 1, 1),
         init_value=0.0,
     )
-    return out[0], out[1], out[2], out[3]
+    return _metadata_tuple((out[0], out[1], out[2], out[3]))
 
 
 # MARK: - relations
@@ -430,17 +436,19 @@ def build_target_kernel_relation(
         threadgroup=(1, 1, 1),
         init_value=0.0,
     )
-    return (
-        out[0],
-        out[1],
-        out[2],
-        out[3],
-        target_coords,
-        out[4],
-        out[5],
-        out[6],
-        out[7],
-        out[8],
+    return _metadata_tuple(
+        (
+            out[0],
+            out[1],
+            out[2],
+            out[3],
+            target_coords,
+            out[4],
+            out[5],
+            out[6],
+            out[7],
+            out[8],
+        )
     )
 
 
@@ -1170,7 +1178,7 @@ def _neighbor_relation(
         threadgroup=(1, 1, 1),
         init_value=0.0,
     )
-    return out[0], out[1], out[2], out[3], out[4], out[5]
+    return _metadata_tuple((out[0], out[1], out[2], out[3], out[4], out[5]))
 
 
 def _relation_tuple(
@@ -1187,17 +1195,19 @@ def _relation_tuple(
     mx.array,
     mx.array,
 ]:
-    return (
-        out[0],
-        out[1],
-        out[2],
-        out[3],
-        out[4],
-        out[5],
-        out[6],
-        out[7],
-        out[8],
-        out[9],
+    return _metadata_tuple(
+        (
+            out[0],
+            out[1],
+            out[2],
+            out[3],
+            out[4],
+            out[5],
+            out[6],
+            out[7],
+            out[8],
+            out[9],
+        )
     )
 
 
@@ -1262,6 +1272,17 @@ def _single(value: Any) -> Any:
     if isinstance(value, tuple | list):
         return value[0]
     return value
+
+
+def _metadata(value: mx.array) -> mx.array:
+    return mx.stop_gradient(value)
+
+
+def _metadata_tuple[T: tuple[Any, ...] | list[Any]](values: T) -> T:
+    return type(values)(
+        _metadata(value) if isinstance(value, mx.array) else value
+        for value in values
+    )
 
 
 def _run(
