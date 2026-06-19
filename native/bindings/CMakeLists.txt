@@ -22,7 +22,7 @@ set(MLX_LATTICE_SOURCE_EXT_STUB "${PROJECT_SOURCE_DIR}/mlx_lattice/_ext.pyi")
 option(
   MLX_LATTICE_GENERATE_STUBS
   "Regenerate mlx_lattice/_ext.pyi from the built native extension"
-  OFF)
+  ON)
 
 if(MLX_LATTICE_GENERATE_STUBS)
   set(MLX_LATTICE_STUB_DIR "${CMAKE_CURRENT_BINARY_DIR}/stubs")
