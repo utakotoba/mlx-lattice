@@ -147,10 +147,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "mlx", marker = "sys_platform == 'darwin'", specifier = ">=0.31" },
-    { name = "mlx", extras = ["cpu"], marker = "sys_platform == 'linux'", specifier = ">=0.31" },
-    { name = "mlx", extras = ["cuda12"], marker = "sys_platform == 'linux' and extra == 'cuda12'", specifier = ">=0.31" },
-    { name = "mlx", extras = ["cuda13"], marker = "sys_platform == 'linux' and extra == 'cuda13'", specifier = ">=0.31" },
+    { name = "mlx", marker = "sys_platform == 'darwin'", specifier = "==0.31.2" },
+    { name = "mlx", extras = ["cpu"], marker = "sys_platform == 'linux'", specifier = "==0.31.1" },
+    { name = "mlx", extras = ["cuda12"], marker = "sys_platform == 'linux' and extra == 'cuda12'", specifier = "==0.31.1" },
+    { name = "mlx", extras = ["cuda13"], marker = "sys_platform == 'linux' and extra == 'cuda13'", specifier = "==0.31.1" },
 ]
 provides-extras = ["cuda12", "cuda13"]
 

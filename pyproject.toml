@@ -9,13 +9,15 @@ license = "MIT"
 authors = [{ name = "Z.Y. Lin", email = "i@letter.cafe" }]
 keywords = ["mlx", "ml", "sparse", "convolution", "point-cloud"]
 dependencies = [
-  "mlx>=0.31; platform_system == 'Darwin'",
-  "mlx[cpu]>=0.31; platform_system == 'Linux'",
+  "mlx==0.31.2; platform_system == 'Darwin'",
+  # MLX CUDA wheels are only published at 0.31.1 for now; keep Linux
+  # CPU/CUDA on one ABI line until upstream publishes matching wheels.
+  "mlx[cpu]==0.31.1; platform_system == 'Linux'",
 ]
 
 [project.optional-dependencies]
-cuda12 = ["mlx[cuda12]>=0.31; platform_system == 'Linux'"]
-cuda13 = ["mlx[cuda13]>=0.31; platform_system == 'Linux'"]
+cuda12 = ["mlx[cuda12]==0.31.1; platform_system == 'Linux'"]
+cuda13 = ["mlx[cuda13]==0.31.1; platform_system == 'Linux'"]
 
 [project.urls]
 Homepage = "https://github.com/utakotoba/mlx-lattice"
@@ -27,8 +29,8 @@ Changelog = "https://github.com/utakotoba/mlx-lattice/releases"
 requires = [
   "scikit-build-core>=0.12",
   "nanobind>=2",
-  "mlx>=0.31; platform_system == 'Darwin'",
-  "mlx[cpu]>=0.31; platform_system == 'Linux'",
+  "mlx==0.31.2; platform_system == 'Darwin'",
+  "mlx[cpu]==0.31.1; platform_system == 'Linux'",
 ]
 build-backend = "scikit_build_core.build"
 
@@ -38,13 +40,7 @@ build-backend = "scikit_build_core.build"
 members = ["benchmarks"]
 
 [dependency-groups]
-dev = [
-  "nanobind>=2",
-  "prek>=0.4.3",
-  "pytest>=8",
-  "ruff>=0.15.15",
-  "ty>=0.0.42",
-]
+dev = ["nanobind>=2", "prek>=0.4.3", "pytest>=8", "ruff>=0.15.15", "ty>=0.0.42"]
 
 # MARK: - build
 
