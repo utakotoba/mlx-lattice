@@ -13,6 +13,10 @@ dependencies = [
   "mlx[cpu]>=0.31; platform_system == 'Linux'",
 ]
 
+[project.optional-dependencies]
+cuda12 = ["mlx[cuda12]>=0.31; platform_system == 'Linux'"]
+cuda13 = ["mlx[cuda13]>=0.31; platform_system == 'Linux'"]
+
 [project.urls]
 Homepage = "https://github.com/utakotoba/mlx-lattice"
 Repository = "https://github.com/utakotoba/mlx-lattice.git"
