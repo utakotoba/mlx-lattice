@@ -5,6 +5,9 @@ Sparse convolution library for Apple [MLX](https://github.com/ml-explore/mlx) de
 > [!WARNING]
 > Current branch is mainly used for refactoring for version 0.2.0.
 
+> [!NOTE]
+> For Linux CUDA training and macOS Metal inference, the current plan is to define a sparse model contract layer, use TorchSparse for the training-side CUDA workload, and provide deterministic conversion into native `mlx-lattice` inference artifacts. This avoids depending on incomplete MLX CUDA functionality for training while keeping MLX/Metal as the first-class Apple Silicon inference target.
+
 ### Acknowledgement
 
 This project is heavily based on [MLX](https://github.com/ml-explore/mlx), an array framework for machine learning on Apple silicon developed by Apple machine learning research.
