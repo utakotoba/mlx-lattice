@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from functools import cache
 from importlib import resources
@@ -223,23 +224,37 @@ def sparse_quantize(
         or points.shape[1] != 3
     ):
         raise ValueError('CUDA sparse_quantize requires float32 points.')
-    out = _run(
-        artifact='coords.ptx',
-        name='sparse_quantize_i32',
-        inputs=[points, batch_indices, active_rows],
-        output_shapes=[
-            (points.shape[0], 4),
-            (1,),
-            (points.shape[0],),
-            (points.shape[0],),
-        ],
-        output_dtypes=[mx.int32, mx.int32, mx.int32, mx.int32],
-        scalars=[*voxel_size, *origin, points.shape[0]],
-        grid=(1, 1, 1),
-        threadgroup=(1, 1, 1),
-        init_value=0.0,
+    rows = int(points.shape[0])
+    logical = _active_count(active_rows, rows)
+    point_rows = _point_rows(points)
+    batches = _int_vector(batch_indices)
+    coords: list[tuple[int, int, int, int]] = []
+    inverse_rows = [-1] * rows
+    counts = [0] * rows
+    for point in range(logical):
+        px, py, pz = point_rows[point]
+        coord = (
+            int(batches[point]),
+            math.floor((float(px) - origin[0]) / voxel_size[0]),
+            math.floor((float(py) - origin[1]) / voxel_size[1]),
+            math.floor((float(pz) - origin[2]) / voxel_size[2]),
+        )
+        try:
+            slot = coords.index(coord)
+        except ValueError:
+            slot = len(coords)
+            coords.append(coord)
+        inverse_rows[point] = slot
+        counts[slot] += 1
+    padded_coords = [*coords, *((0, 0, 0, 0),) * (rows - len(coords))]
+    return _metadata_tuple(
+        (
+            mx.array(padded_coords, dtype=mx.int32),
+            mx.array([len(coords)], dtype=mx.int32),
+            mx.array(inverse_rows, dtype=mx.int32),
+            mx.array(counts, dtype=mx.int32),
+        )
     )
-    return _metadata_tuple((out[0], out[1], out[2], out[3]))
 
 
 # MARK: - relations
@@ -264,17 +279,37 @@ def build_kernel_relation(
     mx.array,
     mx.array,
 ]:
-    return _generic_kernel_relation(
-        coords=coords,
-        active_rows=active_rows,
-        kernel_size=kernel_size,
-        stride=stride,
-        padding=padding,
-        dilation=dilation,
-        op=0,
-        direct=False,
-        out_capacity=coords.shape[0],
-        edge_capacity=coords.shape[0] * _kernel_count(kernel_size),
+    _require_int32_coords(coords, 'coords')
+    offsets = _kernel_offsets(kernel_size, dilation)
+    logical = _active_count(active_rows, int(coords.shape[0]))
+    coord_rows = _coord_rows(coords, logical)
+    if stride == (1, 1, 1) and padding == (0, 0, 0):
+        out_coords = coord_rows
+    else:
+        out_coords = []
+        for batch, x, y, z in coord_rows:
+            candidate = (
+                batch,
+                _floor_div(x, stride[0]),
+                _floor_div(y, stride[1]),
+                _floor_div(z, stride[2]),
+            )
+            if candidate not in out_coords:
+                out_coords.append(candidate)
+    edges = []
+    for out_row, out_coord in enumerate(out_coords):
+        for kernel, offset in enumerate(offsets):
+            candidate = _kernel_input_coord(
+                out_coord, offset, stride, padding
+            )
+            if candidate in coord_rows:
+                edges.append((coord_rows.index(candidate), out_row, kernel))
+    return _kernel_relation_from_host(
+        edges,
+        out_coords,
+        in_capacity=int(coords.shape[0]),
+        out_capacity=int(coords.shape[0]),
+        kernel_count=len(offsets),
     )
 
 
@@ -298,17 +333,33 @@ def build_transposed_kernel_relation(
     mx.array,
 ]:
     offsets = _kernel_offsets(kernel_size, dilation)
-    return _generic_kernel_relation(
-        coords=coords,
-        active_rows=active_rows,
-        kernel_size=kernel_size,
-        stride=stride,
-        padding=padding,
-        dilation=dilation,
-        op=1,
-        direct=_can_use_direct_transposed_relation(offsets, stride),
-        out_capacity=coords.shape[0] * len(offsets),
-        edge_capacity=coords.shape[0] * len(offsets),
+    _require_int32_coords(coords, 'coords')
+    logical = _active_count(active_rows, int(coords.shape[0]))
+    coord_rows = _coord_rows(coords, logical)
+    direct = _can_use_direct_transposed_relation(offsets, stride)
+    out_coords = []
+    edges = []
+    for in_row, coord in enumerate(coord_rows):
+        for kernel, offset in enumerate(offsets):
+            candidate = _kernel_output_coord(coord, offset, stride, padding)
+            if direct:
+                out_row = in_row * len(offsets) + kernel
+                while len(out_coords) <= out_row:
+                    out_coords.append((0, 0, 0, 0))
+                out_coords[out_row] = candidate
+            else:
+                if candidate in out_coords:
+                    out_row = out_coords.index(candidate)
+                else:
+                    out_row = len(out_coords)
+                    out_coords.append(candidate)
+            edges.append((in_row, out_row, kernel))
+    return _kernel_relation_from_host(
+        edges,
+        out_coords,
+        in_capacity=int(coords.shape[0]),
+        out_capacity=int(coords.shape[0]) * len(offsets),
+        kernel_count=len(offsets),
     )
 
 
@@ -329,43 +380,26 @@ def build_generative_relation(
     mx.array,
     mx.array,
 ]:
-    _require_int32_coords(coords, 'coords')
     offsets = _kernel_offsets(kernel_size, (1, 1, 1))
-    edge_capacity = coords.shape[0] * len(offsets)
-    out = _run(
-        artifact='coords.ptx',
-        name='generative_kernel_relation_full_i32',
-        inputs=[coords, _offset_array(offsets), active_rows],
-        output_shapes=[
-            (edge_capacity,),
-            (edge_capacity,),
-            (edge_capacity,),
-            (edge_capacity + 1,),
-            (edge_capacity, 4),
-            (2,),
-            (coords.shape[0] + 1,),
-            (edge_capacity,),
-            (len(offsets) + 1,),
-            (edge_capacity,),
-        ],
-        output_dtypes=[
-            mx.int32,
-            mx.int32,
-            mx.int32,
-            mx.int32,
-            mx.int32,
-            mx.int32,
-            mx.int32,
-            mx.int32,
-            mx.int32,
-            mx.int32,
-        ],
-        scalars=[coords.shape[0], len(offsets), *stride],
-        grid=(1, 1, 1),
-        threadgroup=(1, 1, 1),
-        init_value=0.0,
+    _require_int32_coords(coords, 'coords')
+    logical = _active_count(active_rows, int(coords.shape[0]))
+    coord_rows = _coord_rows(coords, logical)
+    out_coords = []
+    edges = []
+    for in_row, coord in enumerate(coord_rows):
+        for kernel, offset in enumerate(offsets):
+            out_row = len(out_coords)
+            out_coords.append(
+                _kernel_output_coord(coord, offset, stride, (0, 0, 0))
+            )
+            edges.append((in_row, out_row, kernel))
+    return _kernel_relation_from_host(
+        edges,
+        out_coords,
+        in_capacity=int(coords.shape[0]),
+        out_capacity=int(coords.shape[0]) * len(offsets),
+        kernel_count=len(offsets),
     )
-    return _relation_tuple(out)
 
 
 def build_target_kernel_relation(
@@ -389,66 +423,33 @@ def build_target_kernel_relation(
     mx.array,
     mx.array,
 ]:
-    _require_int32_coords(coords, 'coords')
     _require_int32_coords(target_coords, 'target_coords')
+    _require_int32_coords(coords, 'coords')
     offsets = _kernel_offsets(kernel_size, dilation)
-    edge_capacity = target_coords.shape[0] * len(offsets)
-    out = _run(
-        artifact='coords.ptx',
-        name='target_kernel_relation_full_i32',
-        inputs=[
-            coords,
-            _offset_array(offsets),
-            active_rows,
-            target_coords,
-            target_active_rows,
-        ],
-        output_shapes=[
-            (edge_capacity,),
-            (edge_capacity,),
-            (edge_capacity,),
-            (target_coords.shape[0] + 1,),
-            (2,),
-            (coords.shape[0] + 1,),
-            (edge_capacity,),
-            (len(offsets) + 1,),
-            (edge_capacity,),
-        ],
-        output_dtypes=[
-            mx.int32,
-            mx.int32,
-            mx.int32,
-            mx.int32,
-            mx.int32,
-            mx.int32,
-            mx.int32,
-            mx.int32,
-            mx.int32,
-        ],
-        scalars=[
-            coords.shape[0],
-            target_coords.shape[0],
-            len(offsets),
-            *stride,
-            *padding,
-        ],
-        grid=(1, 1, 1),
-        threadgroup=(1, 1, 1),
-        init_value=0.0,
+    source_count = _active_count(active_rows, int(coords.shape[0]))
+    out_count = _active_count(
+        target_active_rows, int(target_coords.shape[0])
     )
-    return _metadata_tuple(
-        (
-            out[0],
-            out[1],
-            out[2],
-            out[3],
-            target_coords,
-            out[4],
-            out[5],
-            out[6],
-            out[7],
-            out[8],
-        )
+    source_rows = _coord_rows(coords, source_count)
+    out_coords = _coord_rows(target_coords, out_count)
+    edges = []
+    for out_row, out_coord in enumerate(out_coords):
+        for kernel, offset in enumerate(offsets):
+            candidate = _kernel_input_coord(
+                out_coord, offset, stride, padding
+            )
+            if candidate in source_rows:
+                edges.append(
+                    (source_rows.index(candidate), out_row, kernel)
+                )
+    return _kernel_relation_from_host(
+        edges,
+        out_coords,
+        in_capacity=int(coords.shape[0]),
+        out_capacity=int(target_coords.shape[0]),
+        kernel_count=len(offsets),
+        out_coords_capacity=int(target_coords.shape[0]),
+        out_coords_array=target_coords,
     )
 
 
@@ -459,14 +460,13 @@ def build_knn_relation(
     query_active_rows: mx.array,
     k: int,
 ) -> tuple[mx.array, mx.array, mx.array, mx.array, mx.array, mx.array]:
-    return _neighbor_relation(
+    return _neighbor_relation_from_host(
         source_coords,
         source_active_rows,
         query_coords,
         query_active_rows,
         max_neighbors=int(k),
-        radius_squared=0.0,
-        op=0,
+        radius=None,
     )
 
 
@@ -478,7 +478,7 @@ def build_radius_relation(
     radius: float,
     max_neighbors: int,
 ) -> tuple[mx.array, mx.array, mx.array, mx.array, mx.array, mx.array]:
-    return _neighbor_relation(
+    return _neighbor_relation_from_host(
         source_coords,
         source_active_rows,
         query_coords,
@@ -486,8 +486,7 @@ def build_radius_relation(
         max_neighbors=_radius_neighbor_capacity(radius)
         if max_neighbors == 0
         else int(max_neighbors),
-        radius_squared=float(radius) * float(radius),
-        op=1,
+        radius=float(radius),
     )
 
 
@@ -1365,8 +1364,6 @@ def _can_use_direct_transposed_relation(
 
 
 def _radius_neighbor_capacity(radius: float) -> int:
-    import math
-
     limit = math.ceil(radius)
     radius_squared = radius * radius
     count = 0
@@ -1376,6 +1373,210 @@ def _radius_neighbor_capacity(radius: float) -> int:
                 if dx * dx + dy * dy + dz * dz <= radius_squared:
                     count += 1
     return max(count, 1)
+
+
+def _kernel_relation_from_host(
+    edges: list[tuple[int, int, int]],
+    out_coords: list[tuple[int, int, int, int]],
+    *,
+    in_capacity: int,
+    out_capacity: int,
+    kernel_count: int,
+    out_coords_capacity: int | None = None,
+    out_coords_array: mx.array | None = None,
+) -> tuple[
+    mx.array,
+    mx.array,
+    mx.array,
+    mx.array,
+    mx.array,
+    mx.array,
+    mx.array,
+    mx.array,
+    mx.array,
+    mx.array,
+]:
+    edge_capacity = out_capacity * kernel_count
+    padded_edges = [*edges, *((0, 0, 0),) * (edge_capacity - len(edges))]
+    in_rows = [edge[0] for edge in padded_edges]
+    out_rows = [edge[1] for edge in padded_edges]
+    kernel_ids = [edge[2] for edge in padded_edges]
+    row_offsets = _row_offsets(out_rows[: len(edges)], len(out_coords))
+    row_offsets.extend([len(edges)] * (out_capacity + 1 - len(row_offsets)))
+    out_coords_capacity = (
+        out_capacity
+        if out_coords_capacity is None
+        else (out_coords_capacity)
+    )
+    padded_coords = [
+        *out_coords,
+        *((0, 0, 0, 0),) * (out_coords_capacity - len(out_coords)),
+    ]
+    out_coord_values = (
+        mx.array(padded_coords, dtype=mx.int32)
+        if out_coords_array is None
+        else out_coords_array
+    )
+    in_row_offsets, in_edge_ids = _grouped_view(
+        in_rows[: len(edges)], len(edges), in_capacity, edge_capacity
+    )
+    kernel_row_offsets, kernel_edge_ids = _grouped_view(
+        kernel_ids[: len(edges)], len(edges), kernel_count, edge_capacity
+    )
+    return _metadata_tuple(
+        (
+            mx.array(in_rows, dtype=mx.int32),
+            mx.array(out_rows, dtype=mx.int32),
+            mx.array(kernel_ids, dtype=mx.int32),
+            mx.array(row_offsets, dtype=mx.int32),
+            out_coord_values,
+            mx.array([len(edges), len(out_coords)], dtype=mx.int32),
+            mx.array(in_row_offsets, dtype=mx.int32),
+            mx.array(in_edge_ids, dtype=mx.int32),
+            mx.array(kernel_row_offsets, dtype=mx.int32),
+            mx.array(kernel_edge_ids, dtype=mx.int32),
+        )
+    )
+
+
+def _neighbor_relation_from_host(
+    source_coords: mx.array,
+    source_active_rows: mx.array,
+    query_coords: mx.array,
+    query_active_rows: mx.array,
+    *,
+    max_neighbors: int,
+    radius: float | None,
+) -> tuple[mx.array, mx.array, mx.array, mx.array, mx.array, mx.array]:
+    _require_int32_coords(source_coords, 'source_coords')
+    _require_int32_coords(query_coords, 'query_coords')
+    source_count = _active_count(
+        source_active_rows, int(source_coords.shape[0])
+    )
+    query_count = _active_count(
+        query_active_rows, int(query_coords.shape[0])
+    )
+    sources = _coord_rows(source_coords, source_count)
+    queries = _coord_rows(query_coords, query_count)
+    edges: list[tuple[int, int, int, float]] = []
+    for query_row, query in enumerate(queries):
+        candidates = []
+        for source_row, source in enumerate(sources):
+            if query[0] != source[0]:
+                continue
+            distance = float(
+                (query[1] - source[1]) ** 2
+                + (query[2] - source[2]) ** 2
+                + (query[3] - source[3]) ** 2
+            )
+            if radius is not None and distance > radius * radius:
+                continue
+            candidates.append((distance, source_row))
+        candidates.sort()
+        for neighbor_id, (distance, source_row) in enumerate(
+            candidates[:max_neighbors]
+        ):
+            edges.append((query_row, source_row, neighbor_id, distance))
+    edge_capacity = int(query_coords.shape[0]) * max_neighbors
+    padded = [*edges, *((0, 0, 0, 0.0),) * (edge_capacity - len(edges))]
+    row_offsets = _row_offsets([edge[0] for edge in edges], len(queries))
+    row_offsets.extend(
+        [len(edges)] * (int(query_coords.shape[0]) + 1 - len(row_offsets))
+    )
+    return _metadata_tuple(
+        (
+            mx.array([edge[0] for edge in padded], dtype=mx.int32),
+            mx.array([edge[1] for edge in padded], dtype=mx.int32),
+            mx.array([edge[2] for edge in padded], dtype=mx.int32),
+            mx.array([edge[3] for edge in padded], dtype=mx.float32),
+            mx.array(row_offsets, dtype=mx.int32),
+            mx.array([len(edges), len(queries)], dtype=mx.int32),
+        )
+    )
+
+
+def _row_offsets(group_ids: list[int], group_count: int) -> list[int]:
+    offsets = [0] * (group_count + 1)
+    for group in group_ids:
+        if 0 <= group < group_count:
+            offsets[group + 1] += 1
+    for group in range(group_count):
+        offsets[group + 1] += offsets[group]
+    return offsets
+
+
+def _grouped_view(
+    group_ids: list[int],
+    edge_count: int,
+    group_count: int,
+    edge_capacity: int,
+) -> tuple[list[int], list[int]]:
+    row_offsets = _row_offsets(group_ids, group_count)
+    edge_ids = [-1] * edge_capacity
+    cursors = row_offsets[:-1].copy()
+    for edge in range(edge_count):
+        group = group_ids[edge]
+        if 0 <= group < group_count:
+            slot = cursors[group]
+            edge_ids[slot] = edge
+            cursors[group] += 1
+    return row_offsets, edge_ids
+
+
+def _active_count(active_rows: mx.array, capacity: int) -> int:
+    return min(_int_vector(active_rows)[0], capacity)
+
+
+def _coord_rows(
+    value: mx.array,
+    count: int,
+) -> list[tuple[int, int, int, int]]:
+    rows = cast(list[list[int]], value.tolist())
+    return [
+        (int(row[0]), int(row[1]), int(row[2]), int(row[3]))
+        for row in rows[:count]
+    ]
+
+
+def _point_rows(value: mx.array) -> list[tuple[float, float, float]]:
+    rows = cast(list[list[float]], value.tolist())
+    return [(float(row[0]), float(row[1]), float(row[2])) for row in rows]
+
+
+def _int_vector(value: mx.array) -> list[int]:
+    return [int(item) for item in cast(list[int], value.tolist())]
+
+
+def _floor_div(value: int, divisor: int) -> int:
+    return math.floor(value / divisor)
+
+
+def _kernel_input_coord(
+    out_coord: tuple[int, int, int, int],
+    offset: Triple,
+    stride: Triple,
+    padding: Triple,
+) -> tuple[int, int, int, int]:
+    return (
+        out_coord[0],
+        out_coord[1] * stride[0] + offset[0] - padding[0],
+        out_coord[2] * stride[1] + offset[1] - padding[1],
+        out_coord[3] * stride[2] + offset[2] - padding[2],
+    )
+
+
+def _kernel_output_coord(
+    in_coord: tuple[int, int, int, int],
+    offset: Triple,
+    stride: Triple,
+    padding: Triple,
+) -> tuple[int, int, int, int]:
+    return (
+        in_coord[0],
+        in_coord[1] * stride[0] + offset[0] - padding[0],
+        in_coord[2] * stride[1] + offset[1] - padding[1],
+        in_coord[3] * stride[2] + offset[2] - padding[2],
+    )
 
 
 # MARK: - low-level helpers

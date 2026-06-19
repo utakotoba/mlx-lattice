@@ -46,7 +46,11 @@ endif()
 # MARK: - install
 
 install(TARGETS _ext LIBRARY DESTINATION mlx_lattice)
-install(FILES ${MLX_LATTICE_SOURCE_EXT_STUB} DESTINATION mlx_lattice)
+if(MLX_LATTICE_GENERATE_STUBS)
+  install(FILES ${MLX_LATTICE_EXT_STUB} DESTINATION mlx_lattice)
+elseif(EXISTS "${MLX_LATTICE_SOURCE_EXT_STUB}")
+  install(FILES ${MLX_LATTICE_SOURCE_EXT_STUB} DESTINATION mlx_lattice)
+endif()
 install(
   FILES ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/mlx_lattice.metallib
   DESTINATION mlx_lattice
