@@ -302,6 +302,56 @@ void eval_dense_channels_typed(
 }
 
 template <typename T, WeightAccess Access>
+void eval_sorted_implicit_gemm_typed(
+    SparseConvShape shape,
+    const std::vector<mx::array>& ready,
+    std::vector<mx::array>& task_outputs
+) {
+    const auto& feats = ready[0];
+    const auto& weights = ready[1];
+    const auto& sorted_out_in_map = ready[2];
+    const auto& reorder_rows = ready[3];
+
+    auto& out = task_outputs[0];
+    auto* out_data = out.data<T>();
+    const auto* feat_data = feats.data<T>();
+    const auto* weight_data = weights.data<T>();
+    const auto* map_data = sorted_out_in_map.data<int32_t>();
+    const auto* reorder_data = reorder_rows.data<int32_t>();
+    const auto feat_s0 = feats.strides(0);
+    const auto feat_s1 = feats.strides(1);
+
+    parallel_for(0, shape.out_capacity, [&](int sorted_row) {
+        auto out_row = reorder_data[sorted_row];
+        auto* out_row_data = out_data + static_cast<std::ptrdiff_t>(out_row) *
+                                            shape.out_channels;
+        std::fill(out_row_data, out_row_data + shape.out_channels, T(0.0F));
+        for (int kernel = 0; kernel < shape.n_kernels; ++kernel) {
+            auto in_row = map_data
+                [static_cast<std::ptrdiff_t>(sorted_row) * shape.n_kernels +
+                 kernel];
+            if (in_row < 0 || in_row >= shape.in_capacity) {
+                continue;
+            }
+            for (int ci = 0; ci < shape.in_channels; ++ci) {
+                auto value = static_cast<float>(
+                    feat_data
+                        [static_cast<std::ptrdiff_t>(in_row) * feat_s0 +
+                         static_cast<std::ptrdiff_t>(ci) * feat_s1]
+                );
+                for (int co = 0; co < shape.out_channels; ++co) {
+                    auto acc = static_cast<float>(out_row_data[co]);
+                    acc += value *
+                           static_cast<float>(weight_data[fast_weight_offset<
+                               Access>(weights, shape, kernel, ci, co)]);
+                    out_row_data[co] = T(acc);
+                }
+            }
+        }
+    });
+}
+
+template <typename T, WeightAccess Access>
 void eval_input_grad_typed(
     SparseConvShape shape,
     const std::vector<mx::array>& ready,
@@ -518,6 +568,50 @@ void eval_dispatch(
     }
 }
 
+void eval_sorted_implicit_gemm_dispatch(
+    SparseConvShape shape,
+    const std::vector<mx::array>& ready,
+    std::vector<mx::array>& task_outputs
+) {
+    if (ready[0].dtype() == mx::float32) {
+        switch (weight_access(ready[1], shape)) {
+        case WeightAccess::MappedContiguous:
+            eval_sorted_implicit_gemm_typed<
+                float,
+                WeightAccess::MappedContiguous>(shape, ready, task_outputs);
+            return;
+        case WeightAccess::Dense5dContiguous:
+            eval_sorted_implicit_gemm_typed<
+                float,
+                WeightAccess::Dense5dContiguous>(shape, ready, task_outputs);
+            return;
+        case WeightAccess::Generic:
+            eval_sorted_implicit_gemm_typed<float, WeightAccess::Generic>(
+                shape, ready, task_outputs
+            );
+            return;
+        }
+    }
+
+    switch (weight_access(ready[1], shape)) {
+    case WeightAccess::MappedContiguous:
+        eval_sorted_implicit_gemm_typed<
+            mx::float16_t,
+            WeightAccess::MappedContiguous>(shape, ready, task_outputs);
+        return;
+    case WeightAccess::Dense5dContiguous:
+        eval_sorted_implicit_gemm_typed<
+            mx::float16_t,
+            WeightAccess::Dense5dContiguous>(shape, ready, task_outputs);
+        return;
+    case WeightAccess::Generic:
+        eval_sorted_implicit_gemm_typed<mx::float16_t, WeightAccess::Generic>(
+            shape, ready, task_outputs
+        );
+        return;
+    }
+}
+
 void eval_input_grad_dispatch(
     SparseConvShape shape,
     const std::vector<mx::array>& ready,
@@ -623,6 +717,24 @@ void eval(
             const std::vector<mx::array>& ready,
             std::vector<mx::array>& task_outputs
         ) { eval_dispatch(shape, ready, task_outputs); }
+    );
+}
+
+void eval_sorted_implicit_gemm(
+    SparseConvShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    allocate_all(outputs);
+    schedule_cpu(
+        stream,
+        inputs,
+        outputs,
+        [shape](
+            const std::vector<mx::array>& ready,
+            std::vector<mx::array>& task_outputs
+        ) { eval_sorted_implicit_gemm_dispatch(shape, ready, task_outputs); }
     );
 }
 

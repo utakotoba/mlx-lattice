@@ -22,6 +22,16 @@ mx::array sparse_conv_features(
     int n_kernels
 );
 
+mx::array sparse_conv_features_sorted_implicit_gemm(
+    const mx::array& feats,
+    const mx::array& weights,
+    const mx::array& sorted_out_in_map,
+    const mx::array& reorder_rows,
+    const mx::array& tile_masks,
+    int out_capacity,
+    int n_kernels
+);
+
 mx::array sparse_pool_features(
     PoolReduceOp op,
     const mx::array& feats,

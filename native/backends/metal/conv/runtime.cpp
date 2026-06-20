@@ -445,6 +445,56 @@ void eval(
 #endif
 }
 
+void eval_sorted_implicit_gemm(
+    SparseConvShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+#ifdef _METAL_
+    auto& out = outputs[0];
+    allocate(out);
+    if (inputs[0].dtype() != mx::float16 || inputs[1].dtype() != mx::float16 ||
+        inputs[2].dtype() != mx::int32 || inputs[3].dtype() != mx::int32 ||
+        inputs[4].dtype() != mx::int32 || shape.weight_layout != 0 ||
+        shape.in_channels != 32 || shape.out_channels != 32 ||
+        shape.n_kernels != 27 || inputs[1].ndim() != 3 ||
+        stride_at(inputs[0], 1) != 1 || stride_at(inputs[1], 2) != 1 ||
+        stride_at(inputs[1], 1) != 32 || stride_at(inputs[1], 0) != 1024) {
+        throw std::invalid_argument(
+            "experimental sorted implicit GEMM conv supports only contiguous "
+            "fp16 mapped weights with K=27 and Cin=Cout=32."
+        );
+    }
+
+    auto& device = mx::metal::device(stream.device);
+    auto library =
+        device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
+    auto& encoder = mx::metal::get_command_encoder(stream);
+    auto kernel = device.get_kernel(
+        "sparse_relation_conv_implicit_gemm_sorted_bitloop_f16_c32_m64", library
+    );
+    encoder.set_compute_pipeline_state(kernel);
+    encoder.set_input_array(inputs[0], 0);
+    encoder.set_input_array(inputs[1], 1);
+    encoder.set_input_array(inputs[2], 2);
+    encoder.set_output_array(out, 3);
+    set_bytes_range(encoder, 4, shape.out_capacity, shape.n_kernels);
+    encoder.set_input_array(inputs[3], 6);
+    encoder.set_input_array(inputs[4], 7);
+    auto groups = static_cast<size_t>((shape.out_capacity + 63) / 64) * 2;
+    encoder.dispatch_threadgroups(
+        MTL::Size(groups, 1, 1), MTL::Size(128, 1, 1)
+    );
+#else
+    (void)shape;
+    (void)stream;
+    (void)inputs;
+    (void)outputs;
+    throw std::runtime_error("Metal support is not available.");
+#endif
+}
+
 void eval_input_grad(
     SparseConvShape shape,
     const mx::Stream& stream,

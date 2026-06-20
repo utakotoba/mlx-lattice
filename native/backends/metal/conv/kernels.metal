@@ -1,6 +1,9 @@
+#include <MetalPerformancePrimitives/MetalPerformancePrimitives.h>
 #include <metal_stdlib>
+#include <metal_tensor>
 
 using namespace metal;
+using namespace mpp::tensor_ops;
 
 #include "native/backends/metal/conv/common.metal"
 #include "native/backends/metal/conv/dense_kernels.metal"
@@ -8,6 +11,107 @@ using namespace metal;
 // Specialized kernels share the generic convolution binding ABI, so some
 // bound buffers are intentionally unused by a given specialization.
 #pragma clang diagnostic ignored "-Wunused-parameter"
+
+[[kernel, max_total_threads_per_threadgroup(128)]]
+void sparse_relation_conv_implicit_gemm_sorted_bitloop_f16_c32_m64(
+    device const half* feats [[buffer(0)]],
+    device const half* weights [[buffer(1)]],
+    device const int* sorted_out_in_map [[buffer(2)]],
+    device half* out [[buffer(3)]],
+    constant const int& rows [[buffer(4)]],
+    constant const int& kernel_volume [[buffer(5)]],
+    device const int* reorder_rows [[buffer(6)]],
+    device const int* tile_masks [[buffer(7)]],
+    uint group_id [[threadgroup_position_in_grid]],
+    uint tid [[thread_index_in_threadgroup]]
+) {
+    constexpr int tile_rows = 64;
+    constexpr int channels = 32;
+    constexpr int block = 16;
+
+    threadgroup half lhs_tile[tile_rows * block];
+    threadgroup half rhs_tile[block * block];
+    threadgroup float out_tile[tile_rows * block];
+
+    const int co_block = int(group_id) & 1;
+    const int tile_id = int(group_id) >> 1;
+    const int row_start = tile_id * tile_rows;
+    const int co_base = co_block * block;
+    const int mask_base = tile_id * 4;
+    uint active_mask = uint(
+        tile_masks[mask_base + 0] | tile_masks[mask_base + 1] |
+        tile_masks[mask_base + 2] | tile_masks[mask_base + 3]
+    );
+    (void)kernel_volume;
+
+    for (uint index = tid; index < tile_rows * block; index += 128) {
+        out_tile[index] = 0.0f;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    constexpr auto desc = matmul2d_descriptor(
+        tile_rows,
+        block,
+        block,
+        false,
+        false,
+        false,
+        matmul2d_descriptor::mode::multiply_accumulate
+    );
+    matmul2d<desc, execution_simdgroups<4>> op;
+    auto lhs_tensor = tensor<
+        threadgroup half,
+        extents<int32_t, block, tile_rows>,
+        tensor_inline>(lhs_tile, extents<int32_t, block, tile_rows>());
+    auto rhs_tensor =
+        tensor<threadgroup half, extents<int32_t, block, block>, tensor_inline>(
+            rhs_tile, extents<int32_t, block, block>()
+        );
+    auto out_tensor = tensor<
+        threadgroup float,
+        extents<int32_t, block, tile_rows>,
+        tensor_inline>(out_tile, extents<int32_t, block, tile_rows>());
+
+    while (active_mask != 0) {
+        const int kv = ctz(active_mask);
+        active_mask &= active_mask - 1;
+        for (int ci_base = 0; ci_base < channels; ci_base += block) {
+            for (uint index = tid; index < tile_rows * block; index += 128) {
+                const int row_slot = int(index) / block;
+                const int ci = ci_base + int(index) - row_slot * block;
+                const int sorted_row = row_start + row_slot;
+                half value = half(0.0h);
+                if (sorted_row < rows) {
+                    const int in_row = sorted_out_in_map[sorted_row * 27 + kv];
+                    if (in_row >= 0) {
+                        value = feats[in_row * channels + ci];
+                    }
+                }
+                lhs_tile[index] = value;
+            }
+
+            for (uint index = tid; index < block * block; index += 128) {
+                const int ci = ci_base + int(index) / block;
+                const int co = co_base + int(index) - (ci - ci_base) * block;
+                rhs_tile[index] = weights[(kv * channels + ci) * channels + co];
+            }
+
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+            op.run(lhs_tensor, rhs_tensor, out_tensor);
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+        }
+    }
+
+    for (uint index = tid; index < tile_rows * block; index += 128) {
+        const int row_slot = int(index) / block;
+        const int co = co_base + int(index) - row_slot * block;
+        const int sorted_row = row_start + row_slot;
+        if (sorted_row < rows) {
+            const int out_row = reorder_rows[sorted_row];
+            out[out_row * channels + co] = half(out_tile[index]);
+        }
+    }
+}
 
 template <int in_channels, int out_channels>
 [[kernel]] void sparse_relation_conv_f32_i32_cout16_dense(

@@ -136,6 +136,100 @@ mx::array sparse_conv_features(
     return make_sparse_conv_features(feats, weights, edges, contract, views);
 }
 
+mx::array sparse_conv_features_sorted_implicit_gemm(
+    const mx::array& feats,
+    const mx::array& weights,
+    const mx::array& sorted_out_in_map,
+    const mx::array& reorder_rows,
+    const mx::array& tile_masks,
+    int out_capacity,
+    int n_kernels
+) {
+    if (sorted_out_in_map.ndim() != 2 ||
+        sorted_out_in_map.dtype() != mx::int32) {
+        throw std::invalid_argument(
+            "sorted_out_in_map must have shape (N_out, K) and int32 dtype."
+        );
+    }
+    if (reorder_rows.ndim() != 1 || reorder_rows.dtype() != mx::int32) {
+        throw std::invalid_argument(
+            "reorder_rows must have shape (N_out,) and int32 dtype."
+        );
+    }
+    if (tile_masks.ndim() != 1 || tile_masks.dtype() != mx::int32) {
+        throw std::invalid_argument(
+            "tile_masks must have shape (ceil(N_out / 16),) and int32 dtype."
+        );
+    }
+    if (sorted_out_in_map.shape(0) != out_capacity ||
+        sorted_out_in_map.shape(1) != n_kernels ||
+        reorder_rows.shape(0) != out_capacity) {
+        throw std::invalid_argument(
+            "sorted implicit GEMM view shape must match out_capacity and "
+            "n_kernels."
+        );
+    }
+    auto expected_tiles = (out_capacity + 15) / 16;
+    if (tile_masks.shape(0) != expected_tiles) {
+        throw std::invalid_argument(
+            "tile_masks length must match ceil(out_capacity / 16)."
+        );
+    }
+    if (feats.ndim() != 2) {
+        throw std::invalid_argument("feats must have shape (N, C_in).");
+    }
+    if (weights.ndim() != 3 && weights.ndim() != 5) {
+        throw std::invalid_argument(
+            "weights must have shape (K, C_in, C_out) or "
+            "(C_out, Kx, Ky, Kz, C_in)."
+        );
+    }
+    if (feats.dtype() != mx::float32 && feats.dtype() != mx::float16) {
+        throw std::invalid_argument(
+            "sparse_conv_features_sorted_implicit_gemm supports float32 and "
+            "float16 feats."
+        );
+    }
+    if (weights.dtype() != feats.dtype()) {
+        throw std::invalid_argument(
+            "sparse_conv_features_sorted_implicit_gemm weights must match "
+            "feats dtype."
+        );
+    }
+    auto weight_in_channels =
+        weights.ndim() == 3 ? weights.shape(1) : weights.shape(4);
+    if (feats.shape(1) != weight_in_channels) {
+        throw std::invalid_argument(
+            "feats channels must match weights input channels."
+        );
+    }
+    if (out_capacity < 0 || n_kernels <= 0) {
+        throw std::invalid_argument(
+            "out_capacity must be nonnegative and n_kernels must be positive."
+        );
+    }
+    if (weights.ndim() == 3 && weights.shape(0) != n_kernels) {
+        throw std::invalid_argument(
+            "weights kernel rows must match n_kernels."
+        );
+    }
+    if (weights.ndim() == 5 &&
+        weights.shape(1) * weights.shape(2) * weights.shape(3) != n_kernels) {
+        throw std::invalid_argument(
+            "weights kernel rows must match n_kernels."
+        );
+    }
+    return make_sparse_conv_features_sorted_implicit_gemm(
+        feats,
+        weights,
+        sorted_out_in_map,
+        reorder_rows,
+        tile_masks,
+        out_capacity,
+        n_kernels
+    );
+}
+
 mx::array sparse_pool_features(
     PoolReduceOp op,
     const mx::array& feats,

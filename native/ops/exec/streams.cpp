@@ -50,6 +50,23 @@ mx::Stream sparse_conv_features_stream(
     return sparse_exec_stream(device);
 }
 
+mx::Stream sparse_conv_implicit_gemm_stream(
+    const mx::array& feats,
+    const mx::array& weights,
+    const mx::array& out_in_map
+) {
+    auto device = sparse_exec_device();
+    if (is_gpu_device(device) &&
+        (!is_conv_feature_dtype(feats.dtype()) ||
+         weights.dtype() != feats.dtype() || out_in_map.dtype() != mx::int32)) {
+        throw std::invalid_argument(
+            "Metal implicit GEMM sparse convolution requires int32 relation "
+            "map and matching float32 or float16 features/weights."
+        );
+    }
+    return sparse_exec_stream(device);
+}
+
 mx::Stream sparse_conv_grad_stream(
     const mx::array& lhs,
     const mx::array& rhs,

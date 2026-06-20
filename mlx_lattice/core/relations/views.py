@@ -56,9 +56,6 @@ class RelationImplicitGemmView:
 
     out_in_map: mx.array
     row_masks: mx.array
-    sorted_out_in_map: mx.array | None = None
-    reorder_rows: mx.array | None = None
-    tile_masks: mx.array | None = None
 
     def __post_init__(self) -> None:
         if self.out_in_map.ndim != 2:
@@ -78,24 +75,29 @@ class RelationImplicitGemmView:
             raise ValueError(
                 'row_masks must have ceil(K / 32) words per output row.'
             )
-        for name, value in (
-            ('sorted_out_in_map', self.sorted_out_in_map),
-            ('reorder_rows', self.reorder_rows),
-            ('tile_masks', self.tile_masks),
+
+
+@dataclass(frozen=True, slots=True)
+class RelationSortedImplicitGemmView:
+    """Tile-sorted implicit-GEMM execution view for TensorOps kernels."""
+
+    sorted_out_in_map: mx.array
+    reorder_rows: mx.array
+    tile_masks: mx.array
+
+    def __post_init__(self) -> None:
+        if self.sorted_out_in_map.ndim != 2:
+            raise ValueError('sorted_out_in_map must have shape (Nout, K).')
+        if self.sorted_out_in_map.dtype not in (mx.int32, mx.int64):
+            raise ValueError('sorted_out_in_map must be int32 or int64.')
+        _validate_row_array(self.reorder_rows, name='reorder_rows')
+        _validate_row_array(self.tile_masks, name='tile_masks')
+        if int(self.reorder_rows.shape[0]) != int(
+            self.sorted_out_in_map.shape[0]
         ):
-            if value is None:
-                continue
-            if name == 'sorted_out_in_map':
-                if value.shape != self.out_in_map.shape:
-                    raise ValueError(
-                        'sorted_out_in_map must match out_in_map shape.'
-                    )
-                if value.dtype != self.out_in_map.dtype:
-                    raise ValueError(
-                        'sorted_out_in_map must match out_in_map dtype.'
-                    )
-            else:
-                _validate_row_array(value, name=name)
+            raise ValueError(
+                'reorder_rows must have one row per sorted_out_in_map row.'
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,6 +215,7 @@ class KernelRelation:
     input_csr: RelationCSRView
     kernel_csr: RelationCSRView
     implicit_gemm: RelationImplicitGemmView | None = None
+    sorted_implicit_gemm: RelationSortedImplicitGemmView | None = None
 
     def __init__(
         self,
@@ -239,6 +242,7 @@ class KernelRelation:
         padding: Triple = (0, 0, 0),
         kind: RelationKind = 'forward',
         implicit_gemm: RelationImplicitGemmView | None = None,
+        sorted_implicit_gemm: RelationSortedImplicitGemmView | None = None,
     ) -> None:
         if counts is None:
             counts = mx.array(
@@ -312,6 +316,9 @@ class KernelRelation:
         object.__setattr__(self, 'input_csr', input_csr)
         object.__setattr__(self, 'kernel_csr', kernel_csr)
         object.__setattr__(self, 'implicit_gemm', implicit_gemm)
+        object.__setattr__(
+            self, 'sorted_implicit_gemm', sorted_implicit_gemm
+        )
 
     @property
     def edge_capacity(self) -> int:
@@ -398,6 +405,38 @@ class KernelRelation:
         view = build_relation_implicit_gemm_view(self)
         object.__setattr__(self, 'implicit_gemm', view)
         return view
+
+    def require_sorted_implicit_gemm(
+        self,
+    ) -> RelationSortedImplicitGemmView:
+        sorted_view = self.sorted_implicit_gemm
+        if sorted_view is not None:
+            return sorted_view
+
+        view = self.require_implicit_gemm()
+
+        if view.row_masks.shape[1] != 1:
+            raise ValueError(
+                'sorted implicit GEMM view currently supports K <= 32.'
+            )
+        row_masks = view.row_masks[:, 0]
+        sorted_rows = mx.argsort(row_masks).astype(mx.int32)
+        sorted_out_in_map = view.out_in_map[sorted_rows]
+        tile_count = (int(view.out_in_map.shape[0]) + 15) // 16
+        tile_masks = mx.zeros((tile_count,), dtype=mx.int32)
+        for row_offset in range(16):
+            rows = mx.arange(tile_count, dtype=mx.int32) * 16 + row_offset
+            valid = rows < int(view.out_in_map.shape[0])
+            clipped = mx.minimum(rows, int(view.out_in_map.shape[0]) - 1)
+            masks = mx.where(valid, row_masks[sorted_rows[clipped]], 0)
+            tile_masks = mx.bitwise_or(tile_masks, masks)
+        sorted_view = RelationSortedImplicitGemmView(
+            sorted_out_in_map=sorted_out_in_map,
+            reorder_rows=sorted_rows,
+            tile_masks=tile_masks,
+        )
+        object.__setattr__(self, 'sorted_implicit_gemm', sorted_view)
+        return sorted_view
 
 
 @dataclass(frozen=True, slots=True, init=False)

@@ -9,6 +9,7 @@ from mlx_lattice.core.relations.views import (
     RelationEdges,
     RelationImplicitGemmView,
     RelationKind,
+    RelationSortedImplicitGemmView,
     RelationView,
     SparseRelationContract,
 )
@@ -22,6 +23,7 @@ __all__ = [
     'RelationEdges',
     'RelationImplicitGemmView',
     'RelationKind',
+    'RelationSortedImplicitGemmView',
     'RelationView',
     'SparseRelationContract',
 ]

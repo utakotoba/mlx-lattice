@@ -125,6 +125,42 @@ void register_exec(nb::module_& module) {
         ),
         "Run sparse convolution feature accumulation over a kernel relation."
     );
+    module.def(
+        "sparse_conv_features_sorted_implicit_gemm",
+        [](const mx::array& feats,
+           const mx::array& weights,
+           const mx::array& sorted_out_in_map,
+           const mx::array& reorder_rows,
+           const mx::array& tile_masks,
+           int out_capacity,
+           int n_kernels) {
+            return sparse_conv_features_sorted_implicit_gemm(
+                feats,
+                weights,
+                sorted_out_in_map,
+                reorder_rows,
+                tile_masks,
+                out_capacity,
+                n_kernels
+            );
+        },
+        "feats"_a,
+        "weights"_a,
+        "sorted_out_in_map"_a,
+        "reorder_rows"_a,
+        "tile_masks"_a,
+        "out_capacity"_a,
+        "n_kernels"_a,
+        nb::sig(
+            "def sparse_conv_features_sorted_implicit_gemm(feats: "
+            "mlx.core.array, weights: mlx.core.array, "
+            "sorted_out_in_map: mlx.core.array, reorder_rows: "
+            "mlx.core.array, tile_masks: mlx.core.array, out_capacity: int, "
+            "n_kernels: int) -> mlx.core.array"
+        ),
+        "Run experimental sparse convolution over a sorted implicit-GEMM "
+        "relation view."
+    );
 }
 
 } // namespace mlx_lattice::bindings

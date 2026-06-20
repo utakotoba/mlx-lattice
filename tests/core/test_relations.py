@@ -139,6 +139,34 @@ def test_implicit_gemm_row_masks_scale_past_single_word() -> None:
     assert view.row_masks.tolist() == [[1 << 16, 0]]
 
 
+def test_sorted_implicit_gemm_view_has_independent_cache() -> None:
+    coords = mx.array(
+        [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
+        dtype=mx.int32,
+    )
+    relation = build_kernel_relation(coords, kernel_size=(3, 1, 1))
+
+    implicit = relation.require_implicit_gemm()
+    sorted_view = relation.require_sorted_implicit_gemm()
+    mx.eval(
+        implicit.out_in_map,
+        implicit.row_masks,
+        sorted_view.sorted_out_in_map,
+        sorted_view.reorder_rows,
+        sorted_view.tile_masks,
+    )
+
+    assert relation.require_implicit_gemm() is implicit
+    assert relation.require_sorted_implicit_gemm() is sorted_view
+    assert sorted_view.reorder_rows.tolist() == [2, 0, 1]
+    assert sorted_view.sorted_out_in_map.tolist() == [
+        [1, 2, -1],
+        [-1, 0, 1],
+        [0, 1, 2],
+    ]
+    assert sorted_view.tile_masks.tolist() == [7]
+
+
 def test_neighbor_relation_accepts_and_validates_query_contract() -> None:
     rows = mx.array([0, 1], dtype=mx.int32)
     short = mx.array([0], dtype=mx.int32)

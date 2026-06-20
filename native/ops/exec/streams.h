@@ -14,6 +14,12 @@ mx::Stream sparse_conv_features_stream(
     const mx::array& row_offsets
 );
 
+mx::Stream sparse_conv_implicit_gemm_stream(
+    const mx::array& feats,
+    const mx::array& weights,
+    const mx::array& out_in_map
+);
+
 mx::Stream sparse_conv_grad_stream(
     const mx::array& lhs,
     const mx::array& rhs,
