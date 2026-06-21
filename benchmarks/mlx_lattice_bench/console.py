@@ -136,6 +136,7 @@ class Console:
             'neighbors',
             'radius',
             'k',
+            'layout',
         )
         parts = [
             self._kv(key, params[key]) for key in preferred if key in params
@@ -155,6 +156,8 @@ class Console:
             ('channels_out', 'Cout'),
             ('kernel_volume', 'K'),
             ('avg_neighbors', 'avgN'),
+            ('target_active_kernel_positions', 'targetAvgN'),
+            ('target_kernel_density', 'targetD'),
         )
         parts = []
         for key, label in labels:

@@ -15,6 +15,7 @@ from mlx_lattice.ops import (
 
 from mlx_lattice_bench.cases.common import benchmark_n, param_grid
 from mlx_lattice_bench.datasets import (
+    SPARSE_LAYOUTS,
     SparseArrays,
     dense_weight,
     sparse_arrays,
@@ -87,6 +88,18 @@ def cases(
         ('generative_conv_transpose3d', 'generative_transpose'),
     )
     forward_cases = tuple(_case(name, kind, params) for name, kind in specs)
+    density_case = _case(
+        'conv3d_generic_density',
+        'generic',
+        _density_params(
+            preset,
+            n_values=n_values,
+            channels=channels,
+            channel_pairs=channel_pairs,
+            dtype=dtype,
+        ),
+        metrics=_density_metrics,
+    )
     backward_cases = tuple(
         _backward_case(f'{name}_{suffix}', kind, target, params)
         for name, kind in specs
@@ -95,13 +108,15 @@ def cases(
             ('dweight', 'weight'),
         )
     )
-    return forward_cases + backward_cases
+    return (*forward_cases, density_case, *backward_cases)
 
 
 def _case(
     name: str,
     kind: ConvKind,
     params: tuple[Mapping[str, Any], ...],
+    *,
+    metrics: Any | None = None,
 ) -> BenchmarkCase:
     return BenchmarkCase(
         name=name,
@@ -112,6 +127,7 @@ def _case(
         run=lambda inputs: _run(kind, inputs),
         compiled=_compiled(kind),
         backward=_backward(kind, 'both'),
+        metrics=metrics,
         units=('elements', 'n_in', 'n_out'),
     )
 
@@ -144,12 +160,14 @@ def _setup(params: Mapping[str, Any]) -> ConvFixture:
         channels=channels_in,
         batches=int(params['batches']),
         dtype=dtype,
+        layout=str(params.get('layout', 'grid')),
     )
     superset = sparse_arrays(
         rows=benchmark_n(params) + max(1, benchmark_n(params) // 4),
         channels=channels_in,
         batches=int(params['batches']),
         dtype=dtype,
+        layout=str(params.get('layout', 'grid')),
     )
     return ConvFixture(
         arrays=arrays,
@@ -407,3 +425,66 @@ def _conv_param_grid(
             copied['channels_out'] = channels_out
             params.append(copied)
     return tuple(params)
+
+
+def _density_params(
+    preset: str,
+    *,
+    n_values: tuple[int, ...] | None,
+    channels: tuple[int, ...] | None,
+    channel_pairs: tuple[tuple[int, int], ...] | None,
+    dtype: str,
+) -> tuple[Mapping[str, Any], ...]:
+    params = []
+    for item in _conv_param_grid(
+        preset,
+        n_values=n_values,
+        channels=(32, 64) if channels is None else channels,
+        channel_pairs=channel_pairs,
+    ):
+        for layout in SPARSE_LAYOUTS:
+            params.append({**item, 'dtype': dtype, 'layout': layout})
+    return tuple(params)
+
+
+def _density_metrics(
+    params: Mapping[str, Any],
+    fixture: ConvFixture,
+    prepared: Any | None,
+    output: Any | None,
+) -> dict[str, int | float]:
+    del prepared, output
+    x = fixture.arrays.tensor()
+    relation = x.coord_manager.kernel_relation(x.coord_key, kernel_size=3)
+    edges = int(relation.edge_count.item())
+    n_out = max(int(relation.out_count.item()), 1)
+    kernel_volume = int(relation.n_kernels or 27)
+    active_per_row = edges / n_out
+    return {
+        'edges': edges,
+        'target_active_kernel_positions': active_per_row,
+        'target_kernel_density': active_per_row / kernel_volume,
+        'expected_active_kernel_positions': _expected_active_kernel_positions(
+            str(params['layout'])
+        ),
+        'expected_kernel_density': _expected_kernel_density(
+            str(params['layout'])
+        ),
+    }
+
+
+def _expected_active_kernel_positions(layout: str) -> float:
+    if layout == 'isolated':
+        return 1.0
+    if layout == 'line':
+        return 3.0
+    if layout == 'plane':
+        return 9.0
+    if layout == 'grid':
+        return 27.0
+    side = int(layout.removeprefix('block'))
+    return ((3 * side - 2) ** 3) / float(side**3)
+
+
+def _expected_kernel_density(layout: str) -> float:
+    return _expected_active_kernel_positions(layout) / 27.0

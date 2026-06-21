@@ -1,10 +1,22 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 import mlx.core as mx
 from mlx_lattice.core import SparseTensor
+
+SPARSE_LAYOUTS = (
+    'isolated',
+    'line',
+    'plane',
+    'grid',
+    'block2',
+    'block3',
+    'block4',
+    'block8',
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,14 +47,19 @@ def sparse_arrays(
     channels: int,
     batches: int = 1,
     dtype: mx.Dtype = mx.float32,
+    layout: str = 'grid',
 ) -> SparseArrays:
+    if layout not in SPARSE_LAYOUTS:
+        raise ValueError(
+            f'layout must be one of {", ".join(SPARSE_LAYOUTS)}.'
+        )
     batch_counts = _batch_counts(rows, batches)
     coords = []
     feats = []
     row = 0
     for batch, count in enumerate(batch_counts):
         for local in range(count):
-            coords.append(_coord(batch, local))
+            coords.append(_coord(batch, local, count, layout))
             feats.append(_feature_row(row, channels))
             row += 1
     return SparseArrays(
@@ -110,13 +127,37 @@ def _batch_counts(rows: int, batches: int) -> tuple[int, ...]:
     )
 
 
-def _coord(batch: int, local: int) -> list[int]:
-    return [
-        batch,
-        local % 97,
-        (local // 97) % 97,
-        (local // (97 * 97)) % 97,
-    ]
+def _coord(batch: int, local: int, count: int, layout: str) -> list[int]:
+    if layout == 'isolated':
+        return [batch, local * 3, 0, 0]
+    if layout == 'line':
+        return [batch, local, 0, 0]
+    if layout == 'plane':
+        width = max(1, math.ceil(math.sqrt(count)))
+        return [batch, local % width, local // width, 0]
+    if layout == 'grid':
+        return [
+            batch,
+            local % 97,
+            (local // 97) % 97,
+            local // (97 * 97),
+        ]
+    side = int(layout.removeprefix('block'))
+    block_volume = side * side * side
+    gap = side + 3
+    blocks_per_axis = max(
+        1,
+        math.ceil((count / block_volume) ** (1.0 / 3.0)),
+    )
+    block = local // block_volume
+    inner = local % block_volume
+    lx = inner % side
+    ly = (inner // side) % side
+    lz = inner // (side * side)
+    bx = block % blocks_per_axis
+    by = (block // blocks_per_axis) % blocks_per_axis
+    bz = block // (blocks_per_axis * blocks_per_axis)
+    return [batch, bx * gap + lx, by * gap + ly, bz * gap + lz]
 
 
 def _feature_row(row: int, channels: int) -> list[float]:

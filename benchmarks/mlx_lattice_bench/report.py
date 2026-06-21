@@ -107,6 +107,7 @@ def _params(params: dict[str, Any]) -> str:
         'channels_out',
         'batches',
         'kernel',
+        'layout',
     ):
         if key in params:
             parts.append(f'{key}={params[key]}')
@@ -124,6 +125,8 @@ def _workload(workload: dict[str, int | float]) -> str:
         ('channels_out', 'Cout'),
         ('kernel_volume', 'K'),
         ('avg_neighbors', 'avgN'),
+        ('target_active_kernel_positions', 'targetAvgN'),
+        ('target_kernel_density', 'targetD'),
     )
     parts = []
     for key, label in labels:

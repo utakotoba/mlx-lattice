@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 
 from mlx_lattice_bench.cases import GROUPS, all_cases
-from mlx_lattice_bench.datasets import PointArrays, point_arrays
+from mlx_lattice_bench.datasets import (
+    SPARSE_LAYOUTS,
+    PointArrays,
+    point_arrays,
+)
 from mlx_lattice_bench.harness import BenchmarkCase, run_case, run_cases
 from mlx_lattice_bench.report import write_json, write_summary
 from mlx_lattice_bench.run import _parser, _report_paths
@@ -29,12 +33,62 @@ def test_case_catalog_exposes_expected_public_surface_groups() -> None:
     assert 'voxelize_mean' in names
     assert 'voxelize_mean_fixed' in names
     assert 'conv3d_generic' in names
+    assert 'conv3d_generic_density' in names
     assert 'conv3d_generic_dfeatures' in names
     assert 'conv3d_generic_dweight' in names
     assert 'prune_mask' in names
     assert 'workload_mini_encoder' in names
     assert 'workload_mini_encoder_fixed' in names
     assert cases[0].params[0]['N'] == 256
+
+
+def test_conv_density_case_matches_wide_layout_vocabulary() -> None:
+    cases = all_cases(
+        'smoke',
+        groups=('conv',),
+        n_values=(32,),
+        channels=(4,),
+    )
+    case = next(
+        item for item in cases if item.name == 'conv3d_generic_density'
+    )
+
+    assert (
+        tuple(params['layout'] for params in case.params) == SPARSE_LAYOUTS
+    )
+    assert {params['channels'] for params in case.params} == {4}
+
+
+def test_conv_density_case_reports_calculated_kernel_density() -> None:
+    cases = all_cases(
+        'smoke',
+        groups=('conv',),
+        n_values=(32,),
+        channels=(4,),
+    )
+    case = next(
+        item for item in cases if item.name == 'conv3d_generic_density'
+    )
+    params = next(
+        params for params in case.params if params['layout'] == 'line'
+    )
+
+    result = run_case(
+        case,
+        params,
+        mode='hot_op',
+        device='cpu',
+        warmup=0,
+        repeats=1,
+    )
+
+    assert result is not None
+    assert result.params['layout'] == 'line'
+    assert result.workload['edges'] > 0
+    assert result.workload['target_active_kernel_positions'] > 0.0
+    assert result.workload['target_kernel_density'] > 0.0
+    assert result.workload['expected_active_kernel_positions'] == 3.0
+    assert result.workload['expected_kernel_density'] == 3.0 / 27.0
 
 
 def test_harness_runs_cold_and_hot_public_operator_cases() -> None:

@@ -22,6 +22,9 @@ type Mode = Literal['cold_op', 'hot_op', 'compiled_hot', 'backward']
 type Params = Mapping[str, Any]
 type EvalTarget = Sequence[mx.array]
 type WorkloadMetrics = dict[str, int | float]
+type MetricFactory = Callable[
+    [Params, Any, Any | None, Any | None], WorkloadMetrics
+]
 type CompiledFactory = Callable[
     [Any], tuple[Callable[..., Any], tuple[Any, ...]]
 ]
@@ -37,6 +40,7 @@ class BenchmarkCase:
     run: Callable[[Any], Any]
     compiled: CompiledFactory | None = None
     backward: CompiledFactory | None = None
+    metrics: MetricFactory | None = None
     units: tuple[str, ...] = ()
     modes: tuple[Mode, ...] | None = None
 
@@ -139,6 +143,7 @@ def run_case(
         fixture=fixture,
         prepared=metric_prepared,
         output=metric_output,
+        extra=case.metrics,
     )
     return BenchmarkResult(
         case=case.name,
@@ -348,6 +353,7 @@ def _derive_workload_metrics(
     fixture: Any,
     prepared: Any | None,
     output: Any | None,
+    extra: MetricFactory | None = None,
 ) -> WorkloadMetrics:
     metrics: WorkloadMetrics = {}
     _apply_param_metrics(metrics, params)
@@ -356,6 +362,8 @@ def _derive_workload_metrics(
     if len(metrics) == input_metric_count:
         _apply_input_metrics(metrics, fixture)
     _apply_output_metrics(metrics, output)
+    if extra is not None:
+        metrics.update(extra(params, fixture, prepared, output))
     _derive_composite_metrics(metrics)
     return metrics
 
