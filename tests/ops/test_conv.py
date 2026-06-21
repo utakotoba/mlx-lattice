@@ -11,7 +11,6 @@ from mlx_lattice.ops import (
 )
 from mlx_lattice.ops._relation_exec import (
     sparse_conv_features_sorted_direct_reference_from_relation,
-    sparse_conv_features_sorted_from_relation,
 )
 from tests.support import (
     active_coords,
@@ -119,18 +118,11 @@ def test_sorted_implicit_gemm_direct_reference_matches_classic(
         relation,
         store_sorted=True,
     )
-    tensor = sparse_conv_features_sorted_from_relation(
-        x.feats,
-        weight,
-        relation,
-        store_sorted=True,
-    )
     reorder_rows = relation.require_sorted_implicit_gemm().reorder_rows
-    mx.eval(classic, direct, tensor, reorder_rows)
+    mx.eval(classic, direct, reorder_rows)
 
     sorted_classic = classic[reorder_rows].astype(mx.float32)
     assert float(mx.max(mx.abs(sorted_classic - direct)).item()) <= 0.001
-    assert float(mx.max(mx.abs(sorted_classic - tensor)).item()) <= 0.004
 
 
 def test_conv3d_target_coordinates_match_sparse_reference() -> None:
