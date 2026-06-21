@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import os
+import weakref
 
 import mlx.core as mx
 
 from mlx_lattice._native import ext
 from mlx_lattice.core.relations import KernelRelation
+
+_PACKED_WEIGHT_CACHE: dict[
+    int,
+    tuple[
+        weakref.ReferenceType[mx.array], tuple[int, ...], mx.Dtype, mx.array
+    ],
+] = {}
 
 
 def sparse_conv_features_from_relation(
@@ -18,15 +26,8 @@ def sparse_conv_features_from_relation(
             'kernel relation is missing static shape metadata.'
         )
     if _can_use_sorted_implicit_gemm(feats, weight, relation):
-        view = relation.require_sorted_implicit_gemm()
-        return ext.sparse_conv_features_sorted_implicit_gemm(
-            feats,
-            _mapped_weight(weight),
-            view.sorted_out_in_map,
-            view.reorder_rows,
-            view.tile_masks,
-            relation.n_out_capacity,
-            relation.n_kernels,
+        return sparse_conv_features_sorted_from_relation(
+            feats, weight, relation
         )
     input_csr = relation.input_csr
     kernel_csr = relation.kernel_csr
@@ -49,12 +50,77 @@ def sparse_conv_features_from_relation(
     )
 
 
+def sparse_conv_features_sorted_from_relation(
+    feats: mx.array,
+    weight: mx.array,
+    relation: KernelRelation,
+    *,
+    store_sorted: bool = False,
+) -> mx.array:
+    if relation.n_out_capacity is None or relation.n_kernels is None:
+        raise ValueError(
+            'kernel relation is missing static shape metadata.'
+        )
+    if not _can_use_sorted_implicit_gemm(feats, weight, relation):
+        raise ValueError(
+            'sorted implicit GEMM is not supported for this relation, '
+            'feature tensor, or weight tensor.'
+        )
+    view = relation.require_sorted_implicit_gemm()
+    return ext.sparse_conv_features_sorted_implicit_gemm(
+        feats,
+        _mapped_weight(weight),
+        view.sorted_out_in_map,
+        view.sorted_kv_out_in_map,
+        view.reorder_rows,
+        view.tile_masks,
+        relation.n_out_capacity,
+        relation.n_kernels,
+        store_sorted=store_sorted,
+    )
+
+
+def sparse_conv_features_sorted_direct_reference_from_relation(
+    feats: mx.array,
+    weight: mx.array,
+    relation: KernelRelation,
+    *,
+    store_sorted: bool = False,
+) -> mx.array:
+    if relation.n_out_capacity is None or relation.n_kernels is None:
+        raise ValueError(
+            'kernel relation is missing static shape metadata.'
+        )
+    if not _can_use_sorted_implicit_gemm(feats, weight, relation):
+        raise ValueError(
+            'sorted direct convolution reference is not supported for this '
+            'relation, feature tensor, or weight tensor.'
+        )
+    view = relation.require_sorted_implicit_gemm()
+    return ext.sparse_conv_features_sorted_direct_reference(
+        feats,
+        _mapped_weight(weight),
+        view.sorted_out_in_map,
+        view.reorder_rows,
+        view.tile_masks,
+        relation.n_out_capacity,
+        relation.n_kernels,
+        store_sorted=store_sorted,
+    )
+
+
 def _can_use_sorted_implicit_gemm(
     feats: mx.array,
     weight: mx.array,
     relation: KernelRelation,
 ) -> bool:
-    if os.environ.get('MLX_LATTICE_EXPERIMENTAL_IGEMM_CONV') != '1':
+    if os.environ.get('MLX_LATTICE_EXPERIMENTAL_IGEMM_CONV') in (
+        '0',
+        'false',
+        'False',
+        'off',
+        'OFF',
+    ):
         return False
     if relation.contract.kind not in ('forward', 'target'):
         return False
@@ -62,20 +128,57 @@ def _can_use_sorted_implicit_gemm(
         return False
     if relation.n_kernels != 27:
         return False
-    if feats.ndim != 2 or int(feats.shape[1]) != 32:
+    if feats.ndim != 2 or int(feats.shape[1]) not in (32, 64):
         return False
+    channels = int(feats.shape[1])
     if weight.ndim == 3:
         return int(weight.shape[0]) == 27 and tuple(weight.shape[1:]) == (
-            32,
-            32,
+            channels,
+            channels,
         )
-    return weight.ndim == 5 and tuple(weight.shape) == (32, 3, 3, 3, 32)
+    return weight.ndim == 5 and tuple(weight.shape) == (
+        channels,
+        3,
+        3,
+        3,
+        channels,
+    )
 
 
 def _mapped_weight(weight: mx.array) -> mx.array:
     if weight.ndim == 3:
         return weight
-    return weight.transpose(1, 2, 3, 4, 0).reshape((-1, 32, 32))
+    cache_key = id(weight)
+    shape = tuple(int(dim) for dim in weight.shape)
+    cached = _PACKED_WEIGHT_CACHE.get(cache_key)
+    if cached is not None:
+        cached_ref, cached_shape, cached_dtype, cached_weight = cached
+        if (
+            cached_ref() is weight
+            and cached_shape == shape
+            and cached_dtype == weight.dtype
+        ):
+            return cached_weight
+    channels = int(weight.shape[0])
+    packed = mx.contiguous(
+        weight.transpose(1, 2, 3, 4, 0).reshape((-1, channels, channels))
+    )
+
+    def clear_cached_weight(
+        ref: weakref.ReferenceType[mx.array], key: int = cache_key
+    ) -> None:
+        cached_entry = _PACKED_WEIGHT_CACHE.get(key)
+        if cached_entry is not None and cached_entry[0] is ref:
+            _PACKED_WEIGHT_CACHE.pop(key, None)
+
+    weight_ref = weakref.ref(weight, clear_cached_weight)
+    _PACKED_WEIGHT_CACHE[cache_key] = (
+        weight_ref,
+        shape,
+        weight.dtype,
+        packed,
+    )
+    return packed
 
 
 def sparse_pool_features_from_relation(

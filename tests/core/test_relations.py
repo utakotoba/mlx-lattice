@@ -152,6 +152,7 @@ def test_sorted_implicit_gemm_view_has_independent_cache() -> None:
         implicit.out_in_map,
         implicit.row_masks,
         sorted_view.sorted_out_in_map,
+        sorted_view.sorted_kv_out_in_map,
         sorted_view.reorder_rows,
         sorted_view.tile_masks,
     )
@@ -164,7 +165,12 @@ def test_sorted_implicit_gemm_view_has_independent_cache() -> None:
         [-1, 0, 1],
         [0, 1, 2],
     ]
-    assert sorted_view.tile_masks.tolist() == [7]
+    assert sorted_view.sorted_kv_out_in_map.tolist() == [
+        [1, -1, 0],
+        [2, 0, 1],
+        [-1, 1, 2],
+    ]
+    assert sorted_view.tile_masks.tolist() == [7, 0, 0, 0]
 
 
 def test_neighbor_relation_accepts_and_validates_query_contract() -> None:

@@ -9,6 +9,10 @@ from mlx_lattice.ops import (
     generative_conv_transpose3d,
     subm_conv3d,
 )
+from mlx_lattice.ops._relation_exec import (
+    sparse_conv_features_sorted_direct_reference_from_relation,
+    sparse_conv_features_sorted_from_relation,
+)
 from tests.support import (
     active_coords,
     active_feats,
@@ -77,6 +81,56 @@ def test_conv3d_generic_supports_float16() -> None:
         active_feats(out).astype(mx.float32).tolist(),
         [[8.0], [14.0], [8.0]],
     )
+
+
+def test_sorted_implicit_gemm_direct_reference_matches_classic(
+    monkeypatch: pytest.MonkeyPatch,
+    selected_backend,
+) -> None:
+    if selected_backend.name != 'metal':
+        pytest.skip('sorted direct row-stationary reference is Metal-only')
+    coords = mx.array(
+        [[0, index, 0, 0] for index in range(96)],
+        dtype=mx.int32,
+    )
+    feats = mx.array(
+        [
+            [
+                ((row + 1) * (channel + 3) % 17) / 17.0
+                for channel in range(32)
+            ]
+            for row in range(96)
+        ],
+        dtype=mx.float16,
+    )
+    x = SparseTensor(coords, feats)
+    weight = mx.array(
+        [((index % 23) - 11) / 23.0 for index in range(32 * 27 * 32)],
+        dtype=mx.float16,
+    ).reshape((32, 3, 3, 3, 32))
+    relation = x.coord_manager.kernel_relation(x.coord_key, kernel_size=3)
+    monkeypatch.setenv('MLX_LATTICE_EXPERIMENTAL_IGEMM_CONV', '0')
+    classic = conv3d(x, weight, kernel_size=3).feats
+
+    monkeypatch.delenv('MLX_LATTICE_EXPERIMENTAL_IGEMM_CONV')
+    direct = sparse_conv_features_sorted_direct_reference_from_relation(
+        x.feats,
+        weight,
+        relation,
+        store_sorted=True,
+    )
+    tensor = sparse_conv_features_sorted_from_relation(
+        x.feats,
+        weight,
+        relation,
+        store_sorted=True,
+    )
+    reorder_rows = relation.require_sorted_implicit_gemm().reorder_rows
+    mx.eval(classic, direct, tensor, reorder_rows)
+
+    sorted_classic = classic[reorder_rows].astype(mx.float32)
+    assert float(mx.max(mx.abs(sorted_classic - direct)).item()) <= 0.001
+    assert float(mx.max(mx.abs(sorted_classic - tensor)).item()) <= 0.004
 
 
 def test_conv3d_target_coordinates_match_sparse_reference() -> None:

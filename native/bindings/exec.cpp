@@ -132,18 +132,63 @@ void register_exec(nb::module_& module) {
         [](nb::handle feats,
            nb::handle weights,
            nb::handle sorted_out_in_map,
+           nb::handle sorted_kv_out_in_map,
            nb::handle reorder_rows,
            nb::handle tile_masks,
            int out_capacity,
-           int n_kernels) {
+           int n_kernels,
+           bool store_sorted) {
             return sparse_conv_features_sorted_implicit_gemm(
+                array_arg(feats, "feats"),
+                array_arg(weights, "weights"),
+                array_arg(sorted_out_in_map, "sorted_out_in_map"),
+                array_arg(sorted_kv_out_in_map, "sorted_kv_out_in_map"),
+                array_arg(reorder_rows, "reorder_rows"),
+                array_arg(tile_masks, "tile_masks"),
+                out_capacity,
+                n_kernels,
+                store_sorted
+            );
+        },
+        "feats"_a,
+        "weights"_a,
+        "sorted_out_in_map"_a,
+        "sorted_kv_out_in_map"_a,
+        "reorder_rows"_a,
+        "tile_masks"_a,
+        "out_capacity"_a,
+        "n_kernels"_a,
+        "store_sorted"_a = false,
+        nb::sig(
+            "def sparse_conv_features_sorted_implicit_gemm(feats: "
+            "mlx.core.array, weights: mlx.core.array, "
+            "sorted_out_in_map: mlx.core.array, "
+            "sorted_kv_out_in_map: mlx.core.array, reorder_rows: "
+            "mlx.core.array, tile_masks: mlx.core.array, "
+            "out_capacity: int, n_kernels: int, store_sorted: bool = False) "
+            "-> mlx.core.array"
+        ),
+        "Run sparse convolution over a sorted implicit-GEMM relation view."
+    );
+    module.def(
+        "sparse_conv_features_sorted_direct_reference",
+        [](nb::handle feats,
+           nb::handle weights,
+           nb::handle sorted_out_in_map,
+           nb::handle reorder_rows,
+           nb::handle tile_masks,
+           int out_capacity,
+           int n_kernels,
+           bool store_sorted) {
+            return sparse_conv_features_sorted_direct_reference(
                 array_arg(feats, "feats"),
                 array_arg(weights, "weights"),
                 array_arg(sorted_out_in_map, "sorted_out_in_map"),
                 array_arg(reorder_rows, "reorder_rows"),
                 array_arg(tile_masks, "tile_masks"),
                 out_capacity,
-                n_kernels
+                n_kernels,
+                store_sorted
             );
         },
         "feats"_a,
@@ -153,15 +198,17 @@ void register_exec(nb::module_& module) {
         "tile_masks"_a,
         "out_capacity"_a,
         "n_kernels"_a,
+        "store_sorted"_a = false,
         nb::sig(
-            "def sparse_conv_features_sorted_implicit_gemm(feats: "
+            "def sparse_conv_features_sorted_direct_reference(feats: "
             "mlx.core.array, weights: mlx.core.array, "
-            "sorted_out_in_map: mlx.core.array, reorder_rows: "
-            "mlx.core.array, tile_masks: mlx.core.array, out_capacity: int, "
-            "n_kernels: int) -> mlx.core.array"
+            "sorted_out_in_map: mlx.core.array, reorder_rows: mlx.core.array, "
+            "tile_masks: mlx.core.array, "
+            "out_capacity: int, n_kernels: int, store_sorted: bool = False) "
+            "-> mlx.core.array"
         ),
-        "Run experimental sparse convolution over a sorted implicit-GEMM "
-        "relation view."
+        "Run diagnostic direct row-stationary convolution over a sorted "
+        "implicit-GEMM relation view."
     );
 }
 

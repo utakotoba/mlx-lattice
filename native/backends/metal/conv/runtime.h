@@ -21,6 +21,13 @@ void eval_sorted_implicit_gemm(
     std::vector<mx::array>& outputs
 );
 
+void eval_sorted_direct_reference(
+    SparseConvShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
 void eval_input_grad(
     SparseConvShape shape,
     const mx::Stream& stream,

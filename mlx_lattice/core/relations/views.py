@@ -82,6 +82,7 @@ class RelationSortedImplicitGemmView:
     """Tile-sorted implicit-GEMM execution view for TensorOps kernels."""
 
     sorted_out_in_map: mx.array
+    sorted_kv_out_in_map: mx.array
     reorder_rows: mx.array
     tile_masks: mx.array
 
@@ -90,6 +91,21 @@ class RelationSortedImplicitGemmView:
             raise ValueError('sorted_out_in_map must have shape (Nout, K).')
         if self.sorted_out_in_map.dtype not in (mx.int32, mx.int64):
             raise ValueError('sorted_out_in_map must be int32 or int64.')
+        if self.sorted_kv_out_in_map.ndim != 2:
+            raise ValueError(
+                'sorted_kv_out_in_map must have shape (K, Nout).'
+            )
+        if self.sorted_kv_out_in_map.dtype not in (mx.int32, mx.int64):
+            raise ValueError('sorted_kv_out_in_map must be int32 or int64.')
+        if int(self.sorted_kv_out_in_map.shape[0]) != int(
+            self.sorted_out_in_map.shape[1]
+        ) or int(self.sorted_kv_out_in_map.shape[1]) != int(
+            self.sorted_out_in_map.shape[0]
+        ):
+            raise ValueError(
+                'sorted_kv_out_in_map must be the K-major view of '
+                'sorted_out_in_map.'
+            )
         _validate_row_array(self.reorder_rows, name='reorder_rows')
         _validate_row_array(self.tile_masks, name='tile_masks')
         if int(self.reorder_rows.shape[0]) != int(
@@ -422,16 +438,28 @@ class KernelRelation:
         row_masks = view.row_masks[:, 0]
         sorted_rows = mx.argsort(row_masks).astype(mx.int32)
         sorted_out_in_map = view.out_in_map[sorted_rows]
-        tile_count = (int(view.out_in_map.shape[0]) + 15) // 16
-        tile_masks = mx.zeros((tile_count,), dtype=mx.int32)
-        for row_offset in range(16):
-            rows = mx.arange(tile_count, dtype=mx.int32) * 16 + row_offset
-            valid = rows < int(view.out_in_map.shape[0])
-            clipped = mx.minimum(rows, int(view.out_in_map.shape[0]) - 1)
-            masks = mx.where(valid, row_masks[sorted_rows[clipped]], 0)
-            tile_masks = mx.bitwise_or(tile_masks, masks)
+        sorted_kv_out_in_map = mx.contiguous(
+            mx.transpose(sorted_out_in_map)
+        )
+        tile_count = (int(view.out_in_map.shape[0]) + 63) // 64
+        words = []
+        for word in range(4):
+            word_masks = mx.zeros((tile_count,), dtype=mx.int32)
+            for row_offset in range(word * 16, (word + 1) * 16):
+                rows = (
+                    mx.arange(tile_count, dtype=mx.int32) * 64 + row_offset
+                )
+                valid = rows < int(view.out_in_map.shape[0])
+                clipped = mx.minimum(
+                    rows, int(view.out_in_map.shape[0]) - 1
+                )
+                masks = mx.where(valid, row_masks[sorted_rows[clipped]], 0)
+                word_masks = mx.bitwise_or(word_masks, masks)
+            words.append(word_masks)
+        tile_masks = mx.reshape(mx.stack(words, axis=1), (-1,))
         sorted_view = RelationSortedImplicitGemmView(
             sorted_out_in_map=sorted_out_in_map,
+            sorted_kv_out_in_map=sorted_kv_out_in_map,
             reorder_rows=sorted_rows,
             tile_masks=tile_masks,
         )

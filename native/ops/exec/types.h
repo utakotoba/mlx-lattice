@@ -46,6 +46,7 @@ struct SparseConvShape {
     int kernel_x;
     int kernel_y;
     int kernel_z;
+    int store_sorted = 0;
 };
 
 inline bool operator==(SparseConvShape lhs, SparseConvShape rhs) {
@@ -56,7 +57,7 @@ inline bool operator==(SparseConvShape lhs, SparseConvShape rhs) {
            lhs.out_channels == rhs.out_channels &&
            lhs.weight_layout == rhs.weight_layout &&
            lhs.kernel_x == rhs.kernel_x && lhs.kernel_y == rhs.kernel_y &&
-           lhs.kernel_z == rhs.kernel_z;
+           lhs.kernel_z == rhs.kernel_z && lhs.store_sorted == rhs.store_sorted;
 }
 
 inline bool operator!=(SparseConvShape lhs, SparseConvShape rhs) {

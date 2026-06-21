@@ -310,7 +310,7 @@ void eval_sorted_implicit_gemm_typed(
     const auto& feats = ready[0];
     const auto& weights = ready[1];
     const auto& sorted_out_in_map = ready[2];
-    const auto& reorder_rows = ready[3];
+    const auto& reorder_rows = ready[4];
 
     auto& out = task_outputs[0];
     auto* out_data = out.data<T>();
@@ -322,7 +322,8 @@ void eval_sorted_implicit_gemm_typed(
     const auto feat_s1 = feats.strides(1);
 
     parallel_for(0, shape.out_capacity, [&](int sorted_row) {
-        auto out_row = reorder_data[sorted_row];
+        auto out_row =
+            shape.store_sorted != 0 ? sorted_row : reorder_data[sorted_row];
         auto* out_row_data = out_data + static_cast<std::ptrdiff_t>(out_row) *
                                             shape.out_channels;
         std::fill(out_row_data, out_row_data + shape.out_channels, T(0.0F));

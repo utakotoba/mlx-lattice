@@ -12,6 +12,9 @@ from mlx_lattice.ops import (
     generative_conv_transpose3d,
     subm_conv3d,
 )
+from mlx_lattice.ops._relation_exec import (
+    sparse_conv_features_sorted_from_relation,
+)
 
 from mlx_lattice_bench.cases.common import benchmark_n, param_grid
 from mlx_lattice_bench.datasets import (
@@ -31,6 +34,7 @@ type ConvKind = Literal[
     'target_superset',
     'transpose',
     'generative_transpose',
+    'generic_sorted_igemm',
 ]
 type ConvGradTarget = Literal['features', 'weight', 'both']
 
@@ -100,6 +104,18 @@ def cases(
         ),
         metrics=_density_metrics,
     )
+    sorted_igemm_density_case = _case(
+        'conv3d_generic_sorted_igemm_density',
+        'generic_sorted_igemm',
+        _density_params(
+            preset,
+            n_values=n_values,
+            channels=channels,
+            channel_pairs=channel_pairs,
+            dtype=dtype,
+        ),
+        metrics=_density_metrics,
+    )
     backward_cases = tuple(
         _backward_case(f'{name}_{suffix}', kind, target, params)
         for name, kind in specs
@@ -108,7 +124,12 @@ def cases(
             ('dweight', 'weight'),
         )
     )
-    return (*forward_cases, density_case, *backward_cases)
+    return (
+        *forward_cases,
+        density_case,
+        sorted_igemm_density_case,
+        *backward_cases,
+    )
 
 
 def _case(
@@ -231,6 +252,18 @@ def _run(kind: ConvKind, inputs: ConvInputs) -> SparseTensor:
         return conv3d(inputs.x, inputs.pointwise_weight, kernel_size=1)
     if kind == 'generic':
         return conv3d(inputs.x, inputs.kernel3_weight, kernel_size=3)
+    if kind == 'generic_sorted_igemm':
+        relation = inputs.x.coord_manager.kernel_relation(
+            inputs.x.coord_key,
+            kernel_size=3,
+        )
+        feats = sparse_conv_features_sorted_from_relation(
+            inputs.x.feats,
+            inputs.kernel3_weight,
+            relation,
+            store_sorted=True,
+        )
+        return inputs.x.replace(feats=feats)
     if kind == 'subm':
         return subm_conv3d(inputs.x, inputs.kernel3_weight, kernel_size=3)
     if kind == 'target_same':

@@ -238,8 +238,10 @@ class SparseConvFeaturesSortedImplicitGemm final : public SparsePrimitive {
         const std::vector<mx::array>& inputs,
         std::vector<mx::array>& outputs
     ) override {
-        backend::cpu::conv::eval_sorted_implicit_gemm(
-            shape_, stream(), inputs, outputs
+        (void)inputs;
+        (void)outputs;
+        throw std::runtime_error(
+            "sorted direct convolution reference is Metal-only."
         );
     }
 
@@ -262,6 +264,49 @@ class SparseConvFeaturesSortedImplicitGemm final : public SparsePrimitive {
         }
         const auto& op =
             static_cast<const SparseConvFeaturesSortedImplicitGemm&>(other);
+        return shape_ == op.shape_;
+    }
+
+  private:
+    SparseConvShape shape_;
+};
+
+class SparseConvFeaturesSortedDirectReference final : public SparsePrimitive {
+  public:
+    SparseConvFeaturesSortedDirectReference(
+        mx::Stream stream,
+        SparseConvShape shape
+    )
+        : SparsePrimitive(stream), shape_(shape) {}
+
+    void eval_cpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        backend::cpu::conv::eval_sorted_implicit_gemm(
+            shape_, stream(), inputs, outputs
+        );
+    }
+
+    void eval_gpu(
+        const std::vector<mx::array>& inputs,
+        std::vector<mx::array>& outputs
+    ) override {
+        backend::metal::conv::eval_sorted_direct_reference(
+            shape_, stream(), inputs, outputs
+        );
+    }
+
+    const char* name() const override {
+        return "lattice::SparseConvFeaturesSortedDirectReference";
+    }
+
+    bool is_equivalent(const mx::Primitive& other) const override {
+        if (typeid(other) != typeid(SparseConvFeaturesSortedDirectReference)) {
+            return false;
+        }
+        const auto& op =
+            static_cast<const SparseConvFeaturesSortedDirectReference&>(other);
         return shape_ == op.shape_;
     }
 
@@ -364,10 +409,12 @@ mx::array make_sparse_conv_features_sorted_implicit_gemm(
     const mx::array& feats,
     const mx::array& weights,
     const mx::array& sorted_out_in_map,
+    const mx::array& sorted_kv_out_in_map,
     const mx::array& reorder_rows,
     const mx::array& tile_masks,
     int out_capacity,
-    int n_kernels
+    int n_kernels,
+    bool store_sorted
 ) {
     auto mapped_weight = weights.ndim() == 3;
     auto shape = SparseConvShape{
@@ -380,12 +427,58 @@ mx::array make_sparse_conv_features_sorted_implicit_gemm(
         mapped_weight ? n_kernels : weights.shape(1),
         mapped_weight ? 1 : weights.shape(2),
         mapped_weight ? 1 : weights.shape(3),
+        store_sorted ? 1 : 0,
     };
     auto stream =
         sparse_conv_implicit_gemm_stream(feats, weights, sorted_out_in_map);
     auto device = sparse_exec_device();
     auto primitive =
         std::make_shared<SparseConvFeaturesSortedImplicitGemm>(stream, shape);
+    auto inputs = std::vector<mx::array>{
+        mx::contiguous(feats, false, device),
+        mx::contiguous(weights, false, device),
+        mx::contiguous(sorted_out_in_map, false, device),
+        mx::contiguous(sorted_kv_out_in_map, false, device),
+        mx::contiguous(reorder_rows, false, device),
+        mx::contiguous(tile_masks, false, device),
+    };
+    return mx::array::make_arrays(
+        {mx::Shape{out_capacity, shape.out_channels}},
+        {feats.dtype()},
+        primitive,
+        inputs
+    )[0];
+}
+
+mx::array make_sparse_conv_features_sorted_direct_reference(
+    const mx::array& feats,
+    const mx::array& weights,
+    const mx::array& sorted_out_in_map,
+    const mx::array& reorder_rows,
+    const mx::array& tile_masks,
+    int out_capacity,
+    int n_kernels,
+    bool store_sorted
+) {
+    auto mapped_weight = weights.ndim() == 3;
+    auto shape = SparseConvShape{
+        feats.shape(0),
+        out_capacity,
+        n_kernels,
+        feats.shape(1),
+        mapped_weight ? weights.shape(2) : weights.shape(0),
+        mapped_weight ? 0 : 1,
+        mapped_weight ? n_kernels : weights.shape(1),
+        mapped_weight ? 1 : weights.shape(2),
+        mapped_weight ? 1 : weights.shape(3),
+        store_sorted ? 1 : 0,
+    };
+    auto stream =
+        sparse_conv_implicit_gemm_stream(feats, weights, sorted_out_in_map);
+    auto device = sparse_exec_device();
+    auto primitive = std::make_shared<SparseConvFeaturesSortedDirectReference>(
+        stream, shape
+    );
     auto inputs = std::vector<mx::array>{
         mx::contiguous(feats, false, device),
         mx::contiguous(weights, false, device),

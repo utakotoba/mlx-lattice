@@ -16,10 +16,23 @@ mx::array make_sparse_conv_features_sorted_implicit_gemm(
     const mx::array& feats,
     const mx::array& weights,
     const mx::array& sorted_out_in_map,
+    const mx::array& sorted_kv_out_in_map,
     const mx::array& reorder_rows,
     const mx::array& tile_masks,
     int out_capacity,
-    int n_kernels
+    int n_kernels,
+    bool store_sorted
+);
+
+mx::array make_sparse_conv_features_sorted_direct_reference(
+    const mx::array& feats,
+    const mx::array& weights,
+    const mx::array& sorted_out_in_map,
+    const mx::array& reorder_rows,
+    const mx::array& tile_masks,
+    int out_capacity,
+    int n_kernels,
+    bool store_sorted
 );
 
 mx::array make_sparse_pool_features(
