@@ -241,6 +241,137 @@ inline int lookup_downsample_row_hash(
     write_coord(out_coords, out_row, candidate);
 }
 
+[[kernel]] void plan_sparse_alignment_i32(
+    device const int* lhs_coords [[buffer(0)]],
+    device const int* lhs_active_rows [[buffer(1)]],
+    device const int* rhs_coords [[buffer(2)]],
+    device const int* rhs_active_rows [[buffer(3)]],
+    device const int* lhs_table [[buffer(4)]],
+    device const int* rhs_table [[buffer(5)]],
+    device int* selected [[buffer(6)]],
+    device int* lhs_rows [[buffer(7)]],
+    device int* rhs_rows [[buffer(8)]],
+    constant const int& join [[buffer(9)]],
+    constant const int& lhs_capacity [[buffer(10)]],
+    constant const int& rhs_capacity [[buffer(11)]],
+    constant const int& lhs_table_capacity [[buffer(12)]],
+    constant const int& rhs_table_capacity [[buffer(13)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    int lhs_rows_active = min(lhs_active_rows[0], lhs_capacity);
+    int rhs_rows_active = min(rhs_active_rows[0], rhs_capacity);
+    int total = join == 3   ? lhs_capacity + rhs_capacity
+                : join == 2 ? rhs_capacity
+                            : lhs_capacity;
+    if (elem >= uint(total)) {
+        return;
+    }
+    selected[elem] = 0;
+    lhs_rows[elem] = -1;
+    rhs_rows[elem] = -1;
+
+    if (join == 2) {
+        int rhs_row = int(elem);
+        if (rhs_row >= rhs_rows_active) {
+            return;
+        }
+        int query[4] = {
+            rhs_coords[rhs_row * 4],
+            rhs_coords[rhs_row * 4 + 1],
+            rhs_coords[rhs_row * 4 + 2],
+            rhs_coords[rhs_row * 4 + 3],
+        };
+        selected[elem] = 1;
+        lhs_rows[elem] = lookup_coord_row_hash(
+            lhs_coords, lhs_table, lhs_table_capacity, query
+        );
+        rhs_rows[elem] = rhs_row;
+        return;
+    }
+
+    if (elem < uint(lhs_capacity)) {
+        int lhs_row = int(elem);
+        if (lhs_row >= lhs_rows_active) {
+            return;
+        }
+        int query[4] = {
+            lhs_coords[lhs_row * 4],
+            lhs_coords[lhs_row * 4 + 1],
+            lhs_coords[lhs_row * 4 + 2],
+            lhs_coords[lhs_row * 4 + 3],
+        };
+        int rhs_row = lookup_coord_row_hash(
+            rhs_coords, rhs_table, rhs_table_capacity, query
+        );
+        if (join == 0 && rhs_row < 0) {
+            return;
+        }
+        selected[elem] = 1;
+        lhs_rows[elem] = lhs_row;
+        rhs_rows[elem] = rhs_row;
+        return;
+    }
+
+    int rhs_row = int(elem) - lhs_capacity;
+    if (join != 3 || rhs_row >= rhs_rows_active) {
+        return;
+    }
+    int query[4] = {
+        rhs_coords[rhs_row * 4],
+        rhs_coords[rhs_row * 4 + 1],
+        rhs_coords[rhs_row * 4 + 2],
+        rhs_coords[rhs_row * 4 + 3],
+    };
+    if (lookup_coord_row_hash(
+            lhs_coords, lhs_table, lhs_table_capacity, query
+        ) >= 0) {
+        return;
+    }
+    selected[elem] = 1;
+    rhs_rows[elem] = rhs_row;
+}
+
+[[kernel]] void scatter_sparse_alignment_i32(
+    device const int* lhs_coords [[buffer(0)]],
+    device const int* rhs_coords [[buffer(1)]],
+    device const int* selected [[buffer(2)]],
+    device const int* plan_lhs_rows [[buffer(3)]],
+    device const int* plan_rhs_rows [[buffer(4)]],
+    device const int* local_offsets [[buffer(5)]],
+    device const int* block_offsets [[buffer(6)]],
+    device int* out_coords [[buffer(7)]],
+    device int* out_lhs_rows [[buffer(8)]],
+    device int* out_rhs_rows [[buffer(9)]],
+    constant const int& total [[buffer(10)]],
+    uint elem [[thread_position_in_grid]]
+) {
+    if (elem >= uint(total) || selected[elem] == 0) {
+        return;
+    }
+    int out_row = block_offsets[elem / 256] + local_offsets[elem];
+    int lhs_row = plan_lhs_rows[elem];
+    int rhs_row = plan_rhs_rows[elem];
+    out_lhs_rows[out_row] = lhs_row;
+    out_rhs_rows[out_row] = rhs_row;
+    if (lhs_row >= 0) {
+        int coord[4] = {
+            lhs_coords[lhs_row * 4],
+            lhs_coords[lhs_row * 4 + 1],
+            lhs_coords[lhs_row * 4 + 2],
+            lhs_coords[lhs_row * 4 + 3],
+        };
+        write_coord(out_coords, out_row, coord);
+        return;
+    }
+    int coord[4] = {
+        rhs_coords[rhs_row * 4],
+        rhs_coords[rhs_row * 4 + 1],
+        rhs_coords[rhs_row * 4 + 2],
+        rhs_coords[rhs_row * 4 + 3],
+    };
+    write_coord(out_coords, out_row, coord);
+}
+
 [[kernel]] void compact_strided_relation_output_coords_i32(
     device const int* coords [[buffer(0)]],
     device const int* selected [[buffer(1)]],

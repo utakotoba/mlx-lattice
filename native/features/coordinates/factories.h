@@ -9,6 +9,13 @@ NativeCoordSet make_union_coords(const mx::array& lhs, const mx::array& rhs);
 NativeCoordSet
 make_intersection_coords(const mx::array& lhs, const mx::array& rhs);
 mx::array make_lookup_coords(const mx::array& coords, const mx::array& queries);
+NativeSparseAlignment make_sparse_alignment(
+    const mx::array& lhs_coords,
+    const mx::array& lhs_active_rows,
+    const mx::array& rhs_coords,
+    const mx::array& rhs_active_rows,
+    SparseJoinOp join
+);
 mx::array make_morton_codes(const mx::array& coords);
 NativeSparseOccupancy make_occupancy_downsample(
     const mx::array& coords,

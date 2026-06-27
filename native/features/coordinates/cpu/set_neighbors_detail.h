@@ -55,6 +55,86 @@ lookup_values(const mx::array& coords, const mx::array& queries) {
     return out;
 }
 
+struct AlignmentRow {
+    Coord coord;
+    int32_t lhs_row;
+    int32_t rhs_row;
+};
+
+std::vector<AlignmentRow>
+alignment_values(SparseJoinOp join, SparseAlignmentInputs inputs) {
+    auto lhs_values = read_coords(inputs.lhs_coords);
+    auto rhs_values = read_coords(inputs.rhs_coords);
+    auto lhs_count = std::min(inputs.lhs_active_rows, int(lhs_values.size()));
+    auto rhs_count = std::min(inputs.rhs_active_rows, int(rhs_values.size()));
+    lhs_values.resize(lhs_count);
+    rhs_values.resize(rhs_count);
+
+    auto lhs_rows = first_row_map(lhs_values);
+    auto rhs_rows = first_row_map(rhs_values);
+    std::vector<AlignmentRow> out;
+    out.reserve(lhs_values.size() + rhs_values.size());
+
+    if (join == SparseJoinOp::Right) {
+        for (int rhs_row = 0; rhs_row < int(rhs_values.size()); ++rhs_row) {
+            auto match = lhs_rows.find(rhs_values[rhs_row]);
+            out.push_back({
+                rhs_values[rhs_row],
+                match == lhs_rows.end() ? -1 : match->second,
+                static_cast<int32_t>(rhs_row),
+            });
+        }
+        return out;
+    }
+
+    for (int lhs_row = 0; lhs_row < int(lhs_values.size()); ++lhs_row) {
+        auto match = rhs_rows.find(lhs_values[lhs_row]);
+        if (join == SparseJoinOp::Inner && match == rhs_rows.end()) {
+            continue;
+        }
+        out.push_back({
+            lhs_values[lhs_row],
+            static_cast<int32_t>(lhs_row),
+            match == rhs_rows.end() ? -1 : match->second,
+        });
+    }
+
+    if (join != SparseJoinOp::Outer) {
+        return out;
+    }
+
+    for (int rhs_row = 0; rhs_row < int(rhs_values.size()); ++rhs_row) {
+        if (lhs_rows.find(rhs_values[rhs_row]) != lhs_rows.end()) {
+            continue;
+        }
+        out.push_back({rhs_values[rhs_row], -1, static_cast<int32_t>(rhs_row)});
+    }
+    return out;
+}
+
+void write_sparse_alignment(
+    std::vector<mx::array>& outputs,
+    SparseJoinOp join,
+    SparseAlignmentInputs inputs
+) {
+    auto rows = alignment_values(join, inputs);
+    std::vector<Coord> coords;
+    std::vector<int32_t> lhs_rows;
+    std::vector<int32_t> rhs_rows;
+    coords.reserve(rows.size());
+    lhs_rows.reserve(rows.size());
+    rhs_rows.reserve(rows.size());
+    for (auto row : rows) {
+        coords.push_back(row.coord);
+        lhs_rows.push_back(row.lhs_row);
+        rhs_rows.push_back(row.rhs_row);
+    }
+    write_coords(outputs[0], coords, inputs.lhs_coords.dtype());
+    write_count(outputs[1], int(coords.size()));
+    write_i32(outputs[2], lhs_rows, -1);
+    write_i32(outputs[3], rhs_rows, -1);
+}
+
 bool same_batch(Coord lhs, Coord rhs) { return lhs[0] == rhs[0]; }
 
 float squared_spatial_distance(Coord lhs, Coord rhs) {

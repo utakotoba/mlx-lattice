@@ -61,6 +61,13 @@ enum class PointVoxelInterpolationOp : std::uint8_t {
     Linear,
 };
 
+enum class SparseJoinOp : std::uint8_t {
+    Inner,
+    Left,
+    Right,
+    Outer,
+};
+
 enum NeighborRelationOutputSlot : std::size_t {
     NeighborQueryRows = 0,
     NeighborSourceRows,
@@ -139,6 +146,13 @@ struct NativePointVoxelMap {
     mx::array weights;
 };
 
+struct NativeSparseAlignment {
+    mx::array coords;
+    mx::array active_rows;
+    mx::array lhs_rows;
+    mx::array rhs_rows;
+};
+
 struct NativeSparseOccupancy {
     mx::array coords;
     mx::array active_rows;
@@ -165,6 +179,21 @@ struct CoordLookupShape {
     int rows;
     int query_rows;
 };
+
+struct SparseAlignmentShape {
+    int lhs_rows;
+    int rhs_rows;
+    int output_rows;
+};
+
+inline bool operator==(SparseAlignmentShape lhs, SparseAlignmentShape rhs) {
+    return lhs.lhs_rows == rhs.lhs_rows && lhs.rhs_rows == rhs.rhs_rows &&
+           lhs.output_rows == rhs.output_rows;
+}
+
+inline bool operator!=(SparseAlignmentShape lhs, SparseAlignmentShape rhs) {
+    return !(lhs == rhs);
+}
 
 struct CoordRowsShape {
     int rows;

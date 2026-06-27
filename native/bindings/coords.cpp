@@ -58,6 +58,24 @@ PointVoxelInterpolationOp interpolation_from_name(const std::string& name) {
     );
 }
 
+SparseJoinOp sparse_join_from_name(const std::string& name) {
+    if (name == "inner") {
+        return SparseJoinOp::Inner;
+    }
+    if (name == "left") {
+        return SparseJoinOp::Left;
+    }
+    if (name == "right") {
+        return SparseJoinOp::Right;
+    }
+    if (name == "outer") {
+        return SparseJoinOp::Outer;
+    }
+    throw std::invalid_argument(
+        "sparse join must be 'inner', 'left', 'right', or 'outer'."
+    );
+}
+
 nb::tuple relation_tuple(const NativeKernelRelation& relation) {
     return nb::make_tuple(
         relation.in_rows,
@@ -100,6 +118,12 @@ nb::tuple quantization_tuple(const NativeSparseQuantization& result) {
 
 nb::tuple point_voxel_map_tuple(const NativePointVoxelMap& result) {
     return nb::make_tuple(result.rows, result.weights);
+}
+
+nb::tuple sparse_alignment_tuple(const NativeSparseAlignment& result) {
+    return nb::make_tuple(
+        result.coords, result.active_rows, result.lhs_rows, result.rhs_rows
+    );
 }
 
 } // namespace
@@ -166,6 +190,35 @@ void register_coords(nb::module_& module) {
             "queries: mlx.core.array) -> mlx.core.array"
         ),
         "Return row indices of queries in coords, or -1."
+    );
+    module.def(
+        "build_sparse_alignment",
+        [](nb::handle lhs_coords,
+           nb::handle lhs_active_rows,
+           nb::handle rhs_coords,
+           nb::handle rhs_active_rows,
+           const std::string& join) {
+            return sparse_alignment_tuple(build_sparse_alignment(
+                array_arg(lhs_coords, "lhs_coords"),
+                array_arg(lhs_active_rows, "lhs_active_rows"),
+                array_arg(rhs_coords, "rhs_coords"),
+                array_arg(rhs_active_rows, "rhs_active_rows"),
+                sparse_join_from_name(join)
+            ));
+        },
+        "lhs_coords"_a,
+        "lhs_active_rows"_a,
+        "rhs_coords"_a,
+        "rhs_active_rows"_a,
+        "join"_a,
+        nb::sig(
+            "def build_sparse_alignment(lhs_coords: mlx.core.array, "
+            "lhs_active_rows: mlx.core.array, rhs_coords: mlx.core.array, "
+            "rhs_active_rows: mlx.core.array, join: str) -> "
+            "tuple[mlx.core.array, mlx.core.array, mlx.core.array, "
+            "mlx.core.array]"
+        ),
+        "Build a coordinate value alignment for two sparse tensors."
     );
     module.def(
         "morton_codes",

@@ -55,6 +55,37 @@ void eval_lookup_coords(
     );
 }
 
+void eval_sparse_alignment(
+    SparseJoinOp join,
+    SparseAlignmentShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    (void)shape;
+    backend::allocate_all(outputs);
+    backend::schedule_cpu(
+        stream,
+        inputs,
+        outputs,
+        [join](
+            const std::vector<mx::array>& task_inputs,
+            std::vector<mx::array>& task_outputs
+        ) {
+            write_sparse_alignment(
+                task_outputs,
+                join,
+                SparseAlignmentInputs{
+                    task_inputs[0],
+                    read_scalar_i32(task_inputs[1]),
+                    task_inputs[2],
+                    read_scalar_i32(task_inputs[3]),
+                }
+            );
+        }
+    );
+}
+
 void eval_morton_codes(
     const mx::Stream& stream,
     const std::vector<mx::array>& inputs,

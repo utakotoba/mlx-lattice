@@ -300,4 +300,103 @@ void eval_lookup_coords(
 #endif
 }
 
+void eval_sparse_alignment(
+    SparseJoinOp join,
+    SparseAlignmentShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    require_i32_inputs(
+        inputs,
+        {
+            "lhs coords",
+            "lhs active rows",
+            "rhs coords",
+            "rhs active rows",
+        }
+    );
+
+#ifdef _METAL_
+    backend::allocate_all(outputs);
+
+    auto& device = mx::metal::device(stream.device);
+    auto library =
+        device.get_library("mlx_lattice", mlx_lattice::metal::binary_dir());
+    auto& encoder = mx::metal::get_command_encoder(stream);
+    auto lhs_table_capacity = coord_hash_capacity(shape.lhs_rows);
+    auto rhs_table_capacity = coord_hash_capacity(shape.rhs_rows);
+    auto lhs_table = make_int32_temp(lhs_table_capacity);
+    auto rhs_table = make_int32_temp(rhs_table_capacity);
+    auto total = shape.output_rows;
+    auto selected = make_int32_temp(total);
+    auto plan_lhs_rows = make_int32_temp(total);
+    auto plan_rhs_rows = make_int32_temp(total);
+    encoder.add_temporaries(
+        {lhs_table, rhs_table, selected, plan_lhs_rows, plan_rhs_rows}
+    );
+
+    clear_coord_hash(device, library, encoder, lhs_table, lhs_table_capacity);
+    clear_coord_hash(device, library, encoder, rhs_table, rhs_table_capacity);
+    auto insert_active =
+        device.get_kernel("coord_hash_insert_active_rows_i32", library);
+    encoder.set_compute_pipeline_state(insert_active);
+    encoder.set_input_array(inputs[0], 0);
+    encoder.set_input_array(inputs[1], 1);
+    encoder.set_output_array(lhs_table, 2);
+    encoder.set_bytes(shape.lhs_rows, 3);
+    encoder.set_bytes(lhs_table_capacity, 4);
+    dispatch_1d(encoder, insert_active, static_cast<size_t>(shape.lhs_rows));
+    encoder.set_compute_pipeline_state(insert_active);
+    encoder.set_input_array(inputs[2], 0);
+    encoder.set_input_array(inputs[3], 1);
+    encoder.set_output_array(rhs_table, 2);
+    encoder.set_bytes(shape.rhs_rows, 3);
+    encoder.set_bytes(rhs_table_capacity, 4);
+    dispatch_1d(encoder, insert_active, static_cast<size_t>(shape.rhs_rows));
+
+    auto plan = device.get_kernel("plan_sparse_alignment_i32", library);
+    encoder.set_compute_pipeline_state(plan);
+    bind_input_arrays(encoder, inputs);
+    encoder.set_input_array(lhs_table, 4);
+    encoder.set_input_array(rhs_table, 5);
+    encoder.set_output_array(selected, 6);
+    encoder.set_output_array(plan_lhs_rows, 7);
+    encoder.set_output_array(plan_rhs_rows, 8);
+    encoder.set_bytes(sparse_join_op_id(join), 9);
+    encoder.set_bytes(shape.lhs_rows, 10);
+    encoder.set_bytes(shape.rhs_rows, 11);
+    encoder.set_bytes(lhs_table_capacity, 12);
+    encoder.set_bytes(rhs_table_capacity, 13);
+    dispatch_1d(encoder, plan, static_cast<size_t>(total));
+
+    auto buffers = make_stable_compact_buffers(total);
+    encode_stable_compact_offsets(
+        device, library, encoder, selected, outputs[1], buffers, total
+    );
+
+    auto scatter = device.get_kernel("scatter_sparse_alignment_i32", library);
+    encoder.set_compute_pipeline_state(scatter);
+    encoder.set_input_array(inputs[0], 0);
+    encoder.set_input_array(inputs[2], 1);
+    encoder.set_input_array(selected, 2);
+    encoder.set_input_array(plan_lhs_rows, 3);
+    encoder.set_input_array(plan_rhs_rows, 4);
+    encoder.set_input_array(buffers.local_offsets, 5);
+    encoder.set_input_array(buffers.block_offsets, 6);
+    encoder.set_output_array(outputs[0], 7);
+    encoder.set_output_array(outputs[2], 8);
+    encoder.set_output_array(outputs[3], 9);
+    encoder.set_bytes(total, 10);
+    dispatch_1d(encoder, scatter, static_cast<size_t>(total));
+#else
+    (void)join;
+    (void)shape;
+    (void)stream;
+    (void)inputs;
+    (void)outputs;
+    throw std::runtime_error("Metal support is not available.");
+#endif
+}
+
 } // namespace mlx_lattice::coords::metal

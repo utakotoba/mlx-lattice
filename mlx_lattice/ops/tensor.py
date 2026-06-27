@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import cast
+from typing import Literal, cast
 
 import mlx.core as mx
 
+from mlx_lattice.core.coords import SparseAlignment, build_sparse_alignment
 from mlx_lattice.core.tensor import SparseTensor
 from mlx_lattice.core.types import triple
+
+type SparseJoin = Literal['inner', 'left', 'right', 'outer']
 
 
 def sparse_collate(
@@ -55,17 +58,213 @@ def sparse_collate(
     )
 
 
-def cat(tensors: Sequence[SparseTensor]) -> SparseTensor:
+def align_sparse(
+    lhs: SparseTensor,
+    rhs: SparseTensor,
+    *,
+    join: SparseJoin = 'inner',
+) -> SparseAlignment:
+    _require_compatible_sparse_tensors(lhs, rhs)
+    return build_sparse_alignment(
+        lhs.coords,
+        lhs.active_rows,
+        rhs.coords,
+        rhs.active_rows,
+        join=join,
+    )
+
+
+def gather_aligned_features(
+    x: SparseTensor,
+    rows: mx.array,
+    *,
+    fill: float = 0.0,
+) -> mx.array:
+    if rows.ndim != 1 or rows.dtype != mx.int32:
+        raise ValueError('rows must have shape (N,) and int32 dtype.')
+    clipped = mx.maximum(rows, 0)
+    gathered = mx.take(x.feats, clipped, axis=0)
+    valid = (rows >= 0).astype(x.feats.dtype)[:, None]
+    if fill == 0.0:
+        return gathered * valid
+    fill_value = mx.array(float(fill), dtype=x.feats.dtype)
+    return mx.where(valid.astype(mx.bool_), gathered, fill_value)
+
+
+def sparse_binary_op(
+    lhs: SparseTensor,
+    rhs: SparseTensor,
+    op: Literal['add', 'sub', 'mul', 'maximum', 'minimum'],
+    *,
+    join: SparseJoin = 'outer',
+    lhs_fill: float = 0.0,
+    rhs_fill: float = 0.0,
+) -> SparseTensor:
+    _require_compatible_sparse_tensors(lhs, rhs)
+    if lhs.channels != rhs.channels:
+        raise ValueError(
+            'sparse binary operands must have matching channels.'
+        )
+    if lhs.same_coords(rhs):
+        return lhs.replace(feats=_apply_binary_op(lhs.feats, rhs.feats, op))
+    alignment = align_sparse(lhs, rhs, join=join)
+    lhs_feats = gather_aligned_features(
+        lhs, alignment.lhs_rows, fill=lhs_fill
+    )
+    rhs_feats = gather_aligned_features(
+        rhs, alignment.rhs_rows, fill=rhs_fill
+    )
+    return SparseTensor(
+        alignment.coords,
+        _apply_binary_op(lhs_feats, rhs_feats, op),
+        lhs.stride,
+        coord_manager=lhs.coord_manager,
+        active_rows=alignment.active_rows,
+    )
+
+
+def sparse_add(
+    lhs: SparseTensor,
+    rhs: SparseTensor,
+    *,
+    join: SparseJoin = 'outer',
+) -> SparseTensor:
+    return sparse_binary_op(lhs, rhs, 'add', join=join)
+
+
+def sparse_sub(
+    lhs: SparseTensor,
+    rhs: SparseTensor,
+    *,
+    join: SparseJoin = 'outer',
+) -> SparseTensor:
+    return sparse_binary_op(lhs, rhs, 'sub', join=join)
+
+
+def sparse_mul(
+    lhs: SparseTensor,
+    rhs: SparseTensor,
+    *,
+    join: SparseJoin = 'inner',
+) -> SparseTensor:
+    return sparse_binary_op(lhs, rhs, 'mul', join=join)
+
+
+def sparse_maximum(
+    lhs: SparseTensor,
+    rhs: SparseTensor,
+    *,
+    join: SparseJoin = 'inner',
+) -> SparseTensor:
+    return sparse_binary_op(lhs, rhs, 'maximum', join=join)
+
+
+def sparse_minimum(
+    lhs: SparseTensor,
+    rhs: SparseTensor,
+    *,
+    join: SparseJoin = 'inner',
+) -> SparseTensor:
+    return sparse_binary_op(lhs, rhs, 'minimum', join=join)
+
+
+def cat(
+    tensors: Sequence[SparseTensor],
+    *,
+    join: SparseJoin = 'inner',
+) -> SparseTensor:
     if not tensors:
         raise ValueError('expected at least one sparse tensor.')
 
     first = tensors[0]
-    for tensor in tensors[1:]:
-        if not first.same_coords(tensor):
-            raise ValueError('sparse tensor coordinates must match.')
-    return first.replace(
-        feats=mx.concatenate([tensor.feats for tensor in tensors], axis=1)
+    if all(first.same_coords(tensor) for tensor in tensors[1:]):
+        return first.replace(
+            feats=mx.concatenate(
+                [tensor.feats for tensor in tensors], axis=1
+            )
+        )
+    if len(tensors) != 2:
+        raise ValueError(
+            'value-aligned cat currently supports exactly two sparse tensors.'
+        )
+    return sparse_cat_aligned(first, tensors[1], join=join)
+
+
+def sparse_cat_aligned(
+    lhs: SparseTensor,
+    rhs: SparseTensor,
+    *,
+    join: SparseJoin = 'inner',
+) -> SparseTensor:
+    _require_compatible_sparse_tensors(lhs, rhs)
+    if lhs.same_coords(rhs):
+        return lhs.replace(
+            feats=mx.concatenate([lhs.feats, rhs.feats], axis=1)
+        )
+    alignment = align_sparse(lhs, rhs, join=join)
+    lhs_feats = gather_aligned_features(lhs, alignment.lhs_rows)
+    rhs_feats = gather_aligned_features(rhs, alignment.rhs_rows)
+    return SparseTensor(
+        alignment.coords,
+        mx.concatenate([lhs_feats, rhs_feats], axis=1),
+        lhs.stride,
+        coord_manager=lhs.coord_manager,
+        active_rows=alignment.active_rows,
     )
+
+
+def crop(
+    x: SparseTensor,
+    *,
+    min_coord: Sequence[int],
+    max_coord: Sequence[int],
+) -> SparseTensor:
+    lower = _spatial_bound(min_coord, 'min_coord')
+    upper = _spatial_bound(max_coord, 'max_coord')
+    if any(lo > hi for lo, hi in zip(lower, upper, strict=True)):
+        raise ValueError('min_coord must be <= max_coord.')
+    spatial = x.coords[:, 1:]
+    active = mx.arange(x.capacity, dtype=mx.int32) < x.active_rows[0]
+    mask = active
+    for axis, (lo, hi) in enumerate(zip(lower, upper, strict=True)):
+        values = spatial[:, axis]
+        mask = mask & (values >= lo) & (values <= hi)
+    return prune_mask(x, mask)
+
+
+def replace_feature(x: SparseTensor, feats: mx.array) -> SparseTensor:
+    return x.replace(feats=feats)
+
+
+def _apply_binary_op(lhs: mx.array, rhs: mx.array, op: str) -> mx.array:
+    if op == 'add':
+        return lhs + rhs
+    if op == 'sub':
+        return lhs - rhs
+    if op == 'mul':
+        return lhs * rhs
+    if op == 'maximum':
+        return mx.maximum(lhs, rhs)
+    if op == 'minimum':
+        return mx.minimum(lhs, rhs)
+    raise ValueError(f'unknown sparse binary op: {op}.')
+
+
+def _require_compatible_sparse_tensors(
+    lhs: SparseTensor,
+    rhs: SparseTensor,
+) -> None:
+    if lhs.stride != rhs.stride:
+        raise ValueError('sparse tensor strides must match.')
+    if lhs.coords.dtype != rhs.coords.dtype:
+        raise ValueError('sparse tensor coordinate dtypes must match.')
+
+
+def _spatial_bound(value: Sequence[int], name: str) -> tuple[int, int, int]:
+    raw = tuple(int(item) for item in value)
+    if len(raw) != 3:
+        raise ValueError(f'{name} must contain exactly 3 values.')
+    return (raw[0], raw[1], raw[2])
 
 
 def prune(x: SparseTensor, rows: mx.array) -> SparseTensor:

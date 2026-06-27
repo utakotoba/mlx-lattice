@@ -41,6 +41,21 @@ void eval_lookup_coords(
     unavailable();
 }
 
+void eval_sparse_alignment(
+    SparseJoinOp join,
+    SparseAlignmentShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    (void)join;
+    (void)shape;
+    (void)stream;
+    (void)inputs;
+    (void)outputs;
+    unavailable();
+}
+
 void eval_morton_codes(
     CoordRowsShape shape,
     const mx::Stream& stream,

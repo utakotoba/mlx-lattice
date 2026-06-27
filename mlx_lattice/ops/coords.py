@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from mlx_lattice.core.coords.alignment import (
+    SparseAlignment,
+    build_sparse_alignment,
+)
 from mlx_lattice.core.coords.occupancy import (
     OccupancyExpansion,
     SparseOccupancy,
@@ -35,9 +39,11 @@ __all__ = [
     'CoordinateSet',
     'OccupancyExpansion',
     'PointVoxelMap',
+    'SparseAlignment',
     'SparseOccupancy',
     'SparseQuantization',
     'build_point_voxel_map',
+    'build_sparse_alignment',
     'child_coords_from_indices',
     'contains_coords',
     'downsample_coords',

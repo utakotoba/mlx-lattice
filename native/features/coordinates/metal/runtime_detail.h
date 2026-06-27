@@ -44,6 +44,19 @@ int point_voxel_interpolation_op_id(PointVoxelInterpolationOp op) {
     }
 }
 
+int sparse_join_op_id(SparseJoinOp op) {
+    switch (op) {
+    case SparseJoinOp::Inner:
+        return 0;
+    case SparseJoinOp::Left:
+        return 1;
+    case SparseJoinOp::Right:
+        return 2;
+    case SparseJoinOp::Outer:
+        return 3;
+    }
+}
+
 bool is_identity_forward_relation(Triple stride, Triple padding) {
     return stride == Triple{1, 1, 1} && padding == Triple{0, 0, 0};
 }

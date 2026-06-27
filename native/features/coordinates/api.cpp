@@ -30,6 +30,21 @@ mx::array lookup_coords(const mx::array& coords, const mx::array& queries) {
     return make_lookup_coords(coords, queries);
 }
 
+NativeSparseAlignment build_sparse_alignment(
+    const mx::array& lhs_coords,
+    const mx::array& lhs_active_rows,
+    const mx::array& rhs_coords,
+    const mx::array& rhs_active_rows,
+    SparseJoinOp join
+) {
+    validate_coord_pair(lhs_coords, rhs_coords);
+    validate_active_rows(lhs_active_rows);
+    validate_active_rows(rhs_active_rows);
+    return make_sparse_alignment(
+        lhs_coords, lhs_active_rows, rhs_coords, rhs_active_rows, join
+    );
+}
+
 mx::array morton_codes(const mx::array& coords) {
     validate_coords(coords);
     return make_morton_codes(coords);

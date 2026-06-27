@@ -56,6 +56,13 @@ struct PointFeatureInputs {
     const mx::array& weights;
 };
 
+struct SparseAlignmentInputs {
+    const mx::array& lhs_coords;
+    int lhs_active_rows;
+    const mx::array& rhs_coords;
+    int rhs_active_rows;
+};
+
 // FNV-1a hash matching Metal coord_hash_i32 for cross-platform consistency.
 // See native/features/coordinates/metal/common.metal:53-60.
 struct CoordHash {

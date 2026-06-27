@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from mlx_lattice.core.coords.alignment import (
+    SparseAlignment,
+    build_sparse_alignment,
+)
 from mlx_lattice.core.coords.builders import (
     build_generative_relation,
     build_kernel_relation,
@@ -51,6 +55,7 @@ __all__ = [
     'CoordinateSet',
     'OccupancyExpansion',
     'PointVoxelMap',
+    'SparseAlignment',
     'SparseOccupancy',
     'SparseQuantization',
     'build_generative_relation',
@@ -58,6 +63,7 @@ __all__ = [
     'build_knn_relation',
     'build_point_voxel_map',
     'build_radius_relation',
+    'build_sparse_alignment',
     'build_target_kernel_relation',
     'build_transposed_kernel_relation',
     'child_coords_from_indices',

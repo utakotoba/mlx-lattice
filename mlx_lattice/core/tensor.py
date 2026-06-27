@@ -159,9 +159,9 @@ class SparseTensor:
         )
 
     def __add__(self, other: SparseTensor) -> SparseTensor:
-        if not self.same_coords(other):
-            raise ValueError('sparse tensor coordinates must match.')
-        return self.replace(feats=self.feats + other.feats)
+        from mlx_lattice.ops.tensor import sparse_add
+
+        return sparse_add(self, other)
 
     def _require_batch_counts(self) -> tuple[int, ...]:
         if self.batch_counts is None:
