@@ -6,7 +6,10 @@ from typing import Any
 
 import mlx.core as mx
 from mlx_lattice.core import SparseQuantization, SparseTensor
-from mlx_lattice.core.coords.quantization import VoxelReduction
+from mlx_lattice.core.coords.quantization import (
+    PointVoxelInterpolation,
+    VoxelReduction,
+)
 from mlx_lattice.ops import (
     build_point_voxel_map,
     devoxelize,
@@ -318,7 +321,7 @@ def _backward_voxelize_fixed(reduction: VoxelReduction) -> Any:
     return factory
 
 
-def _compiled_devoxelize(interpolation: str) -> Any:
+def _compiled_devoxelize(interpolation: PointVoxelInterpolation) -> Any:
     def factory(fixture: PointVoxelFixture) -> tuple[Any, tuple[Any, ...]]:
         point_map = build_point_voxel_map(
             fixture.points.points,
@@ -336,7 +339,7 @@ def _compiled_devoxelize(interpolation: str) -> Any:
     return factory
 
 
-def _backward_devoxelize(interpolation: str) -> Any:
+def _backward_devoxelize(interpolation: PointVoxelInterpolation) -> Any:
     def factory(fixture: PointVoxelFixture) -> tuple[Any, tuple[Any, ...]]:
         point_map = build_point_voxel_map(
             fixture.points.points,

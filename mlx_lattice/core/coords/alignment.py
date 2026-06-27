@@ -78,8 +78,14 @@ def build_sparse_alignment(
 
 
 def _validate_join(value: str) -> SparseJoin:
-    if value in ('inner', 'left', 'right', 'outer'):
-        return value  # type: ignore[return-value]
+    if value == 'inner':
+        return 'inner'
+    if value == 'left':
+        return 'left'
+    if value == 'right':
+        return 'right'
+    if value == 'outer':
+        return 'outer'
     raise ValueError("join must be 'inner', 'left', 'right', or 'outer'.")
 
 

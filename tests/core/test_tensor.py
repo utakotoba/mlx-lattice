@@ -22,6 +22,10 @@ from mlx_lattice.ops import (
 from tests.support import mx
 
 
+def _active_count(value: mx.array) -> int:
+    return int(value.item())
+
+
 def test_sparse_tensor_owns_identity_and_validates_shape() -> None:
     coords = mx.array([[0, 0, 0, 0]], dtype=mx.int32)
     feats = mx.ones((1, 2), dtype=mx.float32)
@@ -138,13 +142,13 @@ def test_sparse_alignment_joins_by_coordinate_value() -> None:
     inner = align_sparse(lhs, rhs, join='inner')
     outer = align_sparse(lhs, rhs, join='outer')
 
-    assert inner.coords[: int(inner.active_rows.tolist()[0])].tolist() == [
+    assert inner.coords[: _active_count(inner.active_rows)].tolist() == [
         [0, 1, 0, 0],
         [0, 2, 0, 0],
     ]
     assert inner.lhs_rows[:2].tolist() == [1, 2]
     assert inner.rhs_rows[:2].tolist() == [2, 0]
-    assert outer.coords[: int(outer.active_rows.tolist()[0])].tolist() == [
+    assert outer.coords[: _active_count(outer.active_rows)].tolist() == [
         [0, 0, 0, 0],
         [0, 1, 0, 0],
         [0, 2, 0, 0],
@@ -167,7 +171,7 @@ def test_sparse_add_uses_value_aligned_outer_union() -> None:
     out = lhs + rhs
     explicit = sparse_add(lhs, rhs)
 
-    assert out.coords[: int(out.active_rows.tolist()[0])].tolist() == [
+    assert out.coords[: _active_count(out.active_rows)].tolist() == [
         [0, 0, 0, 0],
         [0, 1, 0, 0],
         [0, 2, 0, 0],
@@ -218,7 +222,7 @@ def test_value_alignment_respects_active_rows() -> None:
 
     out = sparse_add(lhs, rhs)
 
-    assert out.coords[: int(out.active_rows.tolist()[0])].tolist() == [
+    assert out.coords[: _active_count(out.active_rows)].tolist() == [
         [0, 0, 0, 0],
         [0, 9, 0, 0],
     ]
