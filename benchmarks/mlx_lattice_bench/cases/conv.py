@@ -12,9 +12,6 @@ from mlx_lattice.ops import (
     generative_conv_transpose3d,
     subm_conv3d,
 )
-from mlx_lattice.ops._relation_exec import (
-    sparse_conv_features_sorted_from_relation,
-)
 
 from mlx_lattice_bench.cases.common import benchmark_n, param_grid
 from mlx_lattice_bench.datasets import (
@@ -34,7 +31,6 @@ type ConvKind = Literal[
     'target_superset',
     'transpose',
     'generative_transpose',
-    'generic_sorted_igemm',
 ]
 type ConvGradTarget = Literal['features', 'weight', 'both']
 
@@ -104,17 +100,24 @@ def cases(
         ),
         metrics=_density_metrics,
     )
-    sorted_igemm_density_case = _case(
-        'conv3d_generic_sorted_igemm_density',
-        'generic_sorted_igemm',
-        _density_params(
-            preset,
-            n_values=n_values,
-            channels=channels,
-            channel_pairs=channel_pairs,
-            dtype=dtype,
-        ),
-        metrics=_density_metrics,
+    density_backward_cases = tuple(
+        _backward_case(
+            f'conv3d_generic_density_{suffix}',
+            'generic',
+            target,
+            _density_params(
+                preset,
+                n_values=n_values,
+                channels=channels,
+                channel_pairs=channel_pairs,
+                dtype=dtype,
+            ),
+            metrics=_density_metrics,
+        )
+        for suffix, target in (
+            ('dfeatures', 'features'),
+            ('dweight', 'weight'),
+        )
     )
     backward_cases = tuple(
         _backward_case(f'{name}_{suffix}', kind, target, params)
@@ -127,7 +130,7 @@ def cases(
     return (
         *forward_cases,
         density_case,
-        sorted_igemm_density_case,
+        *density_backward_cases,
         *backward_cases,
     )
 
@@ -158,6 +161,8 @@ def _backward_case(
     kind: ConvKind,
     target: ConvGradTarget,
     params: tuple[Mapping[str, Any], ...],
+    *,
+    metrics: Any | None = None,
 ) -> BenchmarkCase:
     return BenchmarkCase(
         name=name,
@@ -167,6 +172,7 @@ def _backward_case(
         prepare=_prepare,
         run=lambda inputs: _run(kind, inputs),
         backward=_backward(kind, target),
+        metrics=metrics,
         units=('elements', 'n_in', 'n_out'),
         modes=('backward',),
     )
@@ -252,18 +258,6 @@ def _run(kind: ConvKind, inputs: ConvInputs) -> SparseTensor:
         return conv3d(inputs.x, inputs.pointwise_weight, kernel_size=1)
     if kind == 'generic':
         return conv3d(inputs.x, inputs.kernel3_weight, kernel_size=3)
-    if kind == 'generic_sorted_igemm':
-        relation = inputs.x.coord_manager.kernel_relation(
-            inputs.x.coord_key,
-            kernel_size=3,
-        )
-        feats = sparse_conv_features_sorted_from_relation(
-            inputs.x.feats,
-            inputs.kernel3_weight,
-            relation,
-            store_sorted=True,
-        )
-        return inputs.x.replace(feats=feats)
     if kind == 'subm':
         return subm_conv3d(inputs.x, inputs.kernel3_weight, kernel_size=3)
     if kind == 'target_same':

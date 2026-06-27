@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import weakref
 
 import mlx.core as mx
@@ -123,14 +122,6 @@ def _can_use_sorted_implicit_gemm(
     weight: mx.array,
     relation: KernelRelation,
 ) -> bool:
-    if os.environ.get('MLX_LATTICE_EXPERIMENTAL_IGEMM_CONV') in (
-        '0',
-        'false',
-        'False',
-        'off',
-        'OFF',
-    ):
-        return False
     if relation.contract.kind not in ('forward', 'target'):
         return False
     if feats.dtype != mx.float16 or weight.dtype != mx.float16:

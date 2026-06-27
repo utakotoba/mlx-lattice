@@ -23,10 +23,8 @@ bool supports(SparseConvShape shape, const std::vector<mx::array>& inputs) {
         shape.in_channels == shape.out_channels &&
         (shape.in_channels == 32 || shape.in_channels == 64);
     return inputs[0].dtype() == mx::float16 &&
-           inputs[1].dtype() == mx::float16 &&
-           inputs[2].dtype() == mx::int32 &&
-           inputs[3].dtype() == mx::int32 &&
-           inputs[4].dtype() == mx::int32 &&
+           inputs[1].dtype() == mx::float16 && inputs[2].dtype() == mx::int32 &&
+           inputs[3].dtype() == mx::int32 && inputs[4].dtype() == mx::int32 &&
            inputs[5].dtype() == mx::int32 && shape.weight_layout == 0 &&
            supported_channels && shape.n_kernels == 27 &&
            inputs[1].ndim() == 3 && stride_at(inputs[0], 1) == 1 &&
