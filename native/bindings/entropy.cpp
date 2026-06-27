@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "ops/entropy.h"
+#include "features/entropy/api.h"
 
 namespace mlx_lattice::bindings {
 

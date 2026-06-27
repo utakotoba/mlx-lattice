@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "ops/coords.h"
+#include "features/coordinates/api.h"
 
 namespace mlx_lattice::bindings {
 

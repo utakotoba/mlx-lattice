@@ -6,7 +6,8 @@ nanobind_add_module(
   NB_DOMAIN mlx
   coords.cpp
   entropy.cpp
-  exec.cpp
+  convolution.cpp
+  pooling.cpp
   runtime.cpp
   module.cpp)
 

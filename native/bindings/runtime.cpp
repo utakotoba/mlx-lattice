@@ -4,7 +4,7 @@
 
 #include <string>
 
-#include "lattice/runtime.h"
+#include "foundation/runtime.h"
 
 namespace mlx_lattice::bindings {
 

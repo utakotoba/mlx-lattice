@@ -125,6 +125,36 @@ def test_sorted_implicit_gemm_direct_reference_matches_classic(
     assert float(mx.max(mx.abs(sorted_classic - direct)).item()) <= 0.001
 
 
+def test_sorted_implicit_gemm_preserves_convolution_autodiff_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    selected_backend,
+) -> None:
+    if selected_backend.name != 'metal':
+        pytest.skip('sorted implicit GEMM is Metal-only')
+    coords = mx.array(
+        [[0, index, 0, 0] for index in range(96)],
+        dtype=mx.int32,
+    )
+    feats = mx.ones((96, 32), dtype=mx.float16)
+    weight = mx.ones((32, 3, 3, 3, 32), dtype=mx.float16) / 32
+
+    def loss(feats_arg: mx.array, weight_arg: mx.array) -> mx.array:
+        x = SparseTensor(coords, feats_arg)
+        return mx.sum(conv3d(x, weight_arg, kernel_size=3).feats)
+
+    monkeypatch.setenv('MLX_LATTICE_EXPERIMENTAL_IGEMM_CONV', '0')
+    classic = mx.grad(loss, argnums=(0, 1))(feats, weight)
+    monkeypatch.setenv('MLX_LATTICE_EXPERIMENTAL_IGEMM_CONV', '1')
+    implicit_gemm = mx.grad(loss, argnums=(0, 1))(feats, weight)
+    mx.eval(*classic, *implicit_gemm)
+
+    for expected, actual in zip(classic, implicit_gemm, strict=True):
+        error = mx.max(
+            mx.abs(expected.astype(mx.float32) - actual.astype(mx.float32))
+        )
+        assert float(error.item()) <= 0.01
+
+
 def test_conv3d_target_coordinates_match_sparse_reference() -> None:
     coords = mx.array(
         [[0, 0, 0, 0], [0, 1, 0, 0], [0, 2, 0, 0]],
