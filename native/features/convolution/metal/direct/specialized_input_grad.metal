@@ -4,8 +4,8 @@ using namespace metal;
 
 // clang-format off
 #include "native/features/convolution/metal/common.metal"
-#include "native/features/convolution/metal/vector_io.metal"
-#include "native/features/convolution/metal/dense_input_grad.metal"
+#include "native/features/convolution/metal/direct/vector_io.metal"
+#include "native/features/convolution/metal/direct/dense_input_grad.metal"
 // clang-format on
 
 // Specialized kernels share the generic convolution binding ABI, so some

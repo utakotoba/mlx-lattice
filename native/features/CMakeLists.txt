@@ -17,13 +17,13 @@ if(MLX_LATTICE_HAS_METAL)
     TARGET mlx_lattice_metallib
     TITLE mlx_lattice
     SOURCES
-      ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/forward.metal
-      ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/input_grad.metal
+      ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/direct/forward.metal
+      ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/direct/input_grad.metal
       ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/direct/sorted_reference.metal
-      ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/specialized_forward.metal
-      ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/specialized_input_grad.metal
-      ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/specialized_weight_grad.metal
-      ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/weight_grad.metal
+      ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/direct/specialized_forward.metal
+      ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/direct/specialized_input_grad.metal
+      ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/direct/specialized_weight_grad.metal
+      ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/direct/weight_grad.metal
       ${CMAKE_CURRENT_LIST_DIR}/coordinates/metal/hash.metal
       ${CMAKE_CURRENT_LIST_DIR}/coordinates/metal/relation_kernels.metal
       ${CMAKE_CURRENT_LIST_DIR}/coordinates/metal/neighbor_kernels.metal

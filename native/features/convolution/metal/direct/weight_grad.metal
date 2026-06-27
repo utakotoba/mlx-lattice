@@ -3,8 +3,8 @@
 using namespace metal;
 
 #include "native/features/convolution/metal/common.metal"
-#include "native/features/convolution/metal/dense_weight_grad.metal"
-#include "native/features/convolution/metal/vector_io.metal"
+#include "native/features/convolution/metal/direct/dense_weight_grad.metal"
+#include "native/features/convolution/metal/direct/vector_io.metal"
 
 // Specialized kernels share the generic convolution binding ABI, so some
 // bound buffers are intentionally unused by a given specialization.
