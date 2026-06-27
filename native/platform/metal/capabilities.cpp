@@ -26,10 +26,6 @@ CapabilityTier capability_tier(const mlx::core::Stream& stream) {
 #endif
 }
 
-bool is_available(const mlx::core::Stream& stream) {
-    return capability_tier(stream) != CapabilityTier::unavailable;
-}
-
 bool has_neural_acceleration(const mlx::core::Stream& stream) {
     return capability_tier(stream) == CapabilityTier::neural_accelerator;
 }

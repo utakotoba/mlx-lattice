@@ -56,62 +56,6 @@ using namespace metal;
 
 // MARK: - generic relations
 
-[[kernel]] void build_identity_forward_relation_slots_i32(
-    device const int* coords [[buffer(0)]],
-    device const int* kernel_offsets [[buffer(1)]],
-    device const int* active_rows [[buffer(2)]],
-    device const int* table_rows [[buffer(3)]],
-    device int* in_rows [[buffer(4)]],
-    device int* out_rows [[buffer(5)]],
-    device int* kernel_ids [[buffer(6)]],
-    device int* row_offsets [[buffer(7)]],
-    device int* out_coords [[buffer(8)]],
-    device int* counts [[buffer(9)]],
-    constant const int& rows [[buffer(10)]],
-    constant const int& kernel_count [[buffer(11)]],
-    constant const int& table_capacity [[buffer(12)]],
-    uint elem [[thread_position_in_grid]]
-) {
-    int out_count = min(active_rows[0], rows);
-    int edge_count = out_count * kernel_count;
-
-    if (elem == 0) {
-        counts[0] = edge_count;
-        counts[1] = out_count;
-    }
-
-    if (elem <= uint(rows)) {
-        int row = int(elem);
-        row_offsets[row] = min(row, out_count) * kernel_count;
-    }
-
-    int coord_total = rows * 4;
-    if (elem < uint(coord_total)) {
-        int row = int(elem) / 4;
-        out_coords[elem] = row < out_count ? coords[elem] : 0;
-    }
-
-    if (elem >= uint(edge_count)) {
-        return;
-    }
-
-    int out_row = int(elem) / kernel_count;
-    int kernel_id = int(elem) - out_row * kernel_count;
-    int out_base = out_row * 4;
-    int offset_base = kernel_id * 3;
-    int candidate[4] = {
-        coords[out_base],
-        coords[out_base + 1] + kernel_offsets[offset_base],
-        coords[out_base + 2] + kernel_offsets[offset_base + 1],
-        coords[out_base + 3] + kernel_offsets[offset_base + 2],
-    };
-    int in_row =
-        lookup_coord_row_hash(coords, table_rows, table_capacity, candidate);
-    in_rows[elem] = in_row;
-    out_rows[elem] = out_row;
-    kernel_ids[elem] = in_row >= 0 ? kernel_id : -1;
-}
-
 [[kernel]] void count_identity_forward_relation_degrees_i32(
     device const int* coords [[buffer(0)]],
     device const int* kernel_offsets [[buffer(1)]],
