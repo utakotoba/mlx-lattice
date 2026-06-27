@@ -6,7 +6,7 @@ description = "Sparse point cloud convolution library for MLX"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
-authors = [{ name = "Z.Y. Lin", email = "i@letter.cafe" }]
+authors = [{ name = "Z.Y. Lin", email = "me@iki.moe" }]
 keywords = ["mlx", "ml", "sparse", "convolution", "point-cloud"]
 dependencies = ["mlx>=0.31"]
 
