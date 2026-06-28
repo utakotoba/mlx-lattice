@@ -23,7 +23,8 @@ inline void sparse_quantized_conv_impl(
     constant const int& feat_s1,
     uint elem
 ) {
-    constexpr int output_tile = 4;
+    constexpr int vector_width = 4;
+    constexpr int output_tile = 8;
     int channel_blocks = (out_channels + output_tile - 1) / output_tile;
     int total = out_capacity * channel_blocks;
     if (elem >= uint(total)) {
@@ -34,6 +35,8 @@ inline void sparse_quantized_conv_impl(
     int co_base = (int(elem) - out_row * channel_blocks) * output_tile;
     int out_base = out_row * out_channels + co_base;
     int lanes = min(output_tile, out_channels - co_base);
+    int first_lanes = min(vector_width, lanes);
+    int second_lanes = max(0, lanes - vector_width);
     int out_count = min(counts[1], out_capacity);
     if (out_row >= out_count) {
         for (int lane = 0; lane < lanes; ++lane) {
@@ -45,7 +48,8 @@ inline void sparse_quantized_conv_impl(
     int packed_words = storage_in_channels * bits / 32;
     int groups = storage_in_channels / group_size;
     int edge_count = min(counts[0], edge_capacity);
-    float4 acc = float4(0.0f);
+    float4 first_acc = float4(0.0f);
+    float4 second_acc = float4(0.0f);
     for (int edge = row_offsets[out_row]; edge < row_offsets[out_row + 1];
          ++edge) {
         if (edge < 0 || edge >= edge_count) {
@@ -57,31 +61,54 @@ inline void sparse_quantized_conv_impl(
             continue;
         }
         for (int group = 0; group < groups; ++group) {
-            float4 scale = float4(0.0f);
-            float4 bias = float4(0.0f);
+            float4 first_scale = float4(0.0f);
+            float4 second_scale = float4(0.0f);
+            float4 first_bias = float4(0.0f);
+            float4 second_bias = float4(0.0f);
             int quant_base =
                 (kernel_id * groups + group) * out_channels + co_base;
             for (int lane = 0; lane < lanes; ++lane) {
-                scale[lane] = float(scales[quant_base + lane]);
-                bias[lane] = float(biases[quant_base + lane]);
+                if (lane < vector_width) {
+                    first_scale[lane] = float(scales[quant_base + lane]);
+                    first_bias[lane] = float(biases[quant_base + lane]);
+                } else {
+                    int vector_lane = lane - vector_width;
+                    second_scale[vector_lane] =
+                        float(scales[quant_base + lane]);
+                    second_bias[vector_lane] = float(biases[quant_base + lane]);
+                }
             }
             int first_ci = group * group_size;
             int last_ci = min(first_ci + group_size, in_channels);
             constexpr int values_per_word = 32 / bits;
+            float feature_sum = 0.0f;
+            float4 first_quantized_acc = float4(0.0f);
+            float4 second_quantized_acc = float4(0.0f);
             for (int first = first_ci; first < last_ci;
                  first += values_per_word) {
                 int bit = first * bits;
                 int packed_base =
                     (kernel_id * packed_words + (bit >> 5)) * out_channels +
                     co_base;
-                uint4 packed = uint4(0u);
-                if (lanes == output_tile) {
-                    packed = *reinterpret_cast<device const uint4*>(
+                uint4 first_packed = uint4(0u);
+                uint4 second_packed = uint4(0u);
+                if (first_lanes == vector_width) {
+                    first_packed = *reinterpret_cast<device const uint4*>(
                         weights + packed_base
                     );
                 } else {
-                    for (int lane = 0; lane < lanes; ++lane) {
-                        packed[lane] = weights[packed_base + lane];
+                    for (int lane = 0; lane < first_lanes; ++lane) {
+                        first_packed[lane] = weights[packed_base + lane];
+                    }
+                }
+                if (second_lanes == vector_width) {
+                    second_packed = *reinterpret_cast<device const uint4*>(
+                        weights + packed_base + vector_width
+                    );
+                } else {
+                    for (int lane = 0; lane < second_lanes; ++lane) {
+                        second_packed[lane] =
+                            weights[packed_base + vector_width + lane];
                     }
                 }
                 constexpr uint mask = (1u << bits) - 1u;
@@ -90,15 +117,26 @@ inline void sparse_quantized_conv_impl(
                     int ci = first + value;
                     float feature =
                         float(feats[in_row * feat_s0 + ci * feat_s1]);
-                    float4 quantized =
-                        float4((packed >> (value * bits)) & mask);
-                    acc += feature * (quantized * scale + bias);
+                    feature_sum += feature;
+                    first_quantized_acc +=
+                        feature *
+                        float4((first_packed >> (value * bits)) & mask);
+                    second_quantized_acc +=
+                        feature *
+                        float4((second_packed >> (value * bits)) & mask);
                 }
             }
+            first_acc +=
+                first_quantized_acc * first_scale + feature_sum * first_bias;
+            second_acc +=
+                second_quantized_acc * second_scale + feature_sum * second_bias;
         }
     }
-    for (int lane = 0; lane < lanes; ++lane) {
-        out[out_base + lane] = T(acc[lane]);
+    for (int lane = 0; lane < first_lanes; ++lane) {
+        out[out_base + lane] = T(first_acc[lane]);
+    }
+    for (int lane = 0; lane < second_lanes; ++lane) {
+        out[out_base + vector_width + lane] = T(second_acc[lane]);
     }
 }
 

@@ -29,7 +29,7 @@ def sparse_quantized_conv_features_from_relation(
         raise ValueError(
             'quantized weight kernel rows must match the relation.'
         )
-    return ext.sparse_quantized_conv_features(
+    args = (
         feats,
         weight.weight,
         weight.scales,
@@ -46,6 +46,32 @@ def sparse_quantized_conv_features_from_relation(
         weight.storage_in_channels,
         weight.group_size,
         weight.bits,
+    )
+    if _can_use_sorted_quantized_implicit_gemm(feats, weight, relation):
+        view = relation.require_sorted_implicit_gemm()
+        return ext.sparse_quantized_conv_features_sorted(
+            *args[:9],
+            view.sorted_kv_out_in_map,
+            view.reorder_rows,
+            view.tile_masks,
+            *args[9:],
+        )
+    return ext.sparse_quantized_conv_features(*args)
+
+
+def _can_use_sorted_quantized_implicit_gemm(
+    feats: mx.array,
+    weight: QuantizedWeight,
+    relation: KernelRelation,
+) -> bool:
+    return (
+        relation.contract.kind in ('forward', 'target')
+        and feats.dtype == mx.float16
+        and relation.n_kernels == 27
+        and weight.storage_in_channels == weight.in_channels
+        and weight.in_channels in (32, 64)
+        and weight.out_channels in (32, 64)
+        and weight.group_size <= weight.in_channels
     )
 
 

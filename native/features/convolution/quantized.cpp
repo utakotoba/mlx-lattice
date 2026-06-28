@@ -127,7 +127,8 @@ mx::array make_sparse_quantized_conv_features(
     const SparseRelationEdges& edges,
     const SparseRelationContract& contract,
     const mx::array& row_offsets,
-    QuantizedSparseConvShape shape
+    QuantizedSparseConvShape shape,
+    const std::vector<mx::array>& sorted_inputs
 ) {
     auto stream = sparse_quantized_conv_stream(
         feats,
@@ -155,6 +156,7 @@ mx::array make_sparse_quantized_conv_features(
         contract.counts,
         row_offsets,
     };
+    inputs.insert(inputs.end(), sorted_inputs.begin(), sorted_inputs.end());
     return mx::array::make_arrays(
         {mx::Shape{shape.out_capacity, shape.out_channels}},
         {feats.dtype()},
@@ -195,6 +197,7 @@ mx::array sparse_quantized_conv_features(
         storage_in_channels,
         group_size,
         bits,
+        0,
     };
     validate_quantized_arrays(feats, weights, scales, biases, shape);
     if (in_rows.ndim() != 1 || out_rows.ndim() != 1 || kernel_ids.ndim() != 1 ||
@@ -229,6 +232,72 @@ mx::array sparse_quantized_conv_features(
         SparseRelationContract{counts, out_capacity, n_kernels},
         row_offsets,
         shape
+    );
+}
+
+mx::array sparse_quantized_conv_features_sorted(
+    const mx::array& feats,
+    const mx::array& weights,
+    const mx::array& scales,
+    const mx::array& biases,
+    const mx::array& in_rows,
+    const mx::array& out_rows,
+    const mx::array& kernel_ids,
+    const mx::array& counts,
+    const mx::array& row_offsets,
+    const mx::array& sorted_kv_out_in_map,
+    const mx::array& reorder_rows,
+    const mx::array& tile_masks,
+    int out_capacity,
+    int n_kernels,
+    int in_channels,
+    int out_channels,
+    int storage_in_channels,
+    int group_size,
+    int bits
+) {
+    if (sorted_kv_out_in_map.shape() != mx::Shape{n_kernels, out_capacity} ||
+        sorted_kv_out_in_map.dtype() != mx::int32 ||
+        reorder_rows.shape() != mx::Shape{out_capacity} ||
+        reorder_rows.dtype() != mx::int32 ||
+        tile_masks.shape() != mx::Shape{4 * ((out_capacity + 63) / 64)} ||
+        tile_masks.dtype() != mx::int32) {
+        throw std::invalid_argument(
+            "sorted quantized convolution view shapes are invalid."
+        );
+    }
+    auto shape = QuantizedSparseConvShape{
+        static_cast<int>(feats.shape(0)),
+        out_capacity,
+        n_kernels,
+        in_channels,
+        out_channels,
+        storage_in_channels,
+        group_size,
+        bits,
+        1,
+    };
+    validate_quantized_arrays(feats, weights, scales, biases, shape);
+    if (in_rows.ndim() != 1 || out_rows.shape() != in_rows.shape() ||
+        kernel_ids.shape() != in_rows.shape() || in_rows.dtype() != mx::int32 ||
+        out_rows.dtype() != mx::int32 || kernel_ids.dtype() != mx::int32 ||
+        counts.shape() != mx::Shape{2} || counts.dtype() != mx::int32 ||
+        row_offsets.shape() != mx::Shape{out_capacity + 1} ||
+        row_offsets.dtype() != mx::int32) {
+        throw std::invalid_argument(
+            "sorted quantized convolution relation arrays are invalid."
+        );
+    }
+    return make_sparse_quantized_conv_features(
+        feats,
+        weights,
+        scales,
+        biases,
+        SparseRelationEdges{in_rows, out_rows, kernel_ids},
+        SparseRelationContract{counts, out_capacity, n_kernels},
+        row_offsets,
+        shape,
+        {sorted_kv_out_in_map, reorder_rows, tile_masks}
     );
 }
 

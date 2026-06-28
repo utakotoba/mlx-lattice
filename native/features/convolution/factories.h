@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "features/convolution/api.h"
 
 namespace mlx_lattice {
@@ -12,7 +14,8 @@ mx::array make_sparse_quantized_conv_features(
     const SparseRelationEdges& edges,
     const SparseRelationContract& contract,
     const mx::array& row_offsets,
-    QuantizedSparseConvShape shape
+    QuantizedSparseConvShape shape,
+    const std::vector<mx::array>& sorted_inputs = {}
 );
 
 mx::array make_sparse_conv_features(

@@ -12,6 +12,7 @@ target_sources(
     $<$<BOOL:${MLX_LATTICE_HAS_METAL}>:metal/runtime.cpp>
     $<$<BOOL:${MLX_LATTICE_HAS_METAL}>:metal/quantized_runtime.cpp>
     $<$<BOOL:${MLX_LATTICE_HAS_METAL}>:metal/tensor_ops/input_grad/runtime.cpp>
+    $<$<BOOL:${MLX_LATTICE_HAS_METAL}>:metal/tensor_ops/quantized_igemm/runtime.cpp>
     $<$<BOOL:${MLX_LATTICE_HAS_METAL}>:metal/tensor_ops/sorted_igemm/runtime.cpp>
     $<$<BOOL:${MLX_LATTICE_HAS_METAL}>:metal/tensor_ops/weight_grad/runtime.cpp>)
 target_include_directories(

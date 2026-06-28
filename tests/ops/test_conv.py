@@ -198,6 +198,47 @@ def test_packed_quantized_convolution_matches_dequantized_contract(
     assert memory_packed.nbytes < memory_weight.nbytes
 
 
+@pytest.mark.parametrize('bits', [4, 8])
+def test_sorted_quantized_implicit_gemm_matches_dequantized_contract(
+    bits: int,
+) -> None:
+    rows = 96
+    in_channels = 64
+    out_channels = 32
+    coords = mx.array(
+        [[0, index, 0, 0] for index in range(rows)],
+        dtype=mx.int32,
+    )
+    feats = mx.array(
+        [
+            [
+                ((row + 1) * (channel + 3) % 23) / 23
+                for channel in range(in_channels)
+            ]
+            for row in range(rows)
+        ],
+        dtype=mx.float16,
+    )
+    weight = mx.array(
+        [
+            ((index % 31) - 15) / 31
+            for index in range(out_channels * 27 * in_channels)
+        ],
+        dtype=mx.float16,
+    ).reshape((out_channels, 3, 3, 3, in_channels))
+    packed = quantize_weight(weight, bits=bits)
+    reference_weight = dequantize_weight(packed)
+    x = SparseTensor(coords, feats)
+
+    actual = conv3d(x, packed, kernel_size=3)
+    expected = conv3d(x, reference_weight, kernel_size=3)
+    mx.eval(actual.feats, expected.feats)
+
+    assert bool(
+        mx.allclose(actual.feats, expected.feats, rtol=3e-2, atol=2e-2)
+    )
+
+
 def test_sorted_implicit_gemm_direct_reference_matches_classic(
     selected_backend,
 ) -> None:
