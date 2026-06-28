@@ -29,7 +29,15 @@ def sparse_quantized_conv_features_from_relation(
         raise ValueError(
             'quantized weight kernel rows must match the relation.'
         )
-    args = (
+    sorted_kv_out_in_map = _empty_i32()
+    reorder_rows = _empty_i32()
+    tile_masks = _empty_i32()
+    if _can_use_sorted_quantized_implicit_gemm(feats, weight, relation):
+        view = relation.require_sorted_implicit_gemm()
+        sorted_kv_out_in_map = view.sorted_kv_out_in_map
+        reorder_rows = view.reorder_rows
+        tile_masks = view.tile_masks
+    return ext.sparse_quantized_conv_features(
         feats,
         weight.weight,
         weight.scales,
@@ -39,6 +47,9 @@ def sparse_quantized_conv_features_from_relation(
         relation.edges.kernel_ids,
         relation.counts,
         relation.output_csr.row_offsets,
+        sorted_kv_out_in_map,
+        reorder_rows,
+        tile_masks,
         relation.n_out_capacity,
         relation.n_kernels,
         weight.in_channels,
@@ -47,16 +58,10 @@ def sparse_quantized_conv_features_from_relation(
         weight.group_size,
         weight.bits,
     )
-    if _can_use_sorted_quantized_implicit_gemm(feats, weight, relation):
-        view = relation.require_sorted_implicit_gemm()
-        return ext.sparse_quantized_conv_features_sorted(
-            *args[:9],
-            view.sorted_kv_out_in_map,
-            view.reorder_rows,
-            view.tile_masks,
-            *args[9:],
-        )
-    return ext.sparse_quantized_conv_features(*args)
+
+
+def _empty_i32() -> mx.array:
+    return mx.array([], dtype=mx.int32)
 
 
 def _can_use_sorted_quantized_implicit_gemm(

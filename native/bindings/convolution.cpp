@@ -20,6 +20,9 @@ void register_convolution(nb::module_& module) {
            nb::handle kernel_ids,
            nb::handle counts,
            nb::handle row_offsets,
+           nb::handle sorted_kv_out_in_map,
+           nb::handle reorder_rows,
+           nb::handle tile_masks,
            int out_capacity,
            int n_kernels,
            int in_channels,
@@ -43,78 +46,12 @@ void register_convolution(nb::module_& module) {
                 out_channels,
                 storage_in_channels,
                 group_size,
-                bits
-            );
-        },
-        "feats"_a,
-        "weights"_a,
-        "scales"_a,
-        "biases"_a,
-        "in_rows"_a,
-        "out_rows"_a,
-        "kernel_ids"_a,
-        "counts"_a,
-        "row_offsets"_a,
-        "out_capacity"_a,
-        "n_kernels"_a,
-        "in_channels"_a,
-        "out_channels"_a,
-        "storage_in_channels"_a,
-        "group_size"_a,
-        "bits"_a,
-        nb::sig(
-            "def sparse_quantized_conv_features(feats: mlx.core.array, "
-            "weights: mlx.core.array, scales: mlx.core.array, "
-            "biases: mlx.core.array, in_rows: mlx.core.array, "
-            "out_rows: mlx.core.array, kernel_ids: mlx.core.array, "
-            "counts: mlx.core.array, row_offsets: mlx.core.array, "
-            "out_capacity: int, n_kernels: int, in_channels: int, "
-            "out_channels: int, storage_in_channels: int, group_size: int, "
-            "bits: int) -> mlx.core.array"
-        ),
-        "Run packed affine INT4/INT8 sparse convolution."
-    );
-    module.def(
-        "sparse_quantized_conv_features_sorted",
-        [](nb::handle feats,
-           nb::handle weights,
-           nb::handle scales,
-           nb::handle biases,
-           nb::handle in_rows,
-           nb::handle out_rows,
-           nb::handle kernel_ids,
-           nb::handle counts,
-           nb::handle row_offsets,
-           nb::handle sorted_kv_out_in_map,
-           nb::handle reorder_rows,
-           nb::handle tile_masks,
-           int out_capacity,
-           int n_kernels,
-           int in_channels,
-           int out_channels,
-           int storage_in_channels,
-           int group_size,
-           int bits) {
-            return sparse_quantized_conv_features_sorted(
-                array_arg(feats, "feats"),
-                array_arg(weights, "weights"),
-                array_arg(scales, "scales"),
-                array_arg(biases, "biases"),
-                array_arg(in_rows, "in_rows"),
-                array_arg(out_rows, "out_rows"),
-                array_arg(kernel_ids, "kernel_ids"),
-                array_arg(counts, "counts"),
-                array_arg(row_offsets, "row_offsets"),
-                array_arg(sorted_kv_out_in_map, "sorted_kv_out_in_map"),
-                array_arg(reorder_rows, "reorder_rows"),
-                array_arg(tile_masks, "tile_masks"),
-                out_capacity,
-                n_kernels,
-                in_channels,
-                out_channels,
-                storage_in_channels,
-                group_size,
-                bits
+                bits,
+                QuantizedSparseConvPlan{
+                    array_arg(sorted_kv_out_in_map, "sorted_kv_out_in_map"),
+                    array_arg(reorder_rows, "reorder_rows"),
+                    array_arg(tile_masks, "tile_masks"),
+                }
             );
         },
         "feats"_a,
@@ -137,19 +74,18 @@ void register_convolution(nb::module_& module) {
         "group_size"_a,
         "bits"_a,
         nb::sig(
-            "def sparse_quantized_conv_features_sorted(feats: "
-            "mlx.core.array, weights: mlx.core.array, "
-            "scales: mlx.core.array, biases: mlx.core.array, "
-            "in_rows: mlx.core.array, out_rows: mlx.core.array, "
-            "kernel_ids: mlx.core.array, counts: mlx.core.array, "
-            "row_offsets: mlx.core.array, "
+            "def sparse_quantized_conv_features(feats: mlx.core.array, "
+            "weights: mlx.core.array, scales: mlx.core.array, "
+            "biases: mlx.core.array, in_rows: mlx.core.array, "
+            "out_rows: mlx.core.array, kernel_ids: mlx.core.array, "
+            "counts: mlx.core.array, row_offsets: mlx.core.array, "
             "sorted_kv_out_in_map: mlx.core.array, "
             "reorder_rows: mlx.core.array, tile_masks: mlx.core.array, "
             "out_capacity: int, n_kernels: int, in_channels: int, "
             "out_channels: int, storage_in_channels: int, group_size: int, "
             "bits: int) -> mlx.core.array"
         ),
-        "Run packed sparse convolution over a sorted implicit-GEMM view."
+        "Run packed affine INT4/INT8 sparse convolution."
     );
     module.def(
         "sparse_conv_features",

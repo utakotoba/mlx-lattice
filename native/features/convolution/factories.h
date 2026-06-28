@@ -15,7 +15,7 @@ mx::array make_sparse_quantized_conv_features(
     const SparseRelationContract& contract,
     const mx::array& row_offsets,
     QuantizedSparseConvShape shape,
-    const std::vector<mx::array>& sorted_inputs = {}
+    const QuantizedSparseConvPlan& plan
 );
 
 mx::array make_sparse_conv_features(

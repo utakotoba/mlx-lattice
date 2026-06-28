@@ -20,29 +20,8 @@ mx::array sparse_quantized_conv_features(
     int out_channels,
     int storage_in_channels,
     int group_size,
-    int bits
-);
-
-mx::array sparse_quantized_conv_features_sorted(
-    const mx::array& feats,
-    const mx::array& weights,
-    const mx::array& scales,
-    const mx::array& biases,
-    const mx::array& in_rows,
-    const mx::array& out_rows,
-    const mx::array& kernel_ids,
-    const mx::array& counts,
-    const mx::array& row_offsets,
-    const mx::array& sorted_kv_out_in_map,
-    const mx::array& reorder_rows,
-    const mx::array& tile_masks,
-    int out_capacity,
-    int n_kernels,
-    int in_channels,
-    int out_channels,
-    int storage_in_channels,
-    int group_size,
-    int bits
+    int bits,
+    const QuantizedSparseConvPlan& plan
 );
 
 mx::array sparse_conv_features(

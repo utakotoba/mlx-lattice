@@ -5,9 +5,7 @@
 #include "features/convolution/contract.h"
 #include "mlx/stream.h"
 
-namespace mlx_lattice::backend::metal::tensor_ops::conv::quantized_igemm {
-
-bool is_preferred(QuantizedSparseConvShape shape, const mx::Stream& stream);
+namespace mlx_lattice::backend::metal::conv::quantized::direct {
 
 void encode(
     QuantizedSparseConvShape shape,
@@ -16,4 +14,4 @@ void encode(
     mx::array& out
 );
 
-} // namespace mlx_lattice::backend::metal::tensor_ops::conv::quantized_igemm
+} // namespace mlx_lattice::backend::metal::conv::quantized::direct
