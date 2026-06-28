@@ -91,6 +91,36 @@ def test_conv_density_case_reports_calculated_kernel_density() -> None:
     assert result.workload['expected_kernel_density'] == 3.0 / 27.0
 
 
+def test_quantized_conv_cases_use_packed_inference_and_report_storage() -> (
+    None
+):
+    cases = all_cases(
+        'smoke',
+        groups=('conv',),
+        n_values=(8,),
+        channels=(32,),
+        dtype='int4',
+    )
+    assert not any(case.name.endswith('dweight') for case in cases)
+    case = next(item for item in cases if item.name == 'conv3d_generic')
+
+    result = run_case(
+        case,
+        case.params[0],
+        mode='hot_op',
+        device='cpu',
+        warmup=0,
+        repeats=1,
+    )
+
+    assert result is not None
+    assert result.params['dtype'] == 'int4'
+    assert result.workload['weight_storage_bytes'] > 0
+    assert result.workload['weight_compression_ratio'] > 1.0
+    assert case.supports('compiled_hot')
+    assert not case.supports('backward')
+
+
 def test_harness_runs_cold_and_hot_public_operator_cases() -> None:
     case = BenchmarkCase(
         name='test_voxelize',
@@ -220,6 +250,11 @@ def test_cli_explicit_modes_do_not_append_default_modes() -> None:
     args = _parser().parse_args(['--mode', 'backward'])
 
     assert args.mode == ['backward']
+
+
+def test_cli_accepts_packed_quantized_weight_dtypes() -> None:
+    assert _parser().parse_args(['--dtype', 'int4']).dtype == 'int4'
+    assert _parser().parse_args(['--dtype', 'int8']).dtype == 'int8'
 
 
 def test_cli_repeated_size_values_define_custom_n_sweep() -> None:

@@ -4,6 +4,17 @@
 
 namespace mlx_lattice {
 
+mx::array make_sparse_quantized_conv_features(
+    const mx::array& feats,
+    const mx::array& weights,
+    const mx::array& scales,
+    const mx::array& biases,
+    const SparseRelationEdges& edges,
+    const SparseRelationContract& contract,
+    const mx::array& row_offsets,
+    QuantizedSparseConvShape shape
+);
+
 mx::array make_sparse_conv_features(
     const mx::array& feats,
     const mx::array& weights,

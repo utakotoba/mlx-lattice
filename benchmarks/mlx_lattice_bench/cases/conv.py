@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 import mlx.core as mx
-from mlx_lattice.core import SparseTensor
+from mlx_lattice.core import QuantizedWeight, SparseTensor, quantize_weight
 from mlx_lattice.ops import (
     conv3d,
     conv_transpose3d,
@@ -33,6 +33,7 @@ type ConvKind = Literal[
     'generative_transpose',
 ]
 type ConvGradTarget = Literal['features', 'weight', 'both']
+type ConvWeight = mx.array | QuantizedWeight
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,9 +44,9 @@ class ConvFixture:
     channels_out: int
     target_subset_coords: mx.array
     target_superset_coords: mx.array
-    pointwise_weight: mx.array
-    kernel3_weight: mx.array
-    kernel2_weight: mx.array
+    pointwise_weight: ConvWeight
+    kernel3_weight: ConvWeight
+    kernel2_weight: ConvWeight
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,9 +56,9 @@ class ConvInputs:
     target_subset: SparseTensor
     target_superset: SparseTensor
     transposed: SparseTensor
-    pointwise_weight: mx.array
-    kernel3_weight: mx.array
-    kernel2_weight: mx.array
+    pointwise_weight: ConvWeight
+    kernel3_weight: ConvWeight
+    kernel2_weight: ConvWeight
 
 
 def cases(
@@ -87,7 +88,11 @@ def cases(
         ('conv_transpose3d', 'transpose'),
         ('generative_conv_transpose3d', 'generative_transpose'),
     )
-    forward_cases = tuple(_case(name, kind, params) for name, kind in specs)
+    quantized = dtype in ('int4', 'int8')
+    forward_cases = tuple(
+        _case(name, kind, params, quantized=quantized)
+        for name, kind in specs
+    )
     density_case = _case(
         'conv3d_generic_density',
         'generic',
@@ -99,7 +104,10 @@ def cases(
             dtype=dtype,
         ),
         metrics=_density_metrics,
+        quantized=quantized,
     )
+    if quantized:
+        return (*forward_cases, density_case)
     density_backward_cases = tuple(
         _backward_case(
             f'conv3d_generic_density_{suffix}',
@@ -141,6 +149,7 @@ def _case(
     params: tuple[Mapping[str, Any], ...],
     *,
     metrics: Any | None = None,
+    quantized: bool = False,
 ) -> BenchmarkCase:
     return BenchmarkCase(
         name=name,
@@ -149,10 +158,13 @@ def _case(
         setup=_setup,
         prepare=_prepare,
         run=lambda inputs: _run(kind, inputs),
-        compiled=_compiled(kind),
-        backward=_backward(kind, 'both'),
-        metrics=metrics,
+        compiled=_compiled_quantized(kind)
+        if quantized
+        else _compiled(kind),
+        backward=None if quantized else _backward(kind, 'both'),
+        metrics=_combined_metrics(kind, metrics),
         units=('elements', 'n_in', 'n_out'),
+        modes=('cold_op', 'hot_op', 'compiled_hot') if quantized else None,
     )
 
 
@@ -182,6 +194,7 @@ def _setup(params: Mapping[str, Any]) -> ConvFixture:
     channels_in = int(params.get('channels_in', params['channels']))
     channels_out = int(params.get('channels_out', params['channels']))
     dtype = _dtype(params)
+    bits = _quantized_bits(params)
     arrays = sparse_arrays(
         rows=benchmark_n(params),
         channels=channels_in,
@@ -203,14 +216,17 @@ def _setup(params: Mapping[str, Any]) -> ConvFixture:
         channels_out=channels_out,
         target_subset_coords=arrays.coords[::2],
         target_superset_coords=superset.coords,
-        pointwise_weight=dense_weight(
-            (channels_out, 1, 1, 1, channels_in), dtype=dtype
+        pointwise_weight=_maybe_quantize(
+            dense_weight((channels_out, 1, 1, 1, channels_in), dtype=dtype),
+            bits,
         ),
-        kernel3_weight=dense_weight(
-            (channels_out, 3, 3, 3, channels_in), dtype=dtype
+        kernel3_weight=_maybe_quantize(
+            dense_weight((channels_out, 3, 3, 3, channels_in), dtype=dtype),
+            bits,
         ),
-        kernel2_weight=dense_weight(
-            (channels_out, 2, 2, 2, channels_in), dtype=dtype
+        kernel2_weight=_maybe_quantize(
+            dense_weight((channels_out, 2, 2, 2, channels_in), dtype=dtype),
+            bits,
         ),
     )
 
@@ -319,6 +335,52 @@ def _compiled(
     return factory
 
 
+def _compiled_quantized(
+    kind: ConvKind,
+) -> Callable[[ConvFixture], tuple[Any, tuple[Any, ...]]]:
+    def factory(fixture: ConvFixture) -> tuple[Any, tuple[Any, ...]]:
+        source = _weight_for(kind, fixture)
+        if not isinstance(source, QuantizedWeight):
+            raise TypeError('quantized benchmark requires packed weights.')
+        stride = 2 if kind in ('transpose', 'generative_transpose') else 1
+
+        def fn(
+            feats: mx.array,
+            packed: mx.array,
+            scales: mx.array,
+            biases: mx.array,
+        ) -> mx.array:
+            x = SparseTensor(
+                fixture.arrays.coords,
+                feats,
+                stride=stride,
+                batch_counts=fixture.arrays.batch_counts,
+            )
+            weight = QuantizedWeight(
+                packed,
+                scales,
+                biases,
+                source.group_size,
+                source.bits,
+                source.in_channels,
+                source.out_channels,
+                source.kernel_size,
+                source.layout,
+            )
+            return _run(
+                kind, _compiled_inputs(kind, x, weight, fixture)
+            ).feats
+
+        return fn, (
+            fixture.arrays.feats,
+            source.weight,
+            source.scales,
+            source.biases,
+        )
+
+    return factory
+
+
 def _backward(
     kind: ConvKind,
     target: ConvGradTarget,
@@ -355,7 +417,7 @@ def _argnums_for(target: ConvGradTarget) -> int | tuple[int, int]:
 def _compiled_inputs(
     kind: ConvKind,
     x: SparseTensor,
-    weight: mx.array,
+    weight: ConvWeight,
     fixture: ConvFixture | None = None,
 ) -> ConvInputs:
     empty = mx.array([], dtype=x.dtype)
@@ -393,7 +455,7 @@ def _compiled_inputs(
     )
 
 
-def _weight_for(kind: ConvKind, fixture: ConvFixture) -> mx.array:
+def _weight_for(kind: ConvKind, fixture: ConvFixture) -> ConvWeight:
     if kind == 'pointwise':
         return fixture.pointwise_weight
     if kind in (
@@ -419,9 +481,24 @@ def _dtype(params: Mapping[str, Any]) -> mx.Dtype:
     name = str(params.get('dtype', 'float32'))
     if name == 'float32':
         return mx.float32
-    if name == 'float16':
+    if name in ('float16', 'int4', 'int8'):
         return mx.float16
-    raise ValueError("dtype must be 'float32' or 'float16'.")
+    raise ValueError(
+        "dtype must be 'float32', 'float16', 'int4', or 'int8'."
+    )
+
+
+def _quantized_bits(params: Mapping[str, Any]) -> int | None:
+    name = str(params.get('dtype', 'float32'))
+    if name == 'int4':
+        return 4
+    if name == 'int8':
+        return 8
+    return None
+
+
+def _maybe_quantize(weight: mx.array, bits: int | None) -> ConvWeight:
+    return weight if bits is None else quantize_weight(weight, bits=bits)
 
 
 def _conv_param_grid(
@@ -498,6 +575,46 @@ def _density_metrics(
             str(params['layout'])
         ),
     }
+
+
+def _combined_metrics(
+    kind: ConvKind,
+    metrics: Any | None,
+) -> Callable[
+    [Mapping[str, Any], ConvFixture, Any | None, Any | None],
+    dict[str, int | float],
+]:
+    def collect(
+        params: Mapping[str, Any],
+        fixture: ConvFixture,
+        prepared: Any | None,
+        output: Any | None,
+    ) -> dict[str, int | float]:
+        collected = (
+            {}
+            if metrics is None
+            else metrics(params, fixture, prepared, output)
+        )
+        weight = _weight_for(kind, fixture)
+        if isinstance(weight, QuantizedWeight):
+            kernel_rows = (
+                weight.kernel_size[0]
+                * weight.kernel_size[1]
+                * weight.kernel_size[2]
+            )
+            fp16_bytes = (
+                kernel_rows * fixture.channels_in * fixture.channels_out * 2
+            )
+            collected.update(
+                {
+                    'weight_storage_bytes': weight.nbytes,
+                    'fp16_weight_bytes': fp16_bytes,
+                    'weight_compression_ratio': fp16_bytes / weight.nbytes,
+                }
+            )
+        return collected
+
+    return collect
 
 
 def _expected_active_kernel_positions(layout: str) -> float:

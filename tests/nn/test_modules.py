@@ -51,6 +51,85 @@ def test_feature_modules_preserve_sparse_identity_and_own_parameters() -> (
     assert 'bias' in layer
 
 
+@pytest.mark.parametrize('bits', [4, 8])
+def test_quantized_modules_use_packed_frozen_inference_weights(
+    bits: int,
+) -> None:
+    x = SparseTensor(
+        mx.array([[0, 0, 0, 0], [0, 1, 0, 0]], dtype=mx.int32),
+        mx.array(
+            [
+                [
+                    ((row + 1) * (channel + 2) % 11) / 11
+                    for channel in range(16)
+                ]
+                for row in range(2)
+            ],
+            dtype=mx.float32,
+        ),
+    )
+    linear = lnn.Linear(16, 12)
+    conv = lnn.SubmConv3d(16, 12, kernel_size=(3, 1, 1), bias=False)
+    linear.weight = (
+        mx.remainder(mx.arange(12 * 16), 23).reshape((12, 16)) - 11
+    ).astype(mx.float32) / 23
+    linear.bias = mx.zeros((12,), dtype=mx.float32)
+    conv.weight = (
+        mx.remainder(mx.arange(12 * 3 * 16), 29).reshape((12, 3, 1, 1, 16))
+        - 14
+    ).astype(mx.float32) / 29
+
+    quantized_linear = linear.to_quantized(bits=bits)
+    quantized_conv = conv.to_quantized(bits=bits)
+    linear_expected = linear(x)
+    conv_expected = conv(x)
+    linear_actual = quantized_linear(x)
+    conv_actual = quantized_conv(x)
+    mx.eval(
+        linear_expected.feats,
+        conv_expected.feats,
+        linear_actual.feats,
+        conv_actual.feats,
+    )
+
+    assert quantized_linear.weight.dtype == mx.uint32
+    assert quantized_conv.weight.dtype == mx.uint32
+    assert quantized_linear.trainable_parameters() == {}
+    assert quantized_conv.trainable_parameters() == {}
+    assert bool(
+        mx.allclose(
+            linear_actual.feats,
+            linear_expected.feats,
+            rtol=0.12 if bits == 4 else 0.02,
+            atol=0.08 if bits == 4 else 0.008,
+        )
+    )
+    assert bool(
+        mx.allclose(
+            conv_actual.feats,
+            conv_expected.feats,
+            rtol=0.12 if bits == 4 else 0.02,
+            atol=0.08 if bits == 4 else 0.008,
+        )
+    )
+
+
+def test_mlx_model_quantize_converts_sparse_weighted_modules() -> None:
+    class Model(mxnn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.linear = lnn.Linear(32, 32)
+            self.conv = lnn.Conv3d(32, 32, kernel_size=1)
+
+    model = Model()
+    mxnn.quantize(model, group_size=32, bits=4)
+
+    assert isinstance(model.linear, lnn.QuantizedLinear)
+    assert isinstance(model.conv, lnn.QuantizedConv3d)
+    assert model.linear.weight.dtype == mx.uint32
+    assert model.conv.weight.dtype == mx.uint32
+
+
 def test_feature_modules_match_functional_sparse_ops() -> None:
     x = _tensor()
     linear_module = lnn.Linear(2, 2)

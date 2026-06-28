@@ -5,6 +5,7 @@ import weakref
 import mlx.core as mx
 
 from mlx_lattice._native import ext
+from mlx_lattice.core.quantized import QuantizedWeight
 from mlx_lattice.core.relations import KernelRelation
 
 _PACKED_WEIGHT_CACHE: dict[
@@ -13,6 +14,39 @@ _PACKED_WEIGHT_CACHE: dict[
         weakref.ReferenceType[mx.array], tuple[int, ...], mx.Dtype, mx.array
     ],
 ] = {}
+
+
+def sparse_quantized_conv_features_from_relation(
+    feats: mx.array,
+    weight: QuantizedWeight,
+    relation: KernelRelation,
+) -> mx.array:
+    if relation.n_out_capacity is None or relation.n_kernels is None:
+        raise ValueError(
+            'kernel relation is missing static shape metadata.'
+        )
+    if relation.n_kernels != weight.weight.shape[0]:
+        raise ValueError(
+            'quantized weight kernel rows must match the relation.'
+        )
+    return ext.sparse_quantized_conv_features(
+        feats,
+        weight.weight,
+        weight.scales,
+        weight.biases,
+        relation.edges.in_rows,
+        relation.edges.out_rows,
+        relation.edges.kernel_ids,
+        relation.counts,
+        relation.output_csr.row_offsets,
+        relation.n_out_capacity,
+        relation.n_kernels,
+        weight.in_channels,
+        weight.out_channels,
+        weight.storage_in_channels,
+        weight.group_size,
+        weight.bits,
+    )
 
 
 def sparse_conv_features_from_relation(

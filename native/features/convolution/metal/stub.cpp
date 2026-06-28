@@ -11,6 +11,19 @@ namespace {
 
 namespace mlx_lattice::backend::metal::conv {
 
+void eval_quantized(
+    QuantizedSparseConvShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+) {
+    (void)shape;
+    (void)stream;
+    (void)inputs;
+    (void)outputs;
+    unavailable();
+}
+
 void eval(
     SparseConvShape shape,
     const mx::Stream& stream,

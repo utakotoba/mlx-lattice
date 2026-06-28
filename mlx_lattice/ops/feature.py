@@ -4,7 +4,8 @@ from typing import Literal
 
 import mlx.core as mx
 
-from mlx_lattice.core import SparseTensor
+from mlx_lattice.core import QuantizedWeight, SparseTensor
+from mlx_lattice.ops._quantized import quantized_matmul
 
 GeluApprox = Literal['none', 'precise', 'tanh', 'fast']
 
@@ -26,9 +27,12 @@ __all__ = [
 
 def linear(
     x: SparseTensor,
-    weight: mx.array,
+    weight: mx.array | QuantizedWeight,
     bias: mx.array | None = None,
 ) -> SparseTensor:
+    if isinstance(weight, QuantizedWeight):
+        feats = quantized_matmul(x.feats, weight)
+        return x.replace(feats=_with_bias(feats, bias))
     _require_2d_weight(weight)
     if weight.shape[1] != x.channels:
         raise ValueError('weight input channels must match x.channels.')

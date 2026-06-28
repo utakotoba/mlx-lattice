@@ -17,6 +17,12 @@ from mlx_lattice.core.coords import (
     occupancy_downsample,
     occupancy_expand,
 )
+from mlx_lattice.core.quantized import (
+    QuantizedWeight,
+    QuantizedWeightLayout,
+    dequantize_weight,
+    quantize_weight,
+)
 from mlx_lattice.core.relations import (
     KernelRelation,
     KernelSpec,
@@ -43,6 +49,8 @@ __all__ = [
     'NeighborRelation',
     'OccupancyExpansion',
     'PointVoxelMap',
+    'QuantizedWeight',
+    'QuantizedWeightLayout',
     'RelationCSRView',
     'RelationEdges',
     'RelationImplicitGemmView',
@@ -57,8 +65,10 @@ __all__ = [
     'build_point_voxel_map',
     'build_sparse_alignment',
     'child_coords_from_indices',
+    'dequantize_weight',
     'interpolate_point_features',
     'occupancy_downsample',
     'occupancy_expand',
+    'quantize_weight',
     'triple',
 ]

@@ -6,6 +6,13 @@
 
 namespace mlx_lattice::backend::cpu::conv {
 
+void eval_quantized(
+    QuantizedSparseConvShape shape,
+    const mx::Stream& stream,
+    const std::vector<mx::array>& inputs,
+    std::vector<mx::array>& outputs
+);
+
 void eval(
     SparseConvShape shape,
     const mx::Stream& stream,

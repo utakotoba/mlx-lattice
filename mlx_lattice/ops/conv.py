@@ -4,10 +4,17 @@ from collections.abc import Sequence
 
 import mlx.core as mx
 
-from mlx_lattice.core import CoordinateMapKey, KernelSpec, SparseTensor
+from mlx_lattice.core import (
+    CoordinateMapKey,
+    KernelSpec,
+    QuantizedWeight,
+    SparseTensor,
+)
 from mlx_lattice.core.types import Triple
+from mlx_lattice.ops._quantized import quantized_matmul
 from mlx_lattice.ops._relation_exec import (
     sparse_conv_features_from_relation,
+    sparse_quantized_conv_features_from_relation,
 )
 
 __all__ = [
@@ -20,7 +27,7 @@ __all__ = [
 
 def conv3d(
     x: SparseTensor,
-    weight: mx.array,
+    weight: mx.array | QuantizedWeight,
     bias: mx.array | None = None,
     *,
     kernel_size: int | Sequence[int] = 3,
@@ -67,7 +74,7 @@ def conv3d(
 
 def subm_conv3d(
     x: SparseTensor,
-    weight: mx.array,
+    weight: mx.array | QuantizedWeight,
     bias: mx.array | None = None,
     *,
     kernel_size: int | Sequence[int] = 3,
@@ -98,7 +105,7 @@ def subm_conv3d(
 
 def conv_transpose3d(
     x: SparseTensor,
-    weight: mx.array,
+    weight: mx.array | QuantizedWeight,
     bias: mx.array | None = None,
     *,
     kernel_size: int | Sequence[int] = 2,
@@ -124,7 +131,7 @@ def conv_transpose3d(
 
 def generative_conv_transpose3d(
     x: SparseTensor,
-    weight: mx.array,
+    weight: mx.array | QuantizedWeight,
     bias: mx.array | None = None,
     *,
     kernel_size: int | Sequence[int] = 2,
@@ -146,7 +153,7 @@ def generative_conv_transpose3d(
 
 def _relation_conv(
     x: SparseTensor,
-    weight: mx.array,
+    weight: mx.array | QuantizedWeight,
     bias: mx.array | None,
     spec: KernelSpec,
     *,
@@ -163,7 +170,13 @@ def _relation_conv(
         raise ValueError(
             'kernel relation is missing static shape metadata.'
         )
-    feats = sparse_conv_features_from_relation(x.feats, weight, relation)
+    feats = (
+        sparse_quantized_conv_features_from_relation(
+            x.feats, weight, relation
+        )
+        if isinstance(weight, QuantizedWeight)
+        else sparse_conv_features_from_relation(x.feats, weight, relation)
+    )
     if reuse_input_coords:
         return x.replace(feats=_with_bias(feats, bias))
     if relation.out_coords is None:
@@ -261,13 +274,23 @@ def _target_key(
     return x.coord_manager.insert_coords(coordinates, output_stride)
 
 
-def _pointwise_features(x: SparseTensor, weight: mx.array) -> mx.array:
+def _pointwise_features(
+    x: SparseTensor,
+    weight: mx.array | QuantizedWeight,
+) -> mx.array:
     _validate_feature_dtype(x.feats, weight)
+    if isinstance(weight, QuantizedWeight):
+        return quantized_matmul(x.feats, weight)
     matrix = _pointwise_weight_matrix(x, weight)
     return x.feats @ matrix.T
 
 
-def _target_weight(weight: mx.array, spec: KernelSpec) -> mx.array:
+def _target_weight(
+    weight: mx.array | QuantizedWeight,
+    spec: KernelSpec,
+) -> mx.array | QuantizedWeight:
+    if isinstance(weight, QuantizedWeight):
+        return weight
     if not spec.is_pointwise or weight.ndim != 2:
         return weight
     return mx.expand_dims(weight.T, axis=0)
@@ -276,12 +299,20 @@ def _target_weight(weight: mx.array, spec: KernelSpec) -> mx.array:
 # MARK: - validation
 
 
-def _validate_feature_dtype(feats: mx.array, weight: mx.array) -> None:
+def _validate_feature_dtype(
+    feats: mx.array,
+    weight: mx.array | QuantizedWeight,
+) -> None:
     if feats.dtype not in (mx.float32, mx.float16):
         raise ValueError(
             'convolution supports float32 and float16 tensors.'
         )
-    if weight.dtype != feats.dtype:
+    weight_dtype = (
+        weight.scales.dtype
+        if isinstance(weight, QuantizedWeight)
+        else weight.dtype
+    )
+    if weight_dtype != feats.dtype:
         raise ValueError('convolution weights must match feature dtype.')
 
 
@@ -318,9 +349,19 @@ def _pointwise_weight_matrix(x: SparseTensor, weight: mx.array) -> mx.array:
 
 def _validate_weight_for_kernel(
     x: SparseTensor,
-    weight: mx.array,
+    weight: mx.array | QuantizedWeight,
     kernel_rows: int,
 ) -> None:
+    if isinstance(weight, QuantizedWeight):
+        if weight.in_channels != x.channels:
+            raise ValueError(
+                'quantized weight input channels must match x.channels.'
+            )
+        if _volume(weight.kernel_size) != kernel_rows:
+            raise ValueError(
+                'quantized weight kernel rows must match the convolution kernel.'
+            )
+        return
     if weight.ndim == 3:
         if weight.shape[1] != x.channels:
             raise ValueError('weight input channels must match x.channels.')
@@ -376,3 +417,7 @@ def _div_stride(lhs: Triple, rhs: Triple) -> Triple:
             )
         out.append(left // right)
     return (out[0], out[1], out[2])
+
+
+def _volume(size: Triple) -> int:
+    return size[0] * size[1] * size[2]

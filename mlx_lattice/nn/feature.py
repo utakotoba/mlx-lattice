@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import mlx.core as mx
 import mlx.nn as mxnn
@@ -24,6 +24,9 @@ __all__ = [
     'Tanh',
 ]
 
+if TYPE_CHECKING:
+    from mlx_lattice.nn.quantized_feature import QuantizedLinear
+
 
 class Linear(mxnn.Linear):
     def __call__(self, x: SparseTensor) -> SparseTensor:
@@ -31,6 +34,26 @@ class Linear(mxnn.Linear):
             x,
             self.weight,
             self.bias if 'bias' in self else None,
+        )
+
+    def to_quantized(
+        self,
+        group_size: int | None = None,
+        bits: int | None = None,
+        mode: str = 'affine',
+        quantize_input: bool = False,
+    ) -> QuantizedLinear:
+        from mlx_lattice.nn.quantized_feature import QuantizedLinear
+
+        if quantize_input:
+            raise ValueError(
+                'affine sparse QuantizedLinear uses floating-point activations.'
+            )
+        return QuantizedLinear.from_linear(
+            self,
+            group_size=group_size,
+            bits=4 if bits is None else bits,
+            mode=mode,
         )
 
 

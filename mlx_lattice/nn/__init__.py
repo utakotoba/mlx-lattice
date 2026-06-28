@@ -29,6 +29,13 @@ from mlx_lattice.nn.pool import (
     Pool3d,
     SumPool3d,
 )
+from mlx_lattice.nn.quantized_conv import (
+    QuantizedConv3d,
+    QuantizedConvTranspose3d,
+    QuantizedGenerativeConvTranspose3d,
+    QuantizedSubmConv3d,
+)
+from mlx_lattice.nn.quantized_feature import QuantizedLinear
 
 __all__ = [
     'GELU',
@@ -46,6 +53,11 @@ __all__ = [
     'Linear',
     'MaxPool3d',
     'Pool3d',
+    'QuantizedConv3d',
+    'QuantizedConvTranspose3d',
+    'QuantizedGenerativeConvTranspose3d',
+    'QuantizedLinear',
+    'QuantizedSubmConv3d',
     'RMSNorm',
     'ReLU',
     'SiLU',

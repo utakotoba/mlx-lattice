@@ -27,6 +27,33 @@ mx::Stream sparse_exec_stream(const mx::Device& device) {
 
 } // namespace
 
+mx::Stream sparse_quantized_conv_stream(
+    const mx::array& feats,
+    const mx::array& weights,
+    const mx::array& scales,
+    const mx::array& biases,
+    const mx::array& in_rows,
+    const mx::array& out_rows,
+    const mx::array& kernel_ids,
+    const mx::array& counts,
+    const mx::array& row_offsets
+) {
+    auto device = sparse_exec_device();
+    if (is_gpu_device(device) &&
+        (!is_conv_feature_dtype(feats.dtype()) ||
+         weights.dtype() != mx::uint32 || scales.dtype() != feats.dtype() ||
+         biases.dtype() != feats.dtype() || in_rows.dtype() != mx::int32 ||
+         out_rows.dtype() != mx::int32 || kernel_ids.dtype() != mx::int32 ||
+         counts.dtype() != mx::int32 || row_offsets.dtype() != mx::int32)) {
+        throw std::invalid_argument(
+            "Metal quantized sparse convolution requires float16 or float32 "
+            "features/scales/biases, uint32 packed weights, and int32 "
+            "relation arrays."
+        );
+    }
+    return sparse_exec_stream(device);
+}
+
 mx::Stream sparse_conv_features_stream(
     const mx::array& feats,
     const mx::array& weights,

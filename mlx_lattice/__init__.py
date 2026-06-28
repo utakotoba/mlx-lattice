@@ -7,18 +7,24 @@ from ._native import backend_info
 from .core import (
     CoordinateManager,
     CoordinateMapKey,
+    QuantizedWeight,
     SparseTensor,
+    dequantize_weight,
+    quantize_weight,
 )
 
 __all__ = [
     'CoordinateManager',
     'CoordinateMapKey',
+    'QuantizedWeight',
     'SparseTensor',
     '__version__',
     'backend_info',
     'core',
+    'dequantize_weight',
     'nn',
     'ops',
+    'quantize_weight',
 ]
 
 __version__ = backend_info()['version']

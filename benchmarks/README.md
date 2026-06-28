@@ -17,6 +17,8 @@ uv run --all-packages mlx-lattice-bench --group conv --group pool
 uv run --all-packages mlx-lattice-bench --mode compiled_hot
 uv run --all-packages mlx-lattice-bench --mode backward
 uv run --all-packages mlx-lattice-bench --size 1000 --size 5000
+uv run --all-packages mlx-lattice-bench --group conv --dtype int4
+uv run --all-packages mlx-lattice-bench --group conv --dtype int8
 uv run --all-packages mlx-lattice-bench --output smoke.json
 ```
 
@@ -99,6 +101,13 @@ lazy scalar counts do not affect latency samples. The key fields are:
 - `Cin` and `Cout`: input and output feature channels.
 - `K`: kernel volume when known.
 - `avgN`: average relation neighbors, `E / Nout` or `E / query rows`.
+- `weight_storage_bytes`: packed weight plus affine scale/bias storage.
+- `weight_compression_ratio`: equivalent FP16 bytes divided by packed bytes.
+
+For convolution, `--dtype int4` and `--dtype int8` mean packed affine weights
+with float16 activations. Quantization happens during fixture setup, outside
+the timed region. Packed cases are inference-only and therefore do not expose
+the `backward` mode.
 
 JSON reports include:
 

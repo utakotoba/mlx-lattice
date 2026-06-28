@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from mlx_lattice import SparseTensor
+from mlx_lattice.core import dequantize_weight, quantize_weight
 from mlx_lattice.ops import (
     conv3d,
     conv_transpose3d,
@@ -80,6 +81,121 @@ def test_conv3d_generic_supports_float16() -> None:
         active_feats(out).astype(mx.float32).tolist(),
         [[8.0], [14.0], [8.0]],
     )
+
+
+@pytest.mark.parametrize('bits', [4, 8])
+def test_packed_quantized_convolution_matches_dequantized_contract(
+    bits: int,
+) -> None:
+    coords = mx.array(
+        [[0, index, 0, 0] for index in range(12)],
+        dtype=mx.int32,
+    )
+    feats = mx.array(
+        [
+            [((row + 1) * (channel + 3) % 19) / 19 for channel in range(16)]
+            for row in range(12)
+        ],
+        dtype=mx.float16,
+    )
+    weights = {
+        1: mx.array(
+            [((index % 29) - 14) / 29 for index in range(12 * 16)],
+            dtype=mx.float16,
+        ).reshape((12, 1, 1, 1, 16)),
+        2: mx.array(
+            [((index % 31) - 15) / 31 for index in range(12 * 2 * 16)],
+            dtype=mx.float16,
+        ).reshape((12, 2, 1, 1, 16)),
+        3: mx.array(
+            [((index % 37) - 18) / 37 for index in range(12 * 3 * 16)],
+            dtype=mx.float16,
+        ).reshape((12, 3, 1, 1, 16)),
+    }
+    quantized = {
+        size: quantize_weight(weight, bits=bits)
+        for size, weight in weights.items()
+    }
+    references = {
+        size: dequantize_weight(weight)
+        for size, weight in quantized.items()
+    }
+
+    x = SparseTensor(coords, feats)
+    transposed = SparseTensor(coords, feats, stride=2)
+    outputs = (
+        (
+            conv3d(x, quantized[1], kernel_size=1),
+            conv3d(x, references[1], kernel_size=1),
+        ),
+        (
+            conv3d(x, quantized[3], kernel_size=(3, 1, 1)),
+            conv3d(x, references[3], kernel_size=(3, 1, 1)),
+        ),
+        (
+            subm_conv3d(x, quantized[3], kernel_size=(3, 1, 1)),
+            subm_conv3d(x, references[3], kernel_size=(3, 1, 1)),
+        ),
+        (
+            conv3d(
+                x,
+                quantized[3],
+                kernel_size=(3, 1, 1),
+                coordinates=x,
+            ),
+            conv3d(
+                x,
+                references[3],
+                kernel_size=(3, 1, 1),
+                coordinates=x,
+            ),
+        ),
+        (
+            conv_transpose3d(
+                transposed,
+                quantized[2],
+                kernel_size=(2, 1, 1),
+                stride=2,
+            ),
+            conv_transpose3d(
+                transposed,
+                references[2],
+                kernel_size=(2, 1, 1),
+                stride=2,
+            ),
+        ),
+        (
+            generative_conv_transpose3d(
+                transposed,
+                quantized[2],
+                kernel_size=(2, 1, 1),
+                stride=2,
+            ),
+            generative_conv_transpose3d(
+                transposed,
+                references[2],
+                kernel_size=(2, 1, 1),
+                stride=2,
+            ),
+        ),
+    )
+    mx.eval(*(item.feats for pair in outputs for item in pair))
+
+    for actual, expected in outputs:
+        assert bool(
+            mx.allclose(actual.feats, expected.feats, rtol=2e-2, atol=4e-3)
+        )
+
+    packed = quantized[3]
+    assert packed.weight.dtype == mx.uint32
+    assert packed.in_channels == 16
+    assert packed.storage_in_channels == 32
+    memory_weight = mx.ones((64, 3, 3, 3, 64), dtype=mx.float16)
+    memory_packed = quantize_weight(memory_weight, bits=bits)
+    mx.eval(
+        memory_packed.weight, memory_packed.scales, memory_packed.biases
+    )
+    assert memory_packed.nbytes < memory_weight.nbytes
 
 
 def test_sorted_implicit_gemm_direct_reference_matches_classic(

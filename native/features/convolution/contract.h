@@ -34,6 +34,28 @@ struct SparseConvShape {
     int store_sorted = 0;
 };
 
+struct QuantizedSparseConvShape {
+    int in_capacity;
+    int out_capacity;
+    int n_kernels;
+    int in_channels;
+    int out_channels;
+    int storage_in_channels;
+    int group_size;
+    int bits;
+};
+
+inline bool
+operator==(QuantizedSparseConvShape lhs, QuantizedSparseConvShape rhs) {
+    return lhs.in_capacity == rhs.in_capacity &&
+           lhs.out_capacity == rhs.out_capacity &&
+           lhs.n_kernels == rhs.n_kernels &&
+           lhs.in_channels == rhs.in_channels &&
+           lhs.out_channels == rhs.out_channels &&
+           lhs.storage_in_channels == rhs.storage_in_channels &&
+           lhs.group_size == rhs.group_size && lhs.bits == rhs.bits;
+}
+
 inline bool operator==(SparseConvShape lhs, SparseConvShape rhs) {
     return lhs.in_capacity == rhs.in_capacity &&
            lhs.out_capacity == rhs.out_capacity &&

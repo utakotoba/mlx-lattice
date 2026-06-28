@@ -10,6 +10,71 @@ using namespace nb::literals;
 
 void register_convolution(nb::module_& module) {
     module.def(
+        "sparse_quantized_conv_features",
+        [](nb::handle feats,
+           nb::handle weights,
+           nb::handle scales,
+           nb::handle biases,
+           nb::handle in_rows,
+           nb::handle out_rows,
+           nb::handle kernel_ids,
+           nb::handle counts,
+           nb::handle row_offsets,
+           int out_capacity,
+           int n_kernels,
+           int in_channels,
+           int out_channels,
+           int storage_in_channels,
+           int group_size,
+           int bits) {
+            return sparse_quantized_conv_features(
+                array_arg(feats, "feats"),
+                array_arg(weights, "weights"),
+                array_arg(scales, "scales"),
+                array_arg(biases, "biases"),
+                array_arg(in_rows, "in_rows"),
+                array_arg(out_rows, "out_rows"),
+                array_arg(kernel_ids, "kernel_ids"),
+                array_arg(counts, "counts"),
+                array_arg(row_offsets, "row_offsets"),
+                out_capacity,
+                n_kernels,
+                in_channels,
+                out_channels,
+                storage_in_channels,
+                group_size,
+                bits
+            );
+        },
+        "feats"_a,
+        "weights"_a,
+        "scales"_a,
+        "biases"_a,
+        "in_rows"_a,
+        "out_rows"_a,
+        "kernel_ids"_a,
+        "counts"_a,
+        "row_offsets"_a,
+        "out_capacity"_a,
+        "n_kernels"_a,
+        "in_channels"_a,
+        "out_channels"_a,
+        "storage_in_channels"_a,
+        "group_size"_a,
+        "bits"_a,
+        nb::sig(
+            "def sparse_quantized_conv_features(feats: mlx.core.array, "
+            "weights: mlx.core.array, scales: mlx.core.array, "
+            "biases: mlx.core.array, in_rows: mlx.core.array, "
+            "out_rows: mlx.core.array, kernel_ids: mlx.core.array, "
+            "counts: mlx.core.array, row_offsets: mlx.core.array, "
+            "out_capacity: int, n_kernels: int, in_channels: int, "
+            "out_channels: int, storage_in_channels: int, group_size: int, "
+            "bits: int) -> mlx.core.array"
+        ),
+        "Run packed affine INT4/INT8 sparse convolution."
+    );
+    module.def(
         "sparse_conv_features",
         [](nb::handle feats,
            nb::handle weights,

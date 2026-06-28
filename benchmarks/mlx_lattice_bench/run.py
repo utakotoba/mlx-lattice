@@ -145,9 +145,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         '--dtype',
-        choices=('float32', 'float16'),
+        choices=('float32', 'float16', 'int4', 'int8'),
         default='float32',
-        help='feature/weight dtype for dtype-aware cases',
+        help=(
+            'feature/weight dtype; int4/int8 select packed weights with '
+            'float16 activations'
+        ),
     )
     parser.add_argument(
         '--output',
@@ -304,8 +307,10 @@ def _channel_pair(value: str) -> tuple[int, int]:
 
 
 def _dtype_name(value: str) -> str:
-    if value not in ('float32', 'float16'):
-        raise argparse.ArgumentTypeError('must be float32 or float16')
+    if value not in ('float32', 'float16', 'int4', 'int8'):
+        raise argparse.ArgumentTypeError(
+            'must be float32, float16, int4, or int8'
+        )
     return value
 
 

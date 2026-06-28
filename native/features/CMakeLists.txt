@@ -19,6 +19,7 @@ if(MLX_LATTICE_HAS_METAL)
     SOURCES
       ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/direct/forward.metal
       ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/direct/input_grad.metal
+      ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/direct/quantized_forward.metal
       ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/direct/sorted_reference.metal
       ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/direct/specialized_forward.metal
       ${CMAKE_CURRENT_LIST_DIR}/convolution/metal/direct/specialized_input_grad.metal

@@ -4,6 +4,25 @@
 
 namespace mlx_lattice {
 
+mx::array sparse_quantized_conv_features(
+    const mx::array& feats,
+    const mx::array& weights,
+    const mx::array& scales,
+    const mx::array& biases,
+    const mx::array& in_rows,
+    const mx::array& out_rows,
+    const mx::array& kernel_ids,
+    const mx::array& counts,
+    const mx::array& row_offsets,
+    int out_capacity,
+    int n_kernels,
+    int in_channels,
+    int out_channels,
+    int storage_in_channels,
+    int group_size,
+    int bits
+);
+
 mx::array sparse_conv_features(
     const mx::array& feats,
     const mx::array& weights,
