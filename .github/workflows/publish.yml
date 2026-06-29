@@ -209,6 +209,9 @@ jobs:
         with:
           path: artifacts
 
+      - name: Remove contract distributions
+        run: rm -rf artifacts/lattice-contract
+
       - name: Prepare distributions
         run: bash .github/scripts/prepare-distributions.sh artifacts dist "$EXPECTED_MLX_DISTRIBUTIONS"
 
