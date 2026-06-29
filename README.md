@@ -7,6 +7,7 @@ coordinate-aligned sparse algebra, quantized inference weights, and
 `mlx.nn`-style modules for Apple Silicon workflows.
 
 [Documentation](https://mlx-lattice.iki.moe) | [Acknowledgements](#acknowledgements)
+| [Citation](#citation)
 
 > [!NOTE]
 > This codebase has been **heavily** assisted by OpenAI GPT models, especially

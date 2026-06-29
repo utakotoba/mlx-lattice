@@ -1,6 +1,6 @@
 [project]
 name = "mlx-lattice-bench"
-version = "0.1.0"
+version = "0.2.0"
 description = "Benchmark suite for mlx-lattice public sparse operators"
 requires-python = ">=3.12"
 dependencies = ["mlx-lattice"]
