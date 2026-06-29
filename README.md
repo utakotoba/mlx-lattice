@@ -9,6 +9,16 @@ coordinate-aligned sparse algebra, quantized inference weights, and
 [Documentation](https://mlx-lattice.iki.moe) | [Acknowledgements](#acknowledgements)
 | [Citation](#citation)
 
+> [!IMPORTANT]
+> Planned training/deployment direction: `mlx-lattice` is intended to remain
+> the MLX/Metal inference runtime, while a future sibling `torch-lattice`
+> package can provide PyTorch/CUDA research and training ergonomics.
+>
+> The bridge should be a stable sparse model IR: a validated manifest plus
+> tensor weights, not arbitrary generated Python or a TorchSparse compatibility
+> promise. On the MLX side, that artifact should reconstruct an in-memory
+> semantic graph and dispatch through normal `mlx-lattice` operators.
+
 > [!NOTE]
 > This codebase has been **heavily** assisted by OpenAI GPT models, especially
 > [GPT-5.5](https://openai.com/index/introducing-gpt-5-5).
