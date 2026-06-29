@@ -1,4 +1,4 @@
-# mlx-lattice
+# MLX Lattice
 
 `mlx-lattice` is a sparse point-cloud and sparse-voxel library for
 [MLX](https://github.com/ml-explore/mlx). It provides sparse tensors,
@@ -6,23 +6,17 @@ coordinate management, sparse convolution, pooling, point/voxel conversion,
 coordinate-aligned sparse algebra, quantized inference weights, and
 `mlx.nn`-style modules for Apple Silicon workflows.
 
-Version `0.2.0` is organized around public sparse semantics: users work with
-`SparseTensor`, `mlx_lattice.ops`, and `mlx_lattice.nn`; the implementation
-selects CPU or Metal execution routes internally.
-
-Documentation: [mlx-lattice.iki.moe](https://mlx-lattice.iki.moe)
-
-[Acknowledgements](#acknowledgements)
+[Documentation](https://mlx-lattice.iki.moe) | [Acknowledgements](#acknowledgements)
 
 > [!NOTE]
-> This codebase has been heavily assisted by OpenAI GPT models, especially
-> GPT-5.5.
+> This codebase has been **heavily** assisted by OpenAI GPT models, especially
+> [GPT-5.5](https://openai.com/index/introducing-gpt-5-5).
 >
-> That assistance made it practical to move a performance-oriented sparse MLX
-> codebase forward as solo, part-time work in a short development window.
+> That assistance made it **practical** to move a performance-oriented sparse MLX
+> codebase forward as solo, _part-time_ work in a short development window.
 >
 > The implementation is tested and benchmarked, but sparse workloads are
-> shape-sensitive. Some edge-case coordinate distributions, channel counts, or
+> **shape-sensitive**. Some edge-case coordinate distributions, channel counts, or
 > backend/device combinations may still expose correctness or performance
 > issues.
 >
