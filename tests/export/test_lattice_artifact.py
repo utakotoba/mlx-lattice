@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import cast
+from typing import Protocol, cast
 
 import mlx.nn as mxnn
 import pytest
@@ -44,6 +44,10 @@ from mlx_lattice.ops import (
 from tests.support import assert_nested_close, mx
 
 pytestmark = [pytest.mark.usefixtures('selected_backend')]
+
+
+class _ActiveRowsValue(Protocol):
+    active_rows: mx.array
 
 
 def _input() -> SparseTensor:
@@ -134,6 +138,26 @@ def _module_instance(name: str):
     if name in {'BatchNorm', 'LayerNorm', 'RMSNorm'}:
         return getattr(lnn, name)(1)
     return getattr(lnn, name)()
+
+
+def _active_rows(value: _ActiveRowsValue) -> int:
+    mx.eval(value.active_rows)
+    return int(value.active_rows.tolist()[0])
+
+
+def _active_prefix(value: mx.array, rows: int) -> mx.array:
+    return value[:rows]
+
+
+def _assert_active_array_equal(
+    actual: mx.array,
+    expected: mx.array,
+    rows: int,
+) -> None:
+    actual_prefix = _active_prefix(actual, rows)
+    expected_prefix = _active_prefix(expected, rows)
+    mx.eval(actual_prefix, expected_prefix)
+    assert actual_prefix.tolist() == expected_prefix.tolist()
 
 
 def test_lattice_model_runs_manifest_graph_with_public_ops() -> None:
@@ -899,29 +923,38 @@ def test_lattice_model_supports_typed_occupancy_outputs() -> None:
         expected_expansion.child_indices,
     )
 
-    assert (
-        actual_occupancy.coords.tolist()
-        == expected_occupancy.coords.tolist()
+    occupancy_rows = _active_rows(actual_occupancy)
+    assert occupancy_rows == _active_rows(expected_occupancy)
+    _assert_active_array_equal(
+        actual_occupancy.coords,
+        expected_occupancy.coords,
+        occupancy_rows,
     )
     assert (
         actual_occupancy.active_rows.tolist()
         == expected_occupancy.active_rows.tolist()
     )
-    assert (
-        actual_occupancy.occupancy.tolist()
-        == expected_occupancy.occupancy.tolist()
+    _assert_active_array_equal(
+        actual_occupancy.occupancy,
+        expected_occupancy.occupancy,
+        occupancy_rows,
     )
-    assert (
-        actual_expansion.coords.tolist()
-        == expected_expansion.coords.tolist()
+    expansion_rows = _active_rows(actual_expansion)
+    assert expansion_rows == _active_rows(expected_expansion)
+    _assert_active_array_equal(
+        actual_expansion.coords,
+        expected_expansion.coords,
+        expansion_rows,
     )
-    assert (
-        actual_expansion.parent_rows.tolist()
-        == expected_expansion.parent_rows.tolist()
+    _assert_active_array_equal(
+        actual_expansion.parent_rows,
+        expected_expansion.parent_rows,
+        expansion_rows,
     )
-    assert (
-        actual_expansion.child_indices.tolist()
-        == expected_expansion.child_indices.tolist()
+    _assert_active_array_equal(
+        actual_expansion.child_indices,
+        expected_expansion.child_indices,
+        expansion_rows,
     )
 
 
@@ -986,21 +1019,29 @@ def test_lattice_graph_builder_projects_structured_fields() -> None:
         'occupancy_expansion',
         'dense_tensor',
     ]
-    assert (
-        actual_occupancy.coords.tolist()
-        == expected_occupancy.coords.tolist()
+    occupancy_rows = _active_rows(actual_occupancy)
+    assert occupancy_rows == _active_rows(expected_occupancy)
+    _assert_active_array_equal(
+        actual_occupancy.coords,
+        expected_occupancy.coords,
+        occupancy_rows,
     )
-    assert (
-        actual_occupancy.occupancy.tolist()
-        == expected_occupancy.occupancy.tolist()
+    _assert_active_array_equal(
+        actual_occupancy.occupancy,
+        expected_occupancy.occupancy,
+        occupancy_rows,
     )
-    assert (
-        actual_expansion.coords.tolist()
-        == expected_expansion.coords.tolist()
+    expansion_rows = _active_rows(actual_expansion)
+    assert expansion_rows == _active_rows(expected_expansion)
+    _assert_active_array_equal(
+        actual_expansion.coords,
+        expected_expansion.coords,
+        expansion_rows,
     )
-    assert (
-        actual_child_indices.tolist()
-        == actual_expansion.child_indices.tolist()
+    _assert_active_array_equal(
+        actual_child_indices,
+        actual_expansion.child_indices,
+        expansion_rows,
     )
 
 
