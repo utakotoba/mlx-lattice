@@ -4,6 +4,12 @@ from collections.abc import Mapping
 from typing import cast
 
 import mlx.core as mx
+from lattice_contract import (
+    IRInputRef,
+    IRManifest,
+    IRTensorSpec,
+    IRValueType,
+)
 
 from mlx_lattice._native import backend_info
 from mlx_lattice.export.registry import (
@@ -18,7 +24,6 @@ from mlx_lattice.export.runtime import (
     infer_batch_size,
     validate_value_type,
 )
-from mlx_lattice.ir import IRInputRef, IRManifest, IRTensorSpec, IRValueType
 
 
 class LatticeModel:

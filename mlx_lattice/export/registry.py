@@ -5,6 +5,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any, TypeVar, cast
 
 import mlx.nn as mxnn
+from lattice_contract import IRNode, IROpSpec, IRValueType
 
 import mlx_lattice.nn as lnn
 from mlx_lattice.export._ops import register_operations
@@ -15,7 +16,6 @@ from mlx_lattice.export.runtime import (
     OperationBinding,
     ParameterBinding,
 )
-from mlx_lattice.ir import IRNode, IROpSpec, IRValueType
 from mlx_lattice.nn._export import (
     ModuleExportSpec,
     annotation_value_type,

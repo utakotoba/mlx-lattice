@@ -9,6 +9,7 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "lattice-contract",
     "mlx-lattice",
     "mlx-lattice-bench",
 ]
@@ -212,6 +213,11 @@ wheels = [
 ]
 
 [[package]]
+name = "lattice-contract"
+version = "0.1.0"
+source = { editable = "contract" }
+
+[[package]]
 name = "markupsafe"
 version = "3.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -304,6 +310,7 @@ name = "mlx-lattice"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [
+    { name = "lattice-contract" },
     { name = "mlx" },
 ]
 
@@ -323,7 +330,10 @@ docs = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "mlx", specifier = ">=0.31" }]
+requires-dist = [
+    { name = "lattice-contract", editable = "contract" },
+    { name = "mlx", specifier = ">=0.31" },
+]
 
 [package.metadata.requires-dev]
 dev = [

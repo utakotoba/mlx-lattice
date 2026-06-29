@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import mlx.core as mx
+from lattice_contract import lattice_op_hints
 
 from mlx_lattice.core import (
     CoordinateMapKey,
@@ -11,7 +12,6 @@ from mlx_lattice.core import (
     SparseTensor,
 )
 from mlx_lattice.core.types import Triple
-from mlx_lattice.ir import lattice_op_hints
 from mlx_lattice.ops._quantized import quantized_matmul
 from mlx_lattice.ops._relation_exec import (
     sparse_conv_features_from_relation,

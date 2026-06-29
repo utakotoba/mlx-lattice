@@ -6,8 +6,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from mlx_lattice.core.types import Triple, triple
-
 CURRENT_SCHEMA_VERSION = '0.1'
 
 DTypePolicy = Literal['preserve', 'fp32', 'fp16', 'fp16_inference']
@@ -27,6 +25,7 @@ IRValueType = Literal[
 ]
 IRParameter = str
 type IRInputRef = str | tuple[str, ...]
+Triple = tuple[int, int, int]
 
 _IR_VALUE_TYPES = frozenset(
     (
@@ -47,6 +46,19 @@ _IR_VALUE_TYPES = frozenset(
 _COORDINATE_ORDER = ('batch', 'x', 'y', 'z')
 _FEATURE_LAYOUT = ('row', 'channel')
 _WEIGHT_LAYOUT = 'mlx-lattice'
+
+
+def triple(value: int | Sequence[int], *, name: str) -> Triple:
+    """Normalize an integer or 3-sequence into a spatial integer triple."""
+
+    if isinstance(value, int):
+        return (value, value, value)
+    if len(value) != 3:
+        raise ValueError(f'{name} must be an int or a sequence of 3 ints.')
+    out = tuple(int(item) for item in value)
+    if len(out) != 3:
+        raise ValueError(f'{name} must be an int or a sequence of 3 ints.')
+    return cast('Triple', out)
 
 
 @dataclass(frozen=True, slots=True)

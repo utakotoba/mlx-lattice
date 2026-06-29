@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Literal
 
 import mlx.core as mx
+from lattice_contract import lattice_op_hints
 
 from mlx_lattice.core import QuantizedWeight, SparseTensor
-from mlx_lattice.ir import lattice_op_hints
 from mlx_lattice.ops._quantized import quantized_matmul
 
 GeluApprox = Literal['none', 'precise', 'tanh', 'fast']

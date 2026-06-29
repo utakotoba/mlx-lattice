@@ -6,6 +6,15 @@ from typing import Any, Protocol, cast, runtime_checkable
 
 import mlx.core as mx
 import mlx.nn as mxnn
+from lattice_contract import (
+    CURRENT_SCHEMA_VERSION,
+    IRInputRef,
+    IRManifest,
+    IRNode,
+    IRTensorSpec,
+    IRValueType,
+    ir_value_type,
+)
 
 from mlx_lattice.core import QuantizedWeight
 from mlx_lattice.export._ops import field_value_type
@@ -15,15 +24,6 @@ from mlx_lattice.export.registry import (
     validate_node_against_runtime,
 )
 from mlx_lattice.export.runtime import layout_id
-from mlx_lattice.ir import (
-    CURRENT_SCHEMA_VERSION,
-    IRInputRef,
-    IRManifest,
-    IRNode,
-    IRTensorSpec,
-    IRValueType,
-    ir_value_type,
-)
 
 
 @dataclass(frozen=True, slots=True)

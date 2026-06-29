@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mlx_lattice.ir.manifest import (
+from lattice_contract.manifest import (
     CURRENT_SCHEMA_VERSION,
     DTypePolicy,
     IRInputRef,
@@ -10,13 +10,15 @@ from mlx_lattice.ir.manifest import (
     IRSparseSupport,
     IRTensorSpec,
     IRValueType,
+    Triple,
     ir_value_type,
     is_ir_value_type,
     load_manifest,
     manifest_from_dict,
     manifest_to_dict,
+    triple,
 )
-from mlx_lattice.ir.ops import (
+from lattice_contract.ops import (
     IROpExportHints,
     IROpSpec,
     IRParameterKind,
@@ -41,6 +43,7 @@ __all__ = [
     'IRSparseSupport',
     'IRTensorSpec',
     'IRValueType',
+    'Triple',
     'ir_op_spec',
     'ir_value_type',
     'is_ir_value_type',
@@ -51,5 +54,6 @@ __all__ = [
     'manifest_to_dict',
     'op_export_hints',
     'op_spec',
+    'triple',
     'validate_node_against_spec',
 ]

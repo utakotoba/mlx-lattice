@@ -8,7 +8,7 @@ requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Z.Y. Lin", email = "me@iki.moe" }]
 keywords = ["mlx", "ml", "sparse", "convolution", "point-cloud"]
-dependencies = ["mlx>=0.31"]
+dependencies = ["lattice-contract", "mlx>=0.31"]
 
 [project.urls]
 Homepage = "https://github.com/caelyreth/mlx-lattice"
@@ -23,7 +23,10 @@ build-backend = "scikit_build_core.build"
 # MARK: - deps
 
 [tool.uv.workspace]
-members = ["benchmarks"]
+members = ["benchmarks", "contract"]
+
+[tool.uv.sources]
+lattice-contract = { workspace = true }
 
 [dependency-groups]
 dev = ["nanobind>=2", "prek>=0.4.3", "pytest>=8", "ruff>=0.15.15", "ty>=0.0.42"]
@@ -43,6 +46,9 @@ wheel.packages = ["mlx_lattice"]
 sdist.include = [
   "CMakeLists.txt",
   "CMakePresets.json",
+  "contract/**/*.py",
+  "contract/**/*.toml",
+  "contract/**/py.typed",
   "mlx_lattice/**/*.py",
   "mlx_lattice/py.typed",
   "native/**",

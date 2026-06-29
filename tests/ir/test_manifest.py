@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import pytest
-
-from mlx_lattice.export import LatticeModel
-from mlx_lattice.ir import (
+from lattice_contract import (
     ir_value_type,
     is_ir_value_type,
-    iter_op_specs,
     manifest_from_dict,
     manifest_to_dict,
 )
+
+from mlx_lattice.export import LatticeModel, iter_operation_specs
 
 
 def _manifest() -> dict:
@@ -46,7 +45,8 @@ def test_manifest_roundtrip_preserves_semantic_contract() -> None:
 
 
 def test_ir_op_specs_are_registry_backed() -> None:
-    names = {spec.name for spec in iter_op_specs()}
+    specs = iter_operation_specs()
+    names = {spec.name for spec in specs}
 
     assert {
         'sparse.conv3d',
@@ -59,9 +59,7 @@ def test_ir_op_specs_are_registry_backed() -> None:
         'ops.occupancy_downsample',
         'pool.global_avg',
     } <= names
-    conv = next(
-        spec for spec in iter_op_specs() if spec.name == 'sparse.conv3d'
-    )
+    conv = next(spec for spec in specs if spec.name == 'sparse.conv3d')
     assert {
         'kernel_size',
         'stride',
@@ -71,7 +69,7 @@ def test_ir_op_specs_are_registry_backed() -> None:
     assert 'coordinates' in conv.value_attributes
     assert conv.output_types == {'output': 'sparse_tensor'}
     global_avg = next(
-        spec for spec in iter_op_specs() if spec.name == 'pool.global_avg'
+        spec for spec in specs if spec.name == 'pool.global_avg'
     )
     assert global_avg.output_types == {'output': 'dense_tensor'}
 

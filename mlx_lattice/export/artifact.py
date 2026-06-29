@@ -7,17 +7,17 @@ from typing import cast
 
 import mlx.core as mx
 import mlx.nn as mxnn
+from lattice_contract import (
+    IRManifest,
+    load_manifest,
+    manifest_to_dict,
+)
 
 from mlx_lattice.export.graph import LatticeModel
 from mlx_lattice.export.modules import (
     LatticeGraphBuilder,
     export_lattice_graph,
     export_lattice_module,
-)
-from mlx_lattice.ir import (
-    IRManifest,
-    load_manifest,
-    manifest_to_dict,
 )
 
 _MANIFEST_NAME = 'manifest.json'

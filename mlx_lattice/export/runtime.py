@@ -6,6 +6,8 @@ from typing import Any, Literal, cast
 
 import mlx.core as mx
 import mlx.nn as mxnn
+from lattice_contract import DTypePolicy, IRNode, IROpSpec, IRValueType
+from lattice_contract.manifest import IRInputRef
 
 from mlx_lattice.core import QuantizedWeight, SparseTensor
 from mlx_lattice.core.coords import (
@@ -19,8 +21,6 @@ from mlx_lattice.core.coords import (
 )
 from mlx_lattice.core.relations import KernelRelation, NeighborRelation
 from mlx_lattice.core.types import Triple
-from mlx_lattice.ir import DTypePolicy, IRNode, IROpSpec, IRValueType
-from mlx_lattice.ir.manifest import IRInputRef
 
 type GraphValue = (
     SparseTensor

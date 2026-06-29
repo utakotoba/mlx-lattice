@@ -5,6 +5,13 @@ from collections.abc import Callable, Mapping
 from typing import Any, Literal, Protocol, cast
 
 import mlx.core as mx
+from lattice_contract import (
+    IRNode,
+    IRParameterKind,
+    IRValueType,
+    op_export_hints,
+)
+from lattice_contract.manifest import IRInputRef
 
 import mlx_lattice.ops as ops
 from mlx_lattice.core import SparseTensor
@@ -15,13 +22,6 @@ from mlx_lattice.export.runtime import (
     iter_value_type_bindings,
     value_type_fields,
 )
-from mlx_lattice.ir import (
-    IRNode,
-    IRParameterKind,
-    IRValueType,
-    op_export_hints,
-)
-from mlx_lattice.ir.manifest import IRInputRef
 from mlx_lattice.nn._export import (
     annotation_is_graph_value,
     annotation_is_value_sequence,

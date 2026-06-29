@@ -7,6 +7,7 @@ from dataclasses import fields as dataclass_fields
 from typing import Any, Protocol, cast
 
 import pytest
+from lattice_contract import IRValueType
 
 from mlx_lattice import SparseTensor
 from mlx_lattice import ops as lops
@@ -15,7 +16,6 @@ from mlx_lattice.export import (
     LatticeModel,
     export_lattice_graph,
 )
-from mlx_lattice.ir import IRValueType
 from tests.support import assert_nested_close, mx
 
 pytestmark = [pytest.mark.usefixtures('selected_backend')]

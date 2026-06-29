@@ -7,11 +7,14 @@ attributes that must survive training/runtime boundaries. It is intentionally
 smaller than a general compiler IR and intentionally stricter than Python
 module pickling.
 
-The current artifact path is MLX-side: ``mlx-lattice`` loads a validated
-manifest plus ``safetensors`` weights, reconstructs an in-memory graph, and
-executes that graph through registered public ``mlx_lattice.ops`` calls. A
-future training-side package should emit the same contract rather than forcing
-the deployment runtime to understand arbitrary training-framework modules.
+The contract lives in the standalone ``lattice_contract`` workspace package.
+That package owns the JSON schema dataclasses, value-type names, manifest
+validation, and operation-contract annotations without importing MLX, Torch, or
+native kernels. The current artifact runtime is MLX-side: ``mlx-lattice`` loads
+a validated manifest plus ``safetensors`` weights, reconstructs an in-memory
+graph, and executes that graph through registered public ``mlx_lattice.ops``
+calls. A future training-side package should depend on ``lattice_contract`` and
+emit the same manifest format rather than depending on ``mlx-lattice`` itself.
 
 Artifact layout
 ---------------
@@ -164,9 +167,11 @@ names:
 Operation coverage
 ------------------
 
-The runtime registry is generated from the approved public lattice surface
-rather than from one bespoke handler per operation. This gives the manifest a
-compact call representation:
+The backend-neutral contract package stores the manifest data model and the
+annotation helpers used to describe operation contracts. The MLX runtime
+registry is generated from the approved public lattice surface rather than from
+one bespoke handler per operation. This gives the manifest a compact call
+representation:
 
 * ``inputs`` map operation argument names to graph values;
 * ``parameters`` map tensor argument names to entries in ``weights.safetensors``;
@@ -181,13 +186,13 @@ Every public function in ``mlx_lattice.ops`` is addressable as
 ``ops.<function_name>``. The generic route is intentionally broad: it covers
 sparse convolution, pooling, feature transforms, coordinate utilities,
 point/voxel utilities, relation builders, sparse algebra, and entropy helpers.
-The registry infers most graph inputs, JSON attributes, sequence inputs, and
-output value types from function annotations. When an argument is ambiguous,
-for example a tensor-valued weight that must be stored in
+The MLX registry infers most graph inputs, JSON attributes, sequence inputs,
+and output value types from function annotations. When an argument is
+ambiguous, for example a tensor-valued weight that must be stored in
 ``weights.safetensors`` instead of passed as a graph input, the public function
-itself carries a small ``lattice_op_hints`` annotation. This keeps the contract
-near the operation definition and avoids a separate local enumeration table in
-the artifact runtime.
+itself carries a small ``lattice_contract.lattice_op_hints`` annotation. This
+keeps the contract near the operation definition and avoids a separate local
+enumeration table in the artifact runtime.
 
 Common NN inference routes also receive stable semantic aliases:
 

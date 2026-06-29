@@ -4,7 +4,7 @@ from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Literal, TypeVar, cast
 
-from mlx_lattice.ir.manifest import IRInputRef, IRNode, IRValueType
+from lattice_contract.manifest import IRInputRef, IRNode, IRValueType
 
 DeclarationT = TypeVar('DeclarationT', bound=Callable)
 FunctionT = TypeVar('FunctionT', bound=Callable)
@@ -159,7 +159,7 @@ def ir_op_spec(
 def iter_op_specs() -> Iterator[IROpSpec]:
     """Iterate registered IR operation specs."""
 
-    return iter((*_runtime_op_specs(), *_OP_SPECS.values()))
+    return iter(_OP_SPECS.values())
 
 
 def op_spec(name: str) -> IROpSpec:
@@ -169,9 +169,6 @@ def op_spec(name: str) -> IROpSpec:
         return _OP_SPECS[name]
     except KeyError:
         pass
-    for spec in _runtime_op_specs():
-        if spec.name == name:
-            return spec
     raise ValueError(f'unsupported lattice IR op: {name!r}.')
 
 
@@ -211,11 +208,3 @@ def _require_keys(
         )
     if extra:
         raise ValueError(f'{path} has unsupported keys: {sorted(extra)}.')
-
-
-def _runtime_op_specs() -> tuple[IROpSpec, ...]:
-    try:
-        from mlx_lattice.export.registry import iter_operation_specs
-    except ImportError:
-        return ()
-    return iter_operation_specs()

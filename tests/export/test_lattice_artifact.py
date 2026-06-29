@@ -5,6 +5,11 @@ from typing import Protocol, cast
 
 import mlx.nn as mxnn
 import pytest
+from lattice_contract import (
+    IRValueType,
+    manifest_from_dict,
+    manifest_to_dict,
+)
 
 from mlx_lattice import SparseTensor
 from mlx_lattice import nn as lnn
@@ -26,7 +31,6 @@ from mlx_lattice.export import (
     save_lattice_module,
 )
 from mlx_lattice.export.runtime import value_type_fields
-from mlx_lattice.ir import IRValueType, manifest_from_dict, manifest_to_dict
 from mlx_lattice.nn._export import module_export_spec
 from mlx_lattice.ops import (
     conv3d,

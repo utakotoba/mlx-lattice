@@ -6,8 +6,7 @@ from dataclasses import dataclass
 from typing import Any, TypeVar, cast
 
 import mlx.nn as mxnn
-
-from mlx_lattice.ir import IRValueType
+from lattice_contract import IRValueType
 
 ModuleT = TypeVar('ModuleT', bound=type[mxnn.Module])
 _EXPORT_SPECS: dict[type[mxnn.Module], ModuleExportSpec] = {}
