@@ -1,0 +1,175 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  UV_FROZEN: "1"
+  UV_LINK_MODE: copy
+  EXPECTED_DISTRIBUTIONS: "4"
+
+jobs:
+  build-wheels:
+    name: Wheel (macos-26, Python ${{ matrix.python-version }})
+    runs-on: macos-26
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: 0.11.21
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Check tag matches project version
+        run: test "${GITHUB_REF_NAME#v}" = "$(uv version --short)"
+
+      - name: Build wheel
+        run: uv build --wheel --python "${{ matrix.python-version }}" --out-dir dist
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "26.0"
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: wheel-macos-26-py${{ matrix.python-version }}
+          path: dist/*.whl
+          if-no-files-found: error
+          compression-level: 0
+
+  build-sdist:
+    name: Source distribution
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: 0.11.21
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Check tag matches project version
+        run: test "${GITHUB_REF_NAME#v}" = "$(uv version --short)"
+
+      - name: Build sdist
+        run: uv build --sdist --out-dir dist
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v7
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    name: Publish to PyPI
+    runs-on: macos-26
+    needs: [build-wheels, build-sdist]
+    environment:
+      name: pypi
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: 0.11.21
+
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Prepare distributions
+        run: bash .github/scripts/prepare-distributions.sh artifacts dist "$EXPECTED_DISTRIBUTIONS"
+
+      - name: Check distribution archives
+        run: |
+          for wheel in dist/*.whl; do
+            unzip -t "$wheel"
+          done
+
+          for sdist in dist/*.tar.gz; do
+            tar -tzf "$sdist" >/dev/null
+          done
+
+      - name: Check distribution metadata
+        run: uvx twine check dist/*
+
+      - name: Publish distributions
+        run: uv publish --trusted-publishing always dist/*
+
+  release:
+    name: GitHub release
+    runs-on: macos-26
+    needs: publish
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Prepare distributions
+        run: bash .github/scripts/prepare-distributions.sh artifacts dist "$EXPECTED_DISTRIBUTIONS"
+
+      - name: Create release notes
+        run: npx --yes changelogithub@14 --contributors --emoji false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attach distributions
+        run: gh release upload "${GITHUB_REF_NAME}" dist/* --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
