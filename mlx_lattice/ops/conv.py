@@ -11,6 +11,7 @@ from mlx_lattice.core import (
     SparseTensor,
 )
 from mlx_lattice.core.types import Triple
+from mlx_lattice.ir import lattice_op_hints
 from mlx_lattice.ops._quantized import quantized_matmul
 from mlx_lattice.ops._relation_exec import (
     sparse_conv_features_from_relation,
@@ -25,6 +26,11 @@ __all__ = [
 ]
 
 
+@lattice_op_hints(
+    parameters={'weight': 'array_or_quantized_weight'},
+    optional_parameters={'bias': 'array'},
+    value_attributes={'coordinates'},
+)
 def conv3d(
     x: SparseTensor,
     weight: mx.array | QuantizedWeight,
@@ -99,6 +105,10 @@ def conv3d(
     )
 
 
+@lattice_op_hints(
+    parameters={'weight': 'array_or_quantized_weight'},
+    optional_parameters={'bias': 'array'},
+)
 def subm_conv3d(
     x: SparseTensor,
     weight: mx.array | QuantizedWeight,
@@ -136,6 +146,10 @@ def subm_conv3d(
     )
 
 
+@lattice_op_hints(
+    parameters={'weight': 'array_or_quantized_weight'},
+    optional_parameters={'bias': 'array'},
+)
 def conv_transpose3d(
     x: SparseTensor,
     weight: mx.array | QuantizedWeight,
@@ -168,6 +182,10 @@ def conv_transpose3d(
     )
 
 
+@lattice_op_hints(
+    parameters={'weight': 'array_or_quantized_weight'},
+    optional_parameters={'bias': 'array'},
+)
 def generative_conv_transpose3d(
     x: SparseTensor,
     weight: mx.array | QuantizedWeight,

@@ -12,6 +12,7 @@ from mlx_lattice.core import (
     SparseTensor,
     quantize_weight,
 )
+from mlx_lattice.nn._export import kernel_spec_attributes, lattice_module
 from mlx_lattice.nn.conv import (
     Conv3d,
     ConvTranspose3d,
@@ -79,6 +80,16 @@ class _QuantizedConvBase(mxnn.Module):
         self.freeze()
 
 
+@lattice_module(
+    'sparse.quantized_conv3d',
+    parameters=('weight', 'bias'),
+    attributes=kernel_spec_attributes(
+        'kernel_size',
+        'stride',
+        'padding',
+        'dilation',
+    ),
+)
 class QuantizedConv3d(_QuantizedConvBase):
     """Affine weight-quantized sparse 3D convolution module.
 
@@ -157,6 +168,11 @@ class QuantizedConv3d(_QuantizedConvBase):
         return out
 
 
+@lattice_module(
+    'sparse.quantized_subm_conv3d',
+    parameters=('weight', 'bias'),
+    attributes=kernel_spec_attributes('kernel_size', 'dilation'),
+)
 class QuantizedSubmConv3d(_QuantizedConvBase):
     """Affine weight-quantized submanifold convolution module.
 
@@ -216,6 +232,16 @@ class QuantizedSubmConv3d(_QuantizedConvBase):
         return out
 
 
+@lattice_module(
+    'sparse.quantized_conv_transpose3d',
+    parameters=('weight', 'bias'),
+    attributes=kernel_spec_attributes(
+        'kernel_size',
+        'stride',
+        'padding',
+        'dilation',
+    ),
+)
 class QuantizedConvTranspose3d(_QuantizedConvBase):
     """Affine weight-quantized sparse transpose-convolution module.
 
@@ -284,6 +310,11 @@ class QuantizedConvTranspose3d(_QuantizedConvBase):
         return out
 
 
+@lattice_module(
+    'sparse.quantized_generative_conv_transpose3d',
+    parameters=('weight', 'bias'),
+    attributes=kernel_spec_attributes('kernel_size', 'stride'),
+)
 class QuantizedGenerativeConvTranspose3d(_QuantizedConvBase):
     """Affine weight-quantized generative transpose-convolution module.
 

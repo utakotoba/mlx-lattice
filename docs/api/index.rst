@@ -28,6 +28,13 @@ The public surface is grouped by semantic feature:
    * - :doc:`nn/index`
      - ``mlx.nn.Module`` wrappers over sparse operations.
      - Mirrors the corresponding functional operation.
+   * - :doc:`ir`
+     - Manifest dataclasses, schema validation, and annotated IR operation
+       registry.
+     - Defines the stable sparse model artifact contract.
+   * - :doc:`export`
+     - Lattice artifact loading/saving and in-memory graph execution.
+     - Reconstructs graph semantics and dispatches through public operations.
    * - :doc:`native`
      - Stable backend diagnostics through ``mlx_lattice.backend_info``.
      - Does not mutate sparse tensors.
@@ -38,4 +45,6 @@ The public surface is grouped by semantic feature:
    core/index
    ops/index
    nn/index
+   ir
+   export
    native

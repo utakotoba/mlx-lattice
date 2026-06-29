@@ -12,6 +12,7 @@ from mlx_lattice.core import (
     KernelSpec,
     SparseTensor,
 )
+from mlx_lattice.nn._export import kernel_spec_attributes, lattice_module
 from mlx_lattice.ops import (
     conv3d,
     conv_transpose3d,
@@ -35,6 +36,16 @@ if TYPE_CHECKING:
     )
 
 
+@lattice_module(
+    'sparse.conv3d',
+    parameters=('weight', 'bias'),
+    attributes=kernel_spec_attributes(
+        'kernel_size',
+        'stride',
+        'padding',
+        'dilation',
+    ),
+)
 class Conv3d(mxnn.Module):
     """Sparse 3D convolution module.
 
@@ -102,6 +113,11 @@ class Conv3d(mxnn.Module):
         )
 
 
+@lattice_module(
+    'sparse.subm_conv3d',
+    parameters=('weight', 'bias'),
+    attributes=kernel_spec_attributes('kernel_size', 'dilation'),
+)
 class SubmConv3d(mxnn.Module):
     """Submanifold sparse 3D convolution module.
 
@@ -154,6 +170,16 @@ class SubmConv3d(mxnn.Module):
         )
 
 
+@lattice_module(
+    'sparse.conv_transpose3d',
+    parameters=('weight', 'bias'),
+    attributes=kernel_spec_attributes(
+        'kernel_size',
+        'stride',
+        'padding',
+        'dilation',
+    ),
+)
 class ConvTranspose3d(mxnn.Module):
     """Sparse 3D transpose-convolution module.
 
@@ -210,6 +236,11 @@ class ConvTranspose3d(mxnn.Module):
         )
 
 
+@lattice_module(
+    'sparse.generative_conv_transpose3d',
+    parameters=('weight', 'bias'),
+    attributes=kernel_spec_attributes('kernel_size', 'stride'),
+)
 class GenerativeConvTranspose3d(mxnn.Module):
     """Generative sparse 3D transpose-convolution module.
 

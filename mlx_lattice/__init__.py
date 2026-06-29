@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from . import core as core
+from . import export as export
+from . import ir as ir
 from . import nn as nn
 from . import ops as ops
 from ._native import backend_info
@@ -22,6 +24,8 @@ __all__ = [
     'backend_info',
     'core',
     'dequantize_weight',
+    'export',
+    'ir',
     'nn',
     'ops',
     'quantize_weight',

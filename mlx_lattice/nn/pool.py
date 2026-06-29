@@ -7,6 +7,11 @@ import mlx.core as mx
 import mlx.nn as mxnn
 
 from mlx_lattice.core import KernelSpec, SparseTensor
+from mlx_lattice.nn._export import (
+    kernel_spec_attributes,
+    lattice_module,
+    path_attribute,
+)
 from mlx_lattice.ops import (
     avg_pool3d,
     global_avg_pool,
@@ -30,6 +35,18 @@ __all__ = [
 ]
 
 
+@lattice_module(
+    'ops.pool3d',
+    attributes=(
+        path_attribute('mode', 'mode'),
+        *kernel_spec_attributes(
+            'kernel_size',
+            'stride',
+            'padding',
+            'dilation',
+        ),
+    ),
+)
 class Pool3d(mxnn.Module):
     """Configurable local sparse 3D pooling module.
 
@@ -67,6 +84,15 @@ class Pool3d(mxnn.Module):
         )
 
 
+@lattice_module(
+    'ops.sum_pool3d',
+    attributes=kernel_spec_attributes(
+        'kernel_size',
+        'stride',
+        'padding',
+        'dilation',
+    ),
+)
 class SumPool3d(Pool3d):
     """Local sparse sum-pooling module."""
 
@@ -96,6 +122,15 @@ class SumPool3d(Pool3d):
         )
 
 
+@lattice_module(
+    'ops.max_pool3d',
+    attributes=kernel_spec_attributes(
+        'kernel_size',
+        'stride',
+        'padding',
+        'dilation',
+    ),
+)
 class MaxPool3d(Pool3d):
     """Local sparse max-pooling module."""
 
@@ -125,6 +160,15 @@ class MaxPool3d(Pool3d):
         )
 
 
+@lattice_module(
+    'ops.avg_pool3d',
+    attributes=kernel_spec_attributes(
+        'kernel_size',
+        'stride',
+        'padding',
+        'dilation',
+    ),
+)
 class AvgPool3d(Pool3d):
     """Local sparse average-pooling module."""
 
@@ -154,6 +198,7 @@ class AvgPool3d(Pool3d):
         )
 
 
+@lattice_module('pool.global_sum')
 class GlobalSumPool(mxnn.Module):
     """Batch-wise global sum-pooling module returning dense ``(B, C)`` rows."""
 
@@ -161,6 +206,7 @@ class GlobalSumPool(mxnn.Module):
         return global_sum_pool(x)
 
 
+@lattice_module('pool.global_avg')
 class GlobalAvgPool(mxnn.Module):
     """Batch-wise global average-pooling module returning dense ``(B, C)`` rows."""
 
@@ -168,6 +214,7 @@ class GlobalAvgPool(mxnn.Module):
         return global_avg_pool(x)
 
 
+@lattice_module('pool.global_max')
 class GlobalMaxPool(mxnn.Module):
     """Batch-wise global max-pooling module returning dense ``(B, C)`` rows."""
 

@@ -5,6 +5,7 @@ from typing import Literal
 import mlx.core as mx
 
 from mlx_lattice.core import QuantizedWeight, SparseTensor
+from mlx_lattice.ir import lattice_op_hints
 from mlx_lattice.ops._quantized import quantized_matmul
 
 GeluApprox = Literal['none', 'precise', 'tanh', 'fast']
@@ -25,6 +26,10 @@ __all__ = [
 ]
 
 
+@lattice_op_hints(
+    parameters={'weight': 'array_or_quantized_weight'},
+    optional_parameters={'bias': 'array'},
+)
 def linear(
     x: SparseTensor,
     weight: mx.array | QuantizedWeight,
@@ -150,6 +155,14 @@ def dropout(
     return x.replace(feats=x.feats * mask.astype(x.feats.dtype) / keep)
 
 
+@lattice_op_hints(
+    optional_parameters={
+        'weight': 'array',
+        'bias': 'array',
+        'mean': 'array',
+        'var': 'array',
+    }
+)
 def batch_norm(
     x: SparseTensor,
     *,
@@ -174,6 +187,12 @@ def batch_norm(
     return x.replace(feats=_affine(feats, weight=weight, bias=bias))
 
 
+@lattice_op_hints(
+    optional_parameters={
+        'weight': 'array',
+        'bias': 'array',
+    }
+)
 def layer_norm(
     x: SparseTensor,
     *,
@@ -191,6 +210,7 @@ def layer_norm(
     return x.replace(feats=mx.fast.layer_norm(x.feats, weight, bias, eps))
 
 
+@lattice_op_hints(optional_parameters={'weight': 'array'})
 def rms_norm(
     x: SparseTensor,
     *,

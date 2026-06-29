@@ -12,6 +12,7 @@ specialized kernels where useful.
    sparse-tensor
    coordinates-relations
    algebra
+   model-ir
 
 Design center
 -------------
@@ -55,3 +56,6 @@ Concept-to-API map
    * - Coordinate-aligned algebra
      - :doc:`../../api/ops/tensor`
      - :doc:`../backend/path-selection`
+   * - Sparse model IR
+     - :doc:`../../api/ir`
+     - :doc:`model-ir`

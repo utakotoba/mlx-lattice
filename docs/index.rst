@@ -62,6 +62,9 @@ Navigation map
    * - Quantize inference weights
      - :doc:`reference/backend/quantization`
      - :doc:`api/core/quantized-weights`
+   * - Load a model artifact
+     - :doc:`reference/concepts/model-ir`
+     - :doc:`api/export`
    * - Diagnose dispatch
      - :doc:`reference/backend/path-selection`
      - :doc:`api/native`
