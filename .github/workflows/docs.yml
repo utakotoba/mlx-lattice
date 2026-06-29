@@ -1,0 +1,114 @@
+name: Docs
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/docs.yml
+      - docs/**
+      - mlx_lattice/**
+      - pyproject.toml
+      - uv.lock
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/docs.yml
+      - docs/**
+      - mlx_lattice/**
+      - pyproject.toml
+      - uv.lock
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_FROZEN: 1
+  UV_LINK_MODE: copy
+
+jobs:
+  build-and-deploy:
+    name: Build docs and deploy to Vercel
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: 0.11.21
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install documentation dependencies
+        run: uv sync --group docs --no-dev
+
+      - name: Install Vercel CLI
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel project metadata
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID secrets are required."
+            exit 1
+          fi
+
+          vercel_environment=preview
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            vercel_environment=production
+          fi
+
+          vercel pull \
+            --yes \
+            --environment="$vercel_environment" \
+            --token="$VERCEL_TOKEN"
+
+      - name: Build documentation
+        run: uv run --no-sync sphinx-build -W -b html docs docs/_build/html
+
+      - name: Prepare Vercel static output
+        run: |
+          rm -rf .vercel/output
+          mkdir -p .vercel/output/static
+          rsync -a --delete docs/_build/html/ .vercel/output/static/
+          printf '{"version":3}\n' > .vercel/output/config.json
+
+      - name: Deploy prebuilt documentation to Vercel
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          deploy_args=()
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            deploy_args+=(--prod)
+          fi
+
+          vercel deploy \
+            --prebuilt \
+            --archive=tgz \
+            --yes \
+            "${deploy_args[@]}" \
+            --token="$VERCEL_TOKEN"

@@ -20,6 +20,8 @@ references
 # preferences
 /.vscode
 /.zed
+/.vercel
+.env*
 
 # os-related
 .DS_Store
