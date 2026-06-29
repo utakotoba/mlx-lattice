@@ -20,10 +20,10 @@ Operation registry
 
 ``lattice_op_hints`` is the public annotation used by operation definitions
 when type annotations are not enough to classify an argument for artifact
-export. Typical examples are persisted dense or packed quantized weights,
-optional affine vectors, and graph-carried optional values. The export runtime
+storage. Typical examples are persisted dense or packed quantized weights,
+optional affine vectors, and graph-carried optional values. The artifact layer
 uses these hints together with function signatures, so new public ops can join
-the artifact surface without adding a bespoke runtime handler.
+the artifact surface without adding a bespoke handler.
 
 .. automodule:: lattice_contract.ops
    :members:

@@ -10,7 +10,7 @@ module pickling.
 The contract lives in the standalone ``lattice_contract`` workspace package.
 That package owns the JSON schema dataclasses, value-type names, manifest
 validation, and operation-contract annotations without importing MLX, Torch, or
-native kernels. The current artifact runtime is MLX-side: ``mlx-lattice`` loads
+native kernels. The current artifact executor is MLX-side: ``mlx-lattice`` loads
 a validated manifest plus ``safetensors`` weights, reconstructs an in-memory
 graph, and executes that graph through registered public ``mlx_lattice.ops``
 calls. A future training-side package should depend on ``lattice_contract`` and
@@ -116,7 +116,7 @@ boundary:
    :widths: 24 76
 
    * - Policy
-     - Runtime behavior
+     - Artifact behavior
    * - ``preserve``
      - Keep floating arrays and sparse feature matrices in their supplied dtype.
    * - ``fp32``
@@ -126,8 +126,8 @@ boundary:
      - Cast floating graph inputs, dense parameter tensors, and intermediate
        floating graph values to ``float16``.
    * - ``fp16_inference``
-     - Apply the ``fp16`` cast in the inference runtime. This name leaves room
-       for future training runtimes to preserve training precision while using
+     - Apply the ``fp16`` cast in the inference artifact runner. This name leaves room
+       for future training packages to preserve training precision while using
        half precision during deployment.
 
 Coordinate arrays, integer tensors, byte streams, and packed quantized payloads
@@ -168,7 +168,7 @@ Operation coverage
 ------------------
 
 The backend-neutral contract package stores the manifest data model and the
-annotation helpers used to describe operation contracts. The MLX runtime
+annotation helpers used to describe operation contracts. The MLX artifact
 registry is generated from the approved public lattice surface rather than from
 one bespoke handler per operation. This gives the manifest a compact call
 representation:
@@ -179,7 +179,7 @@ representation:
   numeric thresholds;
 * sequence-valued inputs are represented as a list of graph value names;
 * operation specs expose input, value-attribute, and output value types, so
-  graph builders and future exporters can validate wiring and infer manifest
+  graph builders and future producers can validate wiring and infer manifest
   output contracts without duplicating type strings at every call site.
 
 Every public function in ``mlx_lattice.ops`` is addressable as
@@ -192,7 +192,7 @@ ambiguous, for example a tensor-valued weight that must be stored in
 ``weights.safetensors`` instead of passed as a graph input, the public function
 itself carries a small ``lattice_contract.lattice_op_hints`` annotation. This
 keeps the contract near the operation definition and avoids a separate local
-enumeration table in the artifact runtime.
+enumeration table in the artifact implementation.
 
 Common NN inference routes also receive stable semantic aliases:
 
@@ -235,13 +235,13 @@ instead of hand-written dispatch tables. Specialized aliases are used only when
 the deployment contract benefits from a stable semantic name or from packed
 quantized-parameter decoding.
 
-Module export
--------------
+Module artifact
+---------------
 
-``export_lattice_module()`` structurally exports approved ``mlx_lattice.nn``
+``build_lattice_module_artifact()`` structurally builds approved ``mlx_lattice.nn``
 modules and sequential containers composed from those modules. For custom
-modules, implement ``export_lattice(builder, input_name)`` and append nodes
-with :class:`mlx_lattice.export.LatticeGraphBuilder`. This supports explicit
+modules, implement ``build_lattice_graph(builder, input_name)`` and append nodes
+with :class:`mlx_lattice.artifact.LatticeGraphBuilder`. This supports explicit
 DAGs, skip connections, and mixed built-in/custom blocks without requiring
 Python tracing.
 
@@ -251,14 +251,14 @@ Example:
 
    import mlx.nn as nn
    from mlx_lattice import nn as lnn
-   from mlx_lattice.export import LatticeGraphBuilder
+   from mlx_lattice.artifact import LatticeGraphBuilder
 
    class Residual(nn.Module):
        def __init__(self):
            super().__init__()
            self.proj = lnn.Linear(32, 32)
 
-       def export_lattice(
+       def build_lattice_graph(
            self,
            builder: LatticeGraphBuilder,
            input_name: str,
@@ -279,21 +279,21 @@ Supported module families include:
 * local and global sparse pooling modules.
 
 Packed quantized weights are stored as real packed tensors plus explicit
-metadata in ``weights.safetensors``. The runtime reconstructs
+metadata in ``weights.safetensors``. The artifact runner reconstructs
 ``QuantizedWeight`` objects before calling the public operation, so the
 artifact does not silently dequantize into fake-quantized floating weights.
 
-Explicit graph export
----------------------
+Explicit graph artifact
+-----------------------
 
-For non-module pipelines, use :class:`mlx_lattice.export.LatticeGraphBuilder`
+For non-module pipelines, use :class:`mlx_lattice.artifact.LatticeGraphBuilder`
 directly and save the result with ``save_lattice_graph()``. This path supports
 multiple graph inputs and multiple graph outputs, which is useful for
 point/voxel preprocessing graphs, relation-inspection utilities, and sparse
 algebra pipelines.
 
 The preferred authoring API is ``builder.call(op, **arguments)``. It uses the
-same operation registry as the runtime, so graph-value arguments, value
+same operation registry as the artifact layer, so graph-value arguments, value
 attributes, JSON constants, and parameters are classified from the public
 operation contract rather than repeated manually at every call site. Parameters
 can be passed as existing artifact key strings or as tensor objects; dense
@@ -303,7 +303,7 @@ available for tools that already produce manifest-shaped port dictionaries.
 
 .. code-block:: python
 
-   from mlx_lattice.export import LatticeGraphBuilder, save_lattice_graph
+   from mlx_lattice.artifact import LatticeGraphBuilder, save_lattice_graph
 
    builder = LatticeGraphBuilder(
        inputs={
@@ -361,7 +361,7 @@ per-output operation specs. It rejects obvious wiring errors, such as feeding a
 ``dense_tensor`` value to a sparse feature operation or passing a dense tensor
 where a structured point/voxel map is required. Most graph outputs therefore do
 not need repeated type strings. Use ``GraphOutput(value, "any", name)`` or
-``builder.output(value, value_type="...")`` when exporting a custom value whose
+``builder.output(value, value_type="...")`` when building a custom value whose
 type cannot be inferred from a public operation binding.
 
 Structured values can be composed without exposing Python object internals to
@@ -389,13 +389,13 @@ Execution model
 
 .. code-block:: python
 
-   from mlx_lattice.export import load_lattice_model
+   from mlx_lattice.artifact import load_lattice_model
 
    model = load_lattice_model("model.lattice")
    y = model(x)
 
-The runner validates node ports, graph wiring value types, runtime output
-ports, runtime output value types, and parameters against the registry. It then
+The runner validates node ports, graph wiring value types, artifact output
+ports, artifact output value types, and parameters against the registry. It then
 binds graph inputs by name, loads referenced weights, decodes packed quantized
 parameters when requested, and dispatches each node through public
 ``mlx_lattice.ops``. DType policy is applied to floating graph inputs, dense
@@ -409,7 +409,7 @@ Relation-changing sparse ops may produce tensors without ``batch_counts``
 metadata. The graph runner can still evaluate ``pool.global_sum`` and
 ``pool.global_avg`` when at least one graph input has known batch metadata: it
 reduces by the batch coordinate column using the inferred batch count. This
-keeps exported graphs deployable without requiring every intermediate sparse
+keeps artifact graphs deployable without requiring every intermediate sparse
 tensor to carry Python-side batch counts.
 
 Non-goals
@@ -420,9 +420,9 @@ The IR does not currently attempt to:
 * import arbitrary PyTorch graphs;
 * expose backend route selection;
 * generate Python as the canonical runtime;
-* infer arbitrary Python control flow without an explicit export hook;
+* infer arbitrary Python control flow without an explicit graph-build hook;
 * promise bitwise equality across CUDA and Metal.
 
-The intended direction is a strict artifact boundary: future training runtimes
+The intended direction is a strict artifact boundary: future training packages
 emit this sparse model IR, and ``mlx-lattice`` consumes it as a deployment
 runtime.

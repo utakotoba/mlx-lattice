@@ -1,30 +1,29 @@
 Artifact API
 ============
 
-``mlx_lattice.export`` loads and saves lattice model artifacts. The deployment
-entry point is :func:`mlx_lattice.export.load_lattice_model`, which reads a
+``mlx_lattice.artifact`` loads and saves lattice model artifacts. The deployment
+entry point is :func:`mlx_lattice.artifact.load_lattice_model`, which reads a
 manifest and ``safetensors`` weight file, validates the graph, and returns an
-in-memory :class:`mlx_lattice.export.LatticeModel`.
+in-memory :class:`mlx_lattice.artifact.LatticeModel`.
 
-The name ``export`` is kept for the artifact boundary as a whole. The current
-package implements the MLX-side loader/runtime and a strict low-level writer
-for tests and future exporters.
+The package implements the MLX-side artifact loader, graph executor, graph
+builder, and strict low-level writer used by tests and future producers.
 
-The MLX runtime has three layers:
+The artifact implementation has three layers:
 
-* :mod:`mlx_lattice.export.artifact` handles the on-disk artifact directory;
-* :mod:`mlx_lattice.export.graph` executes a validated in-memory manifest;
-* :mod:`mlx_lattice.export.registry` maps manifest operations and module
+* :mod:`mlx_lattice.artifact.io` handles the on-disk artifact directory;
+* :mod:`mlx_lattice.artifact.model` executes a validated in-memory manifest;
+* :mod:`mlx_lattice.artifact.registry` maps manifest operations and module
   annotations to approved public ``mlx_lattice.ops`` calls.
 
-Module export helpers under :mod:`mlx_lattice.export.modules` build manifests
+Module artifact helpers under :mod:`mlx_lattice.artifact.builder` build manifests
 and weight dictionaries from serializable sparse NN modules or explicit graph
-builders. Shared runtime binding primitives live in
-:mod:`mlx_lattice.export.runtime`.
+builders. Shared artifact binding primitives live in
+:mod:`mlx_lattice.artifact.bindings`.
 
 Explicit graph builders infer output value types from registered operation
 return annotations. Callers can still override the type with
-:class:`mlx_lattice.export.GraphOutput` when a custom graph value needs a more
+:class:`mlx_lattice.artifact.GraphOutput` when a custom graph value needs a more
 specific public contract. Structured lattice values such as sparse occupancy
 or coordinate ordering objects expose approved tensor fields through
 ``LatticeGraphBuilder.field()``.
@@ -40,44 +39,44 @@ may be existing artifact key strings, dense ``mx.array`` tensors, or packed
 lower-level ``add_op()`` only when constructing a manifest with exact port
 dictionaries.
 
-The runtime honors manifest ``dtype_policy`` for floating dense arrays and
+The artifact runner honors manifest ``dtype_policy`` for floating dense arrays and
 sparse feature matrices while preserving coordinates, integer arrays, byte
 streams, and packed quantized payloads.
 
 Artifact manifests also carry runtime compatibility metadata. The loader
 accepts artifacts targeted at ``mlx-lattice`` whose version specifier matches
-the installed native runtime, and rejects incompatible runtime names or version
+the installed native mlx-lattice package, and rejects incompatible runtime metadata names or version
 windows before dispatching any graph node.
 
-.. automodule:: mlx_lattice.export
+.. automodule:: mlx_lattice.artifact
    :members:
 
 Artifact I/O
 ------------
 
-.. automodule:: mlx_lattice.export.artifact
+.. automodule:: mlx_lattice.artifact.io
    :members:
 
-Graph runtime
--------------
+Artifact model
+--------------
 
-.. automodule:: mlx_lattice.export.graph
+.. automodule:: mlx_lattice.artifact.model
    :members:
 
-Runtime registry
-----------------
+Artifact registry
+-----------------
 
-.. automodule:: mlx_lattice.export.registry
+.. automodule:: mlx_lattice.artifact.registry
    :members:
 
-Runtime bindings
-----------------
+Artifact bindings
+-----------------
 
-.. automodule:: mlx_lattice.export.runtime
+.. automodule:: mlx_lattice.artifact.bindings
    :members:
 
-Module export
--------------
+Module artifact
+---------------
 
-.. automodule:: mlx_lattice.export.modules
+.. automodule:: mlx_lattice.artifact.builder
    :members:

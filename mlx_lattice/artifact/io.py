@@ -13,12 +13,12 @@ from lattice_contract import (
     manifest_to_dict,
 )
 
-from mlx_lattice.export.graph import LatticeModel
-from mlx_lattice.export.modules import (
+from mlx_lattice.artifact.builder import (
     LatticeGraphBuilder,
-    export_lattice_graph,
-    export_lattice_module,
+    build_lattice_graph_artifact,
+    build_lattice_module_artifact,
 )
+from mlx_lattice.artifact.model import LatticeModel
 
 _MANIFEST_NAME = 'manifest.json'
 _WEIGHTS_NAME = 'weights.safetensors'
@@ -65,7 +65,7 @@ def save_lattice_artifact(
     """Write a lattice artifact directory.
 
     This helper is intentionally strict and low level. It is useful for tests,
-    fixtures, and future exporters that already own a valid manifest.
+    fixtures, and future producers that already own a valid manifest.
     """
 
     LatticeModel(manifest, weights)
@@ -94,10 +94,10 @@ def save_lattice_module(
     module: mxnn.Module,
     **kwargs,
 ) -> None:
-    """Export and save a serializable sparse NN module."""
+    """Build and save a serializable sparse NN module."""
 
-    exported = export_lattice_module(module, **kwargs)
-    save_lattice_artifact(path, exported.manifest, exported.weights)
+    artifact = build_lattice_module_artifact(module, **kwargs)
+    save_lattice_artifact(path, artifact.manifest, artifact.weights)
 
 
 def save_lattice_graph(
@@ -105,10 +105,10 @@ def save_lattice_graph(
     builder: LatticeGraphBuilder,
     **kwargs,
 ) -> None:
-    """Export and save an explicitly built lattice graph."""
+    """Build and save an explicitly built lattice graph."""
 
-    exported = export_lattice_graph(builder, **kwargs)
-    save_lattice_artifact(path, exported.manifest, exported.weights)
+    artifact = build_lattice_graph_artifact(builder, **kwargs)
+    save_lattice_artifact(path, artifact.manifest, artifact.weights)
 
 
 def _load_artifact(path: str | Path) -> LatticeArtifact:

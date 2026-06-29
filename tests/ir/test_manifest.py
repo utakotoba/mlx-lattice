@@ -8,7 +8,7 @@ from lattice_contract import (
     manifest_to_dict,
 )
 
-from mlx_lattice.export import LatticeModel, iter_operation_specs
+from mlx_lattice.artifact import LatticeModel, iter_operation_specs
 
 
 def _manifest() -> dict:

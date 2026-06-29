@@ -11,7 +11,7 @@ coordinate-aligned sparse algebra, quantized inference weights, and
 
 > [!IMPORTANT]
 > Planned training/deployment direction: `mlx-lattice` is intended to remain
-> the MLX/Metal inference runtime, while a future sibling `torch-lattice`
+> the MLX/Metal artifact consumer, while a future sibling `torch-lattice`
 > package can provide PyTorch/CUDA research and training ergonomics.
 >
 > The bridge should be a stable sparse model IR: a validated manifest plus

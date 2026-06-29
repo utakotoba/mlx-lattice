@@ -32,8 +32,8 @@ The public surface is grouped by semantic feature:
      - Backend-neutral manifest dataclasses, schema validation, and annotated
        IR operation registry from ``lattice_contract``.
      - Defines the stable sparse model artifact contract without importing
-       the MLX runtime.
-   * - :doc:`export`
+       the MLX artifact consumer.
+   * - :doc:`artifact`
      - Lattice artifact loading/saving and in-memory graph execution.
      - Reconstructs graph semantics and dispatches through public operations.
    * - :doc:`native`
@@ -47,5 +47,5 @@ The public surface is grouped by semantic feature:
    ops/index
    nn/index
    ir
-   export
+   artifact
    native

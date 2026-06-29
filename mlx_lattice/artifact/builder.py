@@ -16,19 +16,19 @@ from lattice_contract import (
     ir_value_type,
 )
 
-from mlx_lattice.core import QuantizedWeight
-from mlx_lattice.export._ops import field_value_type
-from mlx_lattice.export.registry import (
-    module_export_binding,
+from mlx_lattice.artifact.bindings import layout_id
+from mlx_lattice.artifact.ops import field_value_type
+from mlx_lattice.artifact.registry import (
+    module_artifact_binding,
     operation_binding,
-    validate_node_against_runtime,
+    validate_node_against_artifact,
 )
-from mlx_lattice.export.runtime import layout_id
+from mlx_lattice.core import QuantizedWeight
 
 
 @dataclass(frozen=True, slots=True)
-class ExportedLatticeModel:
-    """Manifest and weight tensors produced from a serializable module."""
+class LatticeArtifactData:
+    """Manifest and weight tensors for an in-memory lattice artifact."""
 
     manifest: IRManifest
     weights: dict[str, mx.array]
@@ -36,7 +36,7 @@ class ExportedLatticeModel:
 
 @dataclass(frozen=True, slots=True)
 class GraphOutput:
-    """Public graph output mapping for explicit lattice graph export."""
+    """Public graph output mapping for an explicit artifact graph."""
 
     value: str
     value_type: IRValueType | None = None
@@ -44,10 +44,10 @@ class GraphOutput:
 
 
 @runtime_checkable
-class LatticeExportable(Protocol):
-    """Protocol for modules that provide their own lattice export graph."""
+class LatticeGraphBuildable(Protocol):
+    """Protocol for modules that append their own artifact graph nodes."""
 
-    def export_lattice(
+    def build_lattice_graph(
         self, builder: LatticeGraphBuilder, input_name: str
     ) -> str:
         """Append nodes to ``builder`` and return the output value name."""
@@ -57,7 +57,7 @@ class LatticeGraphBuilder:
     """Builder for explicit lattice model manifests.
 
     The builder is intentionally small: it owns graph nodes and weight tensors,
-    validates op/module bindings through the shared runtime registry, and
+    validates op/module bindings through the shared artifact registry, and
     returns named values that can be wired into later nodes. It is the escape
     hatch for custom modules and DAGs without requiring Python tracing.
     """
@@ -106,7 +106,7 @@ class LatticeGraphBuilder:
             parameters=dict(parameters or {}),
             attributes=dict(attributes or {}),
         )
-        validate_node_against_runtime(node)
+        validate_node_against_artifact(node)
         _validate_builder_node_types(
             node,
             binding.spec.input_types,
@@ -233,7 +233,7 @@ class LatticeGraphBuilder:
     ) -> str:
         """Append a registered sparse NN module node."""
 
-        binding = module_export_binding(module)
+        binding = module_artifact_binding(module)
         node_id = self.unique_name(name)
         primary = output or f'{node_id}.output'
         parameters = self.module_parameters(
@@ -249,7 +249,7 @@ class LatticeGraphBuilder:
             parameters=parameters,
             attributes=binding.attributes(module),
         )
-        validate_node_against_runtime(node)
+        validate_node_against_artifact(node)
         op_binding = operation_binding(binding.op)
         _validate_builder_node_types(
             node,
@@ -334,7 +334,7 @@ class LatticeGraphBuilder:
         module: mxnn.Module,
         names: tuple[str, ...],
     ) -> dict[str, str]:
-        """Export registered module parameters into artifact weights."""
+        """Artifact registered module parameters into artifact weights."""
 
         out: dict[str, str] = {}
         for name in names:
@@ -488,21 +488,21 @@ class LatticeGraphBuilder:
         return IRTensorSpec(value, _value_type(spec))
 
 
-def export_lattice_graph(
+def build_lattice_graph_artifact(
     builder: LatticeGraphBuilder,
     *,
     outputs: Mapping[str, IRValueType | GraphOutput | None] | Sequence[str],
     producer: Mapping[str, str] | None = None,
-) -> ExportedLatticeModel:
-    """Export an explicitly built lattice graph."""
+) -> LatticeArtifactData:
+    """Build an artifact from an explicit lattice graph."""
 
-    return ExportedLatticeModel(
+    return LatticeArtifactData(
         manifest=builder.manifest(outputs=outputs, producer=producer),
         weights=builder.weights,
     )
 
 
-def export_lattice_module(
+def build_lattice_module_artifact(
     module: mxnn.Module,
     *,
     input_name: str = 'input',
@@ -510,19 +510,19 @@ def export_lattice_module(
     input_type: IRValueType = 'sparse_tensor',
     output_type: IRValueType | None = None,
     producer: Mapping[str, str] | None = None,
-) -> ExportedLatticeModel:
-    """Export a sparse NN module graph.
+) -> LatticeArtifactData:
+    """Build a sparse NN module artifact graph.
 
-    Built-in lattice modules and sequential containers export structurally.
-    Custom modules can implement ``export_lattice(builder, input_name)`` to
+    Built-in lattice modules and sequential containers build structurally.
+    Custom modules can implement ``build_lattice_graph(builder, input_name)`` to
     emit arbitrary DAGs with the same builder used internally.
     """
 
     builder = LatticeGraphBuilder(
         input_name, inputs={input_name: input_type}
     )
-    output_value = _export_module(module, builder, input_name)
-    return ExportedLatticeModel(
+    output_value = _build_module(module, builder, input_name)
+    return LatticeArtifactData(
         manifest=builder.manifest(
             output_name=output_name,
             output_value=output_value,
@@ -534,13 +534,13 @@ def export_lattice_module(
     )
 
 
-def _export_module(
+def _build_module(
     module: mxnn.Module,
     builder: LatticeGraphBuilder,
     input_value: str,
 ) -> str:
-    if isinstance(module, LatticeExportable):
-        return module.export_lattice(builder, input_value)
+    if isinstance(module, LatticeGraphBuildable):
+        return module.build_lattice_graph(builder, input_value)
 
     children = _ordered_children(module)
     if not children:
@@ -548,24 +548,24 @@ def _export_module(
 
     current = input_value
     for name, child in children:
-        current = _export_child(name, child, builder, current)
+        current = _build_child(name, child, builder, current)
     return current
 
 
-def _export_child(
+def _build_child(
     name: str,
     child: object,
     builder: LatticeGraphBuilder,
     input_value: str,
 ) -> str:
     if isinstance(child, mxnn.Module):
-        if isinstance(child, LatticeExportable):
-            return child.export_lattice(builder, input_value)
+        if isinstance(child, LatticeGraphBuildable):
+            return child.build_lattice_graph(builder, input_value)
         grandchildren = _ordered_children(child)
         if grandchildren:
             current = input_value
             for child_name, grandchild in grandchildren:
-                current = _export_child(
+                current = _build_child(
                     f'{name}_{child_name}',
                     grandchild,
                     builder,
@@ -577,12 +577,14 @@ def _export_child(
     if isinstance(child, list | tuple):
         current = input_value
         for index, item in enumerate(child):
-            current = _export_child(
+            current = _build_child(
                 f'{name}_{index}', item, builder, current
             )
         return current
 
-    raise ValueError(f'child {name!r} is not an exportable MLX module.')
+    raise ValueError(
+        f'child {name!r} is not an artifact-compatible MLX module.'
+    )
 
 
 def _ordered_children(
@@ -606,7 +608,7 @@ def _rename_outputs(
     replacements: Mapping[str, str],
 ) -> list[IRNode]:
     if not nodes:
-        raise ValueError('cannot export an empty lattice module graph.')
+        raise ValueError('cannot artifact an empty lattice module graph.')
     if not replacements:
         return list(nodes)
     renamed: list[IRNode] = []

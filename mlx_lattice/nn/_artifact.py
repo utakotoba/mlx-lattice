@@ -9,24 +9,24 @@ import mlx.nn as mxnn
 from lattice_contract import IRValueType
 
 ModuleT = TypeVar('ModuleT', bound=type[mxnn.Module])
-_EXPORT_SPECS: dict[type[mxnn.Module], ModuleExportSpec] = {}
+_ARTIFACT_SPECS: dict[type[mxnn.Module], ModuleArtifactSpec] = {}
 
 
 @dataclass(frozen=True, slots=True)
-class ExportAttribute:
-    """One manifest attribute exported from an NN module instance."""
+class ArtifactAttribute:
+    """One manifest attribute collected from an NN module instance."""
 
     name: str
     getter: Callable[[mxnn.Module], Any]
 
 
 @dataclass(frozen=True, slots=True)
-class ModuleExportSpec:
+class ModuleArtifactSpec:
     """Serializable sparse-module contract attached to an NN class."""
 
     op: str
     parameters: tuple[str, ...] = ()
-    attributes: tuple[ExportAttribute, ...] = ()
+    attributes: tuple[ArtifactAttribute, ...] = ()
 
     def attribute_values(self, module: mxnn.Module) -> dict[str, Any]:
         """Extract manifest attributes from ``module``."""
@@ -41,31 +41,33 @@ def lattice_module(
     op: str,
     *,
     parameters: Sequence[str] = (),
-    attributes: Sequence[ExportAttribute] = (),
+    attributes: Sequence[ArtifactAttribute] = (),
 ) -> Callable[[ModuleT], ModuleT]:
-    """Attach lattice export metadata to a sparse NN module class."""
+    """Attach lattice artifact metadata to a sparse NN module class."""
 
-    spec = ModuleExportSpec(
+    spec = ModuleArtifactSpec(
         op=op,
         parameters=tuple(parameters),
         attributes=tuple(attributes),
     )
 
     def decorator(cls: ModuleT) -> ModuleT:
-        _EXPORT_SPECS[cls] = spec
+        _ARTIFACT_SPECS[cls] = spec
         return cls
 
     return decorator
 
 
-def module_export_spec(cls: type[mxnn.Module]) -> ModuleExportSpec | None:
-    """Return lattice export metadata attached by :func:`lattice_module`."""
+def module_artifact_spec(
+    cls: type[mxnn.Module],
+) -> ModuleArtifactSpec | None:
+    """Return lattice artifact metadata attached by :func:`lattice_module`."""
 
-    return _EXPORT_SPECS.get(cls)
+    return _ARTIFACT_SPECS.get(cls)
 
 
-def path_attribute(name: str, path: str) -> ExportAttribute:
-    """Export ``name`` by reading a dotted attribute path from a module."""
+def path_attribute(name: str, path: str) -> ArtifactAttribute:
+    """Read manifest attribute ``name`` from a dotted module path."""
 
     parts = tuple(path.split('.'))
 
@@ -75,20 +77,20 @@ def path_attribute(name: str, path: str) -> ExportAttribute:
             value = getattr(value, part)
         return value
 
-    return ExportAttribute(name, getter)
+    return ArtifactAttribute(name, getter)
 
 
 def computed_attribute(
     name: str,
     getter: Callable[[mxnn.Module], Any],
-) -> ExportAttribute:
-    """Export ``name`` with a module-specific computed getter."""
+) -> ArtifactAttribute:
+    """Read manifest attribute ``name`` with a computed getter."""
 
-    return ExportAttribute(name, getter)
+    return ArtifactAttribute(name, getter)
 
 
-def kernel_spec_attributes(*names: str) -> tuple[ExportAttribute, ...]:
-    """Export selected :class:`KernelSpec` fields with manifest names."""
+def kernel_spec_attributes(*names: str) -> tuple[ArtifactAttribute, ...]:
+    """Read selected :class:`KernelSpec` fields as manifest attributes."""
 
     paths = {
         'kernel_size': 'spec.size',

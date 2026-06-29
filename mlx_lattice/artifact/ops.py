@@ -9,20 +9,20 @@ from lattice_contract import (
     IRNode,
     IRParameterKind,
     IRValueType,
-    op_export_hints,
+    op_artifact_hints,
 )
 from lattice_contract.manifest import IRInputRef
 
 import mlx_lattice.ops as ops
-from mlx_lattice.core import SparseTensor
-from mlx_lattice.export.runtime import (
+from mlx_lattice.artifact.bindings import (
     ExecutionContext,
     GraphValue,
     ParameterBinding,
     iter_value_type_bindings,
     value_type_fields,
 )
-from mlx_lattice.nn._export import (
+from mlx_lattice.core import SparseTensor
+from mlx_lattice.nn._artifact import (
     annotation_is_graph_value,
     annotation_is_value_sequence,
 )
@@ -39,13 +39,13 @@ class OperationRegistrar(Protocol):
 def register_operations(lattice_op: OperationRegistrar) -> None:
     """Register semantic aliases and generic public op bindings."""
 
-    register_runtime_ops(lattice_op)
+    register_artifact_ops(lattice_op)
     register_semantic_ops(lattice_op)
     register_public_ops(lattice_op)
 
 
-def register_runtime_ops(lattice_op: OperationRegistrar) -> None:
-    """Register small graph-runtime utility ops."""
+def register_artifact_ops(lattice_op: OperationRegistrar) -> None:
+    """Register small artifact-graph utility ops."""
 
     @lattice_op(
         'value.field',
@@ -73,7 +73,7 @@ def register_public_ops(lattice_op: OperationRegistrar) -> None:
     public = public_ops()
     for name, function in public.items():
         signature = inspect.signature(function)
-        hints = op_export_hints(function)
+        hints = op_artifact_hints(function)
         input_args: dict[str, str] = {}
         attr_args: dict[str, str] = {}
         value_attr_args: dict[str, str] = {}
@@ -128,7 +128,7 @@ def register_public_ops(lattice_op: OperationRegistrar) -> None:
 
 
 def register_semantic_ops(lattice_op: OperationRegistrar) -> None:
-    """Register stable semantic op aliases used by exported artifacts."""
+    """Register stable semantic op aliases used by persisted artifacts."""
 
     p = public_ops()
 

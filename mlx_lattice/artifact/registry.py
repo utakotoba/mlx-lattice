@@ -8,19 +8,19 @@ import mlx.nn as mxnn
 from lattice_contract import IRNode, IROpSpec, IRValueType
 
 import mlx_lattice.nn as lnn
-from mlx_lattice.export._ops import register_operations
-from mlx_lattice.export.runtime import (
+from mlx_lattice.artifact.bindings import (
     GraphHandler,
     GraphValue,
     ModuleBinding,
     OperationBinding,
     ParameterBinding,
 )
-from mlx_lattice.nn._export import (
-    ModuleExportSpec,
+from mlx_lattice.artifact.ops import register_operations
+from mlx_lattice.nn._artifact import (
+    ModuleArtifactSpec,
     annotation_value_type,
     function_output_type,
-    module_export_spec,
+    module_artifact_spec,
 )
 
 HandlerT = TypeVar('HandlerT', bound=GraphHandler)
@@ -146,7 +146,7 @@ def module_binding[ModuleT: mxnn.Module](
     parameter_names: Sequence[str] = (),
     attributes: Callable[[ModuleT], dict[str, Any]] = lambda _: {},
 ) -> Callable[[type[ModuleT]], type[ModuleT]]:
-    """Register a serializable NN module exporter."""
+    """Register a serializable NN module producer."""
 
     def decorator(cls: type[ModuleT]) -> type[ModuleT]:
         if module_type in _MODULES:
@@ -165,30 +165,30 @@ def module_binding[ModuleT: mxnn.Module](
 
 
 def iter_operation_specs() -> tuple[IROpSpec, ...]:
-    """Return all operation contracts supported by the MLX graph runtime."""
+    """Return all operation contracts supported by the MLX artifact graph."""
 
     return tuple(binding.spec for binding in _OPS.values())
 
 
 def operation_spec(name: str) -> IROpSpec:
-    """Return the runtime operation spec for ``name``."""
+    """Return the artifact operation spec for ``name``."""
 
     return operation_binding(name).spec
 
 
 def operation_binding(name: str) -> OperationBinding:
-    """Return the runtime operation binding for ``name``."""
+    """Return the artifact operation binding for ``name``."""
 
     try:
         return _OPS[name]
     except KeyError as exc:
         raise ValueError(
-            f'unsupported lattice IR op for MLX runtime: {name!r}.'
+            f'unsupported lattice IR op for MLX artifact: {name!r}.'
         ) from exc
 
 
-def module_export_binding(module: mxnn.Module) -> ModuleBinding:
-    """Return the export binding for ``module``."""
+def module_artifact_binding(module: mxnn.Module) -> ModuleBinding:
+    """Return the artifact binding for ``module``."""
 
     for module_type in type(module).mro():
         binding = _MODULES.get(cast('type[mxnn.Module]', module_type))
@@ -200,8 +200,8 @@ def module_export_binding(module: mxnn.Module) -> ModuleBinding:
     )
 
 
-def validate_node_against_runtime(node: IRNode) -> None:
-    """Validate an IR node against the MLX runtime binding."""
+def validate_node_against_artifact(node: IRNode) -> None:
+    """Validate an IR node against the MLX artifact binding."""
 
     binding = operation_binding(node.op)
     spec = binding.spec
@@ -303,7 +303,7 @@ def _validate_json_attribute(value: Any, path: str) -> None:
 
 
 def _register_modules() -> None:
-    for module_type, spec in _public_module_export_specs().items():
+    for module_type, spec in _public_module_artifact_specs().items():
         if module_type in _MODULES:
             raise ValueError(
                 f'duplicate lattice module binding: {module_type!r}.'
@@ -316,15 +316,15 @@ def _register_modules() -> None:
         )
 
 
-def _public_module_export_specs() -> dict[
-    type[mxnn.Module], ModuleExportSpec
+def _public_module_artifact_specs() -> dict[
+    type[mxnn.Module], ModuleArtifactSpec
 ]:
-    out: dict[type[mxnn.Module], ModuleExportSpec] = {}
+    out: dict[type[mxnn.Module], ModuleArtifactSpec] = {}
     for name in lnn.__all__:
         module_type = getattr(lnn, name)
         if not inspect.isclass(module_type):
             continue
-        spec = module_export_spec(cast(type[mxnn.Module], module_type))
+        spec = module_artifact_spec(cast(type[mxnn.Module], module_type))
         if spec is not None:
             out[cast(type[mxnn.Module], module_type)] = spec
     return out

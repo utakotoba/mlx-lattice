@@ -14,24 +14,24 @@ from lattice_contract import (
 from mlx_lattice import SparseTensor
 from mlx_lattice import nn as lnn
 from mlx_lattice import ops as lops
-from mlx_lattice.export import (
+from mlx_lattice.artifact import (
     GraphOutput,
     LatticeArtifact,
     LatticeGraphBuilder,
     LatticeModel,
-    export_lattice_graph,
-    export_lattice_module,
+    build_lattice_graph_artifact,
+    build_lattice_module_artifact,
     iter_operation_specs,
     load_lattice_artifact,
     load_lattice_model,
-    module_export_binding,
+    module_artifact_binding,
     operation_binding,
     save_lattice_graph,
     save_lattice_model,
     save_lattice_module,
 )
-from mlx_lattice.export.runtime import value_type_fields
-from mlx_lattice.nn._export import module_export_spec
+from mlx_lattice.artifact.bindings import value_type_fields
+from mlx_lattice.nn._artifact import module_artifact_spec
 from mlx_lattice.ops import (
     conv3d,
     global_avg_pool,
@@ -394,22 +394,22 @@ def test_lattice_model_preserves_quantized_payload_dtypes_under_dtype_policy() -
     dense = lnn.Linear(1, 2)
     dense.weight = _weights()['linear.weight']
     dense.bias = _weights()['linear.bias']
-    exported = export_lattice_module(dense.to_quantized(bits=4))
-    raw = manifest_to_dict(exported.manifest)
+    artifact = build_lattice_module_artifact(dense.to_quantized(bits=4))
+    raw = manifest_to_dict(artifact.manifest)
     raw['dtype_policy'] = 'fp16'
     manifest = manifest_from_dict(raw)
 
-    model = LatticeModel(manifest, exported.weights)
+    model = LatticeModel(manifest, artifact.weights)
     prefix = manifest.nodes[0].parameters['weight']
 
     assert model.weights[f'{prefix}.weight'].dtype == mx.uint32
     assert (
         model.weights[f'{prefix}.scales'].dtype
-        == exported.weights[f'{prefix}.scales'].dtype
+        == artifact.weights[f'{prefix}.scales'].dtype
     )
     assert (
         model.weights[f'{prefix}.biases'].dtype
-        == exported.weights[f'{prefix}.biases'].dtype
+        == artifact.weights[f'{prefix}.biases'].dtype
     )
 
 
@@ -419,13 +419,13 @@ def test_lattice_model_rejects_incomplete_quantized_weight_payload() -> (
     dense = lnn.Linear(1, 2)
     dense.weight = _weights()['linear.weight']
     dense.bias = _weights()['linear.bias']
-    exported = export_lattice_module(dense.to_quantized(bits=4))
-    prefix = exported.manifest.nodes[0].parameters['weight']
-    weights = dict(exported.weights)
+    artifact = build_lattice_module_artifact(dense.to_quantized(bits=4))
+    prefix = artifact.manifest.nodes[0].parameters['weight']
+    weights = dict(artifact.weights)
     del weights[f'{prefix}.attrs']
 
     with pytest.raises(ValueError, match='missing quantized weight'):
-        LatticeModel(exported.manifest, weights)
+        LatticeModel(artifact.manifest, weights)
 
 
 def test_lattice_model_supports_target_convolution() -> None:
@@ -580,7 +580,9 @@ def test_lattice_runtime_registry_keeps_generic_and_semantic_op_routes() -> (
     ).spec.value_attributes == frozenset({'coordinates'})
 
 
-def test_lattice_module_export_registry_tracks_public_nn_modules() -> None:
+def test_lattice_module_artifact_registry_tracks_public_nn_modules() -> (
+    None
+):
     modules = {
         name: getattr(lnn, name)
         for name in lnn.__all__
@@ -621,10 +623,10 @@ def test_lattice_module_export_registry_tracks_public_nn_modules() -> None:
 
     assert set(modules) == set(expected_ops)
     for name, cls in modules.items():
-        assert module_export_spec(cls) is not None
+        assert module_artifact_spec(cls) is not None
         instance = _module_instance(name)
         assert isinstance(instance, cls)
-        assert module_export_binding(instance).op == expected_ops[name]
+        assert module_artifact_binding(instance).op == expected_ops[name]
 
 
 def test_lattice_model_runs_generic_public_sparse_op() -> None:
@@ -986,7 +988,7 @@ def test_lattice_graph_builder_projects_structured_fields() -> None:
         },
     )
     child_indices = builder.field(expanded, 'child_indices')
-    exported = export_lattice_graph(
+    artifact = build_lattice_graph_artifact(
         builder,
         outputs={
             occupancy: builder.output(occupancy, name='occupancy'),
@@ -998,8 +1000,8 @@ def test_lattice_graph_builder_projects_structured_fields() -> None:
     )
 
     actual_occupancy, actual_expansion, actual_child_indices = LatticeModel(
-        exported.manifest,
-        exported.weights,
+        artifact.manifest,
+        artifact.weights,
     )(coords)
     expected_occupancy = occupancy_downsample(coords)
     expected_expansion = occupancy_expand(
@@ -1018,7 +1020,7 @@ def test_lattice_graph_builder_projects_structured_fields() -> None:
         expected_expansion.child_indices,
     )
 
-    assert [item.type for item in exported.manifest.outputs] == [
+    assert [item.type for item in artifact.manifest.outputs] == [
         'sparse_occupancy',
         'occupancy_expansion',
         'dense_tensor',
@@ -1081,7 +1083,7 @@ def test_lattice_graph_builder_rejects_unsupported_structured_field() -> (
         builder.field(occupancy, 'missing')
 
 
-def test_lattice_module_export_roundtrips_sequential_graph(
+def test_lattice_module_artifact_roundtrips_sequential_graph(
     tmp_path,
 ) -> None:
     x = _input()
@@ -1097,7 +1099,7 @@ def test_lattice_module_export_roundtrips_sequential_graph(
     linear_module.weight = _weights()['linear.weight']
     linear_module.bias = _weights()['linear.bias']
 
-    exported = export_lattice_module(
+    artifact = build_lattice_module_artifact(
         model,
         output_name='logits',
         output_type='dense_tensor',
@@ -1109,7 +1111,7 @@ def test_lattice_module_export_roundtrips_sequential_graph(
         output_type='dense_tensor',
     )
 
-    in_memory = LatticeModel(exported.manifest, exported.weights)(x)
+    in_memory = LatticeModel(artifact.manifest, artifact.weights)(x)
     loaded = load_lattice_model(tmp_path)(x)
     expected_sparse = linear(
         relu(conv3d(x, conv.weight, kernel_size=(3, 1, 1))),
@@ -1133,23 +1135,25 @@ def test_lattice_module_export_roundtrips_sequential_graph(
     assert_nested_close(loaded.tolist(), expected.tolist())
 
 
-def test_lattice_module_export_infers_output_type() -> None:
-    exported = export_lattice_module(
+def test_lattice_module_artifact_infers_output_type() -> None:
+    artifact = build_lattice_module_artifact(
         mxnn.Sequential(lnn.Linear(1, 1), lnn.GlobalAvgPool()),
         output_name='pooled',
     )
 
-    assert exported.manifest.outputs[0].name == 'pooled'
-    assert exported.manifest.outputs[0].type == 'dense_tensor'
+    assert artifact.manifest.outputs[0].name == 'pooled'
+    assert artifact.manifest.outputs[0].type == 'dense_tensor'
 
 
-def test_lattice_module_export_rejects_incompatible_input_type() -> None:
+def test_lattice_module_artifact_rejects_incompatible_input_type() -> None:
     with pytest.raises(ValueError, match=r"expects 'sparse_tensor'"):
-        export_lattice_module(lnn.Linear(1, 1), input_type='dense_tensor')
+        build_lattice_module_artifact(
+            lnn.Linear(1, 1), input_type='dense_tensor'
+        )
 
 
 @pytest.mark.parametrize('bits', [4, 8])
-def test_lattice_module_export_preserves_quantized_linear_storage(
+def test_lattice_module_artifact_preserves_quantized_linear_storage(
     bits: int,
     tmp_path,
 ) -> None:
@@ -1159,17 +1163,17 @@ def test_lattice_module_export_preserves_quantized_linear_storage(
     dense.bias = _weights()['linear.bias']
     quantized = dense.to_quantized(bits=bits)
 
-    exported = export_lattice_module(quantized)
+    artifact = build_lattice_module_artifact(quantized)
     save_lattice_module(tmp_path, quantized)
-    actual = LatticeModel(exported.manifest, exported.weights)(x)
+    actual = LatticeModel(artifact.manifest, artifact.weights)(x)
     loaded = load_lattice_model(tmp_path)(x)
     expected = quantized(x)
     mx.eval(actual.feats, loaded.feats, expected.feats)
 
-    assert exported.manifest.nodes[0].op == 'feature.quantized_linear'
-    prefix = exported.manifest.nodes[0].parameters['weight']
-    assert exported.weights[f'{prefix}.weight'].dtype == mx.uint32
-    attrs = cast('list[int]', exported.weights[f'{prefix}.attrs'].tolist())
+    assert artifact.manifest.nodes[0].op == 'feature.quantized_linear'
+    prefix = artifact.manifest.nodes[0].parameters['weight']
+    assert artifact.weights[f'{prefix}.weight'].dtype == mx.uint32
+    attrs = cast('list[int]', artifact.weights[f'{prefix}.attrs'].tolist())
     assert attrs[2] == bits
     assert_nested_close(actual.feats.tolist(), expected.feats.tolist())
     assert_nested_close(loaded.feats.tolist(), expected.feats.tolist())
@@ -1191,14 +1195,14 @@ def test_explicit_graph_builder_call_supports_quantized_parameters(
         weight=quantized._quantized_weight(),
         bias=quantized.bias,
     )
-    exported = export_lattice_graph(builder, outputs=[out])
-    weight = exported.manifest.nodes[0].parameters['weight']
+    artifact = build_lattice_graph_artifact(builder, outputs=[out])
+    weight = artifact.manifest.nodes[0].parameters['weight']
 
-    actual = LatticeModel(exported.manifest, exported.weights)(x)
+    actual = LatticeModel(artifact.manifest, artifact.weights)(x)
     expected = quantized(x)
     mx.eval(actual.feats, expected.feats)
 
-    assert exported.weights[f'{weight}.weight'].dtype == mx.uint32
+    assert artifact.weights[f'{weight}.weight'].dtype == mx.uint32
     assert_nested_close(actual.feats.tolist(), expected.feats.tolist())
 
 
@@ -1211,15 +1215,15 @@ def test_explicit_graph_builder_call_supports_dense_parameters() -> None:
         weight=_weights()['linear.weight'],
         bias=_weights()['linear.bias'],
     )
-    exported = export_lattice_graph(builder, outputs=[out])
+    artifact = build_lattice_graph_artifact(builder, outputs=[out])
 
-    actual = LatticeModel(exported.manifest, exported.weights)(x)
+    actual = LatticeModel(artifact.manifest, artifact.weights)(x)
     expected = linear(
         x, _weights()['linear.weight'], _weights()['linear.bias']
     )
     mx.eval(actual.feats, expected.feats)
 
-    assert set(exported.manifest.nodes[0].parameters) == {'weight', 'bias'}
+    assert set(artifact.manifest.nodes[0].parameters) == {'weight', 'bias'}
     assert_nested_close(actual.feats.tolist(), expected.feats.tolist())
 
 
@@ -1234,16 +1238,16 @@ def test_explicit_graph_builder_call_supports_generic_dense_weight_ops() -> (
         weight=_weights()['linear.weight'],
         bias=_weights()['linear.bias'],
     )
-    exported = export_lattice_graph(builder, outputs=[out])
+    artifact = build_lattice_graph_artifact(builder, outputs=[out])
 
-    actual = LatticeModel(exported.manifest, exported.weights)(x)
+    actual = LatticeModel(artifact.manifest, artifact.weights)(x)
     expected = linear(
         x, _weights()['linear.weight'], _weights()['linear.bias']
     )
     mx.eval(actual.feats, expected.feats)
 
-    assert exported.manifest.nodes[0].op == 'ops.linear'
-    assert set(exported.manifest.nodes[0].parameters) == {'weight', 'bias'}
+    assert artifact.manifest.nodes[0].op == 'ops.linear'
+    assert set(artifact.manifest.nodes[0].parameters) == {'weight', 'bias'}
     assert_nested_close(actual.feats.tolist(), expected.feats.tolist())
 
 
@@ -1262,19 +1266,19 @@ def test_explicit_graph_builder_call_supports_generic_quantized_weight_ops() -> 
         weight=quantized._quantized_weight(),
         bias=quantized.bias,
     )
-    exported = export_lattice_graph(builder, outputs=[out])
-    weight = exported.manifest.nodes[0].parameters['weight']
+    artifact = build_lattice_graph_artifact(builder, outputs=[out])
+    weight = artifact.manifest.nodes[0].parameters['weight']
 
-    actual = LatticeModel(exported.manifest, exported.weights)(x)
+    actual = LatticeModel(artifact.manifest, artifact.weights)(x)
     expected = quantized(x)
     mx.eval(actual.feats, expected.feats)
 
-    assert exported.manifest.nodes[0].op == 'ops.linear'
-    assert exported.weights[f'{weight}.weight'].dtype == mx.uint32
+    assert artifact.manifest.nodes[0].op == 'ops.linear'
+    assert artifact.weights[f'{weight}.weight'].dtype == mx.uint32
     assert_nested_close(actual.feats.tolist(), expected.feats.tolist())
 
 
-def test_custom_module_export_protocol_supports_skip_connection() -> None:
+def test_custom_module_artifact_protocol_supports_skip_connection() -> None:
     class Residual(mxnn.Module):
         def __init__(self) -> None:
             super().__init__()
@@ -1284,7 +1288,7 @@ def test_custom_module_export_protocol_supports_skip_connection() -> None:
         def __call__(self, x: SparseTensor) -> SparseTensor:
             return self.proj(x)
 
-        def export_lattice(
+        def build_lattice_graph(
             self,
             builder: LatticeGraphBuilder,
             input_name: str,
@@ -1298,8 +1302,8 @@ def test_custom_module_export_protocol_supports_skip_connection() -> None:
             )
 
     x = _input()
-    exported = export_lattice_module(Residual())
-    actual = LatticeModel(exported.manifest, exported.weights)(x)
+    artifact = build_lattice_module_artifact(Residual())
+    actual = LatticeModel(artifact.manifest, artifact.weights)(x)
     expected = SparseTensor(
         x.coords,
         x.feats * 3,
@@ -1311,14 +1315,14 @@ def test_custom_module_export_protocol_supports_skip_connection() -> None:
     )
     mx.eval(actual.feats, expected.feats)
 
-    assert [node.op for node in exported.manifest.nodes] == [
+    assert [node.op for node in artifact.manifest.nodes] == [
         'feature.linear',
         'ops.sparse_add',
     ]
     assert_nested_close(actual.feats.tolist(), expected.feats.tolist())
 
 
-def test_explicit_graph_export_supports_multiple_inputs_and_outputs(
+def test_explicit_graph_artifact_supports_multiple_inputs_and_outputs(
     tmp_path,
 ) -> None:
     builder = LatticeGraphBuilder(
@@ -1355,7 +1359,7 @@ def test_explicit_graph_export_supports_multiple_inputs_and_outputs(
         voxels: GraphOutput(voxels, 'sparse_tensor', 'voxels'),
         sampled: GraphOutput(sampled, 'dense_tensor', 'sampled'),
     }
-    exported = export_lattice_graph(builder, outputs=outputs)
+    artifact = build_lattice_graph_artifact(builder, outputs=outputs)
     save_lattice_graph(tmp_path, builder, outputs=outputs)
     points = mx.array(
         [[0.1, 0.0, 0.0], [0.9, 0.0, 0.0], [1.1, 0.0, 0.0]],
@@ -1365,8 +1369,8 @@ def test_explicit_graph_export_supports_multiple_inputs_and_outputs(
     batches = mx.array([0, 0, 0], dtype=mx.int32)
 
     actual_voxels, actual_sampled = LatticeModel(
-        exported.manifest,
-        exported.weights,
+        artifact.manifest,
+        artifact.weights,
     )(points, feats, batches)
     loaded_voxels, loaded_sampled = load_lattice_model(tmp_path)(
         points,
@@ -1380,7 +1384,7 @@ def test_explicit_graph_export_supports_multiple_inputs_and_outputs(
         loaded_sampled,
     )
 
-    assert [item.name for item in exported.manifest.outputs] == [
+    assert [item.name for item in artifact.manifest.outputs] == [
         'voxels',
         'sampled',
     ]
@@ -1424,7 +1428,7 @@ def test_explicit_graph_builder_call_uses_registered_argument_contracts() -> (
         batch_indices='batches',
         interpolation='nearest',
     )
-    exported = export_lattice_graph(
+    artifact = build_lattice_graph_artifact(
         builder,
         outputs={
             voxels: builder.output(voxels, name='voxels'),
@@ -1439,8 +1443,8 @@ def test_explicit_graph_builder_call_uses_registered_argument_contracts() -> (
     batches = mx.array([0, 0, 0], dtype=mx.int32)
 
     actual_voxels, actual_sampled = LatticeModel(
-        exported.manifest,
-        exported.weights,
+        artifact.manifest,
+        artifact.weights,
     )(points, feats, batches)
     expected_quantization = lops.sparse_quantize(
         points,
@@ -1497,7 +1501,7 @@ def test_explicit_graph_builder_rejects_invalid_registered_call() -> None:
         dense_builder.call('feature.relu', input='dense')
 
 
-def test_explicit_graph_export_infers_output_types() -> None:
+def test_explicit_graph_artifact_infers_output_types() -> None:
     builder = LatticeGraphBuilder(
         inputs=cast(
             'dict[str, IRValueType]',
@@ -1525,10 +1529,10 @@ def test_explicit_graph_export_infers_output_types() -> None:
         attributes={'counts': [1]},
     )
 
-    exported = export_lattice_graph(
+    artifact = build_lattice_graph_artifact(
         builder, outputs=[voxels, rows, offsets]
     )
-    aliased = export_lattice_graph(
+    aliased = build_lattice_graph_artifact(
         builder,
         outputs={
             voxels: builder.output(voxels, name='voxels'),
@@ -1537,7 +1541,7 @@ def test_explicit_graph_export_infers_output_types() -> None:
         },
     )
 
-    assert [item.type for item in exported.manifest.outputs] == [
+    assert [item.type for item in artifact.manifest.outputs] == [
         'sparse_tensor',
         'dense_tensor',
         'any',
@@ -1552,7 +1556,7 @@ def test_explicit_graph_export_infers_output_types() -> None:
 def test_explicit_graph_builder_tracks_declared_output_ports_independently() -> (
     None
 ):
-    from mlx_lattice.export.registry import lattice_op
+    from mlx_lattice.artifact.registry import lattice_op
 
     @lattice_op(
         '__test.multi_output',
@@ -1585,7 +1589,7 @@ def test_explicit_graph_builder_tracks_declared_output_ports_independently() -> 
 
 
 def test_lattice_model_rejects_runtime_output_port_mismatch() -> None:
-    from mlx_lattice.export.registry import lattice_op
+    from mlx_lattice.artifact.registry import lattice_op
 
     @lattice_op(
         '__test.missing_runtime_output',
@@ -1613,12 +1617,12 @@ def test_lattice_model_rejects_runtime_output_port_mismatch() -> None:
         }
     )
 
-    with pytest.raises(ValueError, match='runtime_outputs missing'):
+    with pytest.raises(ValueError, match='artifact_outputs missing'):
         LatticeModel(manifest, {})()
 
 
 def test_lattice_model_rejects_runtime_output_type_mismatch() -> None:
-    from mlx_lattice.export.registry import lattice_op
+    from mlx_lattice.artifact.registry import lattice_op
 
     @lattice_op(
         '__test.wrong_runtime_output_type',

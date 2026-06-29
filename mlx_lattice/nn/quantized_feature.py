@@ -4,7 +4,7 @@ import mlx.core as mx
 import mlx.nn as mxnn
 
 from mlx_lattice.core import QuantizedWeight, SparseTensor, quantize_weight
-from mlx_lattice.nn._export import lattice_module
+from mlx_lattice.nn._artifact import lattice_module
 from mlx_lattice.ops import feature as F
 
 __all__ = ['QuantizedLinear']

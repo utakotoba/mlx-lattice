@@ -101,7 +101,7 @@ class IRManifest:
     """Validated sparse model manifest.
 
     The manifest is the stable artifact contract shared by future training
-    exporters and the MLX runtime loader. It records semantic sparse graph
+    producers and the MLX artifact loader. It records semantic sparse graph
     nodes and names the tensor weights stored beside it.
     """
 

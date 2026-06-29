@@ -145,7 +145,7 @@ class OperationBinding:
 
 @dataclass(frozen=True, slots=True)
 class ModuleBinding:
-    """Export binding for a serializable sparse NN module."""
+    """Artifact binding for a serializable sparse NN module."""
 
     module_type: type[mxnn.Module]
     op: str
@@ -304,7 +304,7 @@ def layout_id(value: str) -> int:
 
 
 def value_type_binding(value_type: IRValueType) -> ValueTypeBinding | None:
-    """Return the runtime binding for an IR value type."""
+    """Return the artifact binding for an IR value type."""
 
     return _VALUE_TYPES.get(value_type)
 
@@ -317,7 +317,7 @@ def value_type_fields(value_type: IRValueType) -> Mapping[str, IRValueType]:
 
 
 def iter_value_type_bindings() -> tuple[ValueTypeBinding, ...]:
-    """Return runtime bindings for all known IR value types."""
+    """Return artifact bindings for all known IR value types."""
 
     return tuple(_VALUE_TYPES.values())
 

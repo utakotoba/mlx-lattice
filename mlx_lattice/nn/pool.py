@@ -7,7 +7,7 @@ import mlx.core as mx
 import mlx.nn as mxnn
 
 from mlx_lattice.core import KernelSpec, SparseTensor
-from mlx_lattice.nn._export import (
+from mlx_lattice.nn._artifact import (
     kernel_spec_attributes,
     lattice_module,
     path_attribute,

@@ -11,10 +11,10 @@ from lattice_contract import IRValueType
 
 from mlx_lattice import SparseTensor
 from mlx_lattice import ops as lops
-from mlx_lattice.export import (
+from mlx_lattice.artifact import (
     LatticeGraphBuilder,
     LatticeModel,
-    export_lattice_graph,
+    build_lattice_graph_artifact,
 )
 from tests.support import assert_nested_close, mx
 
@@ -745,7 +745,7 @@ def test_public_ops_roundtrip_through_explicit_artifact_graph(
         f'ops.{name}',
         **cast('dict[str, Any]', case.arguments),
     )
-    exported = export_lattice_graph(
+    artifact = build_lattice_graph_artifact(
         builder,
         outputs={
             out: builder.output(
@@ -755,7 +755,7 @@ def test_public_ops_roundtrip_through_explicit_artifact_graph(
             )
         },
     )
-    model = LatticeModel(exported.manifest, exported.weights)
+    model = LatticeModel(artifact.manifest, artifact.weights)
 
     actual = model(*(value for _, value in case.inputs.values()))
     expected = (

@@ -19,13 +19,13 @@ from lattice_contract.manifest import (
     triple,
 )
 from lattice_contract.ops import (
-    IROpExportHints,
+    IROpArtifactHints,
     IROpSpec,
     IRParameterKind,
     ir_op_spec,
     iter_op_specs,
     lattice_op_hints,
-    op_export_hints,
+    op_artifact_hints,
     op_spec,
     validate_node_against_spec,
 )
@@ -36,7 +36,7 @@ __all__ = [
     'IRInputRef',
     'IRManifest',
     'IRNode',
-    'IROpExportHints',
+    'IROpArtifactHints',
     'IROpSpec',
     'IRParameter',
     'IRParameterKind',
@@ -52,7 +52,7 @@ __all__ = [
     'load_manifest',
     'manifest_from_dict',
     'manifest_to_dict',
-    'op_export_hints',
+    'op_artifact_hints',
     'op_spec',
     'triple',
     'validate_node_against_spec',

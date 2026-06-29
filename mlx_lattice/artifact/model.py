@@ -12,17 +12,17 @@ from lattice_contract import (
 )
 
 from mlx_lattice._native import backend_info
-from mlx_lattice.export.registry import (
-    operation_binding,
-    validate_node_against_runtime,
-)
-from mlx_lattice.export.runtime import (
+from mlx_lattice.artifact.bindings import (
     ExecutionContext,
     GraphValue,
     ParameterBinding,
     apply_dtype_policy,
     infer_batch_size,
     validate_value_type,
+)
+from mlx_lattice.artifact.registry import (
+    operation_binding,
+    validate_node_against_artifact,
 )
 
 
@@ -78,12 +78,12 @@ def _validate_node_outputs(
     extra = actual_ports - expected_ports
     if missing:
         raise ValueError(
-            f'{node.id}.runtime_outputs missing required keys: '
+            f'{node.id}.artifact_outputs missing required keys: '
             f'{sorted(missing)}.'
         )
     if extra:
         raise ValueError(
-            f'{node.id}.runtime_outputs has unsupported keys: '
+            f'{node.id}.artifact_outputs has unsupported keys: '
             f'{sorted(extra)}.'
         )
     for port, value in outputs.items():
@@ -100,7 +100,7 @@ def _validate_manifest(
 ) -> None:
     values = {item.name: item.type for item in manifest.inputs}
     for node in manifest.nodes:
-        validate_node_against_runtime(node)
+        validate_node_against_artifact(node)
         binding = operation_binding(node.op)
         _validate_node_input_types(node, binding.spec.input_types, values)
         for name in binding.value_attribute_arguments:

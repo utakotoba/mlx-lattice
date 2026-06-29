@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from . import artifact as artifact
 from . import core as core
-from . import export as export
 from . import nn as nn
 from . import ops as ops
 from ._native import backend_info
@@ -20,10 +20,10 @@ __all__ = [
     'QuantizedWeight',
     'SparseTensor',
     '__version__',
+    'artifact',
     'backend_info',
     'core',
     'dequantize_weight',
-    'export',
     'nn',
     'ops',
     'quantize_weight',

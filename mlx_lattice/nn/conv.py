@@ -12,7 +12,7 @@ from mlx_lattice.core import (
     KernelSpec,
     SparseTensor,
 )
-from mlx_lattice.nn._export import kernel_spec_attributes, lattice_module
+from mlx_lattice.nn._artifact import kernel_spec_attributes, lattice_module
 from mlx_lattice.ops import (
     conv3d,
     conv_transpose3d,

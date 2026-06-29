@@ -36,8 +36,8 @@ class IROpSpec:
 
 
 @dataclass(frozen=True, slots=True)
-class IROpExportHints:
-    """Builder/runtime hints that cannot be inferred from annotations alone."""
+class IROpArtifactHints:
+    """Artifact hints that cannot be inferred from annotations alone."""
 
     parameters: Mapping[str, IRParameterKind] = field(default_factory=dict)
     optional_parameters: Mapping[str, IRParameterKind] = field(
@@ -48,7 +48,7 @@ class IROpExportHints:
 
 
 _OP_SPECS: dict[str, IROpSpec] = {}
-_EXPORT_HINT_ATTR = '__mlx_lattice_op_export_hints__'
+_ARTIFACT_HINT_ATTR = '__mlx_lattice_op_artifact_hints__'
 
 
 def lattice_op_hints(
@@ -58,14 +58,14 @@ def lattice_op_hints(
     attributes: set[str] | None = None,
     value_attributes: set[str] | None = None,
 ) -> Callable[[FunctionT], FunctionT]:
-    """Attach export/runtime classification hints to a public op function.
+    """Attach artifact classification hints to a public op function.
 
     Most operation bindings are inferred from annotations. Hints are reserved
     for ambiguous tensor arguments, especially persisted weights and optional
     graph-carried values whose annotations include more than one IR type.
     """
 
-    hints = IROpExportHints(
+    hints = IROpArtifactHints(
         parameters=_parameter_kinds(parameters),
         optional_parameters=_parameter_kinds(optional_parameters),
         attributes=frozenset(attributes or ()),
@@ -73,18 +73,18 @@ def lattice_op_hints(
     )
 
     def decorator(function: FunctionT) -> FunctionT:
-        setattr(function, _EXPORT_HINT_ATTR, hints)
+        setattr(function, _ARTIFACT_HINT_ATTR, hints)
         return function
 
     return decorator
 
 
-def op_export_hints(function: Callable) -> IROpExportHints:
-    """Return export hints attached by :func:`lattice_op_hints`."""
+def op_artifact_hints(function: Callable) -> IROpArtifactHints:
+    """Return artifact hints attached by :func:`lattice_op_hints`."""
 
     return cast(
-        IROpExportHints,
-        getattr(function, _EXPORT_HINT_ATTR, IROpExportHints()),
+        IROpArtifactHints,
+        getattr(function, _ARTIFACT_HINT_ATTR, IROpArtifactHints()),
     )
 
 
