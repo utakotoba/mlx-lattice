@@ -10,6 +10,8 @@ from mlx_lattice.core.coords.validation import validate_coords
 
 @dataclass(frozen=True, slots=True)
 class SparseOccupancy:
+    """Downsampled coordinates plus an 8-bit child occupancy mask per row."""
+
     coords: mx.array
     active_rows: mx.array
     occupancy: mx.array
@@ -37,6 +39,8 @@ class SparseOccupancy:
 
 @dataclass(frozen=True, slots=True)
 class OccupancyExpansion:
+    """Expanded child coordinates with parent row and child-index metadata."""
+
     coords: mx.array
     active_rows: mx.array
     parent_rows: mx.array
@@ -65,6 +69,7 @@ def occupancy_downsample(
     coords: mx.array,
     active_rows: mx.array | None = None,
 ) -> SparseOccupancy:
+    """Downsample coordinates and record occupied children for each parent."""
     coords = _coords_for_native(coords)
     active_rows = _active_rows_for(coords, active_rows)
     return SparseOccupancy(*ext.occupancy_downsample(coords, active_rows))
@@ -75,6 +80,7 @@ def occupancy_expand(
     occupancy: mx.array,
     active_rows: mx.array | None = None,
 ) -> OccupancyExpansion:
+    """Expand occupied child coordinates from a parent occupancy mask."""
     coords = _coords_for_native(coords)
     active_rows = _active_rows_for(coords, active_rows)
     _validate_row_array(occupancy, 'occupancy')
@@ -89,6 +95,7 @@ def child_coords_from_indices(
     parent_coords: mx.array,
     child_indices: mx.array,
 ) -> mx.array:
+    """Compute child coordinates from parent coordinates and child indices."""
     parent_coords = _coords_for_native(parent_coords)
     _validate_row_array(child_indices, 'child_indices')
     if child_indices.shape[0] != parent_coords.shape[0]:

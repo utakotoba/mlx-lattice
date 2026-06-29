@@ -12,7 +12,12 @@ RelationKind = Literal['forward', 'target', 'transposed', 'generative']
 
 @dataclass(frozen=True, slots=True)
 class RelationEdges:
-    """Diagnostic edge arrays for a logical sparse neighborhood relation."""
+    """Diagnostic edge arrays for a logical sparse kernel relation.
+
+    Each edge stores ``(in_row, out_row, kernel_id)`` at the same index in the
+    three arrays. Edge arrays are useful for debugging and for generic sparse
+    traversal routes; CSR views provide grouped execution order.
+    """
 
     in_rows: mx.array
     out_rows: mx.array
@@ -36,7 +41,11 @@ class RelationEdges:
 
 @dataclass(frozen=True, slots=True)
 class RelationCSRView:
-    """CSR execution view over relation edge arrays."""
+    """CSR execution view over relation edge arrays.
+
+    ``row_offsets`` has shape ``(rows + 1,)`` and ``int32`` dtype. Optional
+    ``edge_ids`` remaps CSR order back to the canonical edge arrays.
+    """
 
     row_offsets: mx.array
     edge_ids: mx.array | None = None
@@ -52,7 +61,13 @@ RelationView = RelationCSRView
 
 @dataclass(frozen=True, slots=True)
 class RelationImplicitGemmView:
-    """Reserved relation view for future implicit-GEMM/TensorOps kernels."""
+    """Dense output-row by kernel-offset map for implicit-GEMM execution.
+
+    ``out_in_map[o, k]`` stores the input row that contributes to output row
+    ``o`` at kernel offset ``k``. Missing contributors are represented by the
+    native builder's sentinel value. ``row_masks`` stores bit masks describing
+    populated kernel offsets for each output row.
+    """
 
     out_in_map: mx.array
     row_masks: mx.array
@@ -118,7 +133,13 @@ class RelationSortedImplicitGemmView:
 
 @dataclass(frozen=True, slots=True)
 class SparseRelationContract:
-    """Logical sparse relation contract shared by all execution views."""
+    """Logical sparse relation contract shared by all execution views.
+
+    The contract records counts, capacities, optional source/target coordinate
+    buffers, kernel offsets, stride, padding, and relation kind. Backend routes
+    use this metadata to validate specialized kernels before consuming CSR or
+    implicit-GEMM views.
+    """
 
     counts: mx.array
     kernel_offsets: tuple[Triple, ...]
@@ -201,7 +222,11 @@ class SparseRelationContract:
 
 @dataclass(frozen=True, slots=True)
 class NeighborEdges:
-    """Semantic neighbor edge arrays for query/source relations."""
+    """Semantic neighbor edge arrays for query/source relations.
+
+    Each edge stores the query row, source row, and neighbor rank or identifier
+    for geometric neighbor queries such as kNN and radius search.
+    """
 
     query_rows: mx.array
     source_rows: mx.array
@@ -225,6 +250,13 @@ class NeighborEdges:
 
 @dataclass(frozen=True, slots=True, init=False)
 class KernelRelation:
+    """Sparse kernel relation with multiple execution-oriented views.
+
+    A relation stores semantic edges ``(in_row, out_row, kernel_id)`` plus CSR
+    views grouped by output row, input row, and kernel id. Forward convolution,
+    pooling, and backend-specific fast paths consume these views.
+    """
+
     contract: SparseRelationContract
     edges: RelationEdges
     output_csr: RelationCSRView
@@ -338,10 +370,12 @@ class KernelRelation:
 
     @property
     def edge_capacity(self) -> int:
+        """Static edge-buffer capacity."""
         return self.edges.capacity
 
     @property
     def counts(self) -> mx.array:
+        """Native counts array ``[edge_count, out_count]``."""
         return self.contract.counts
 
     @property
@@ -411,6 +445,7 @@ class KernelRelation:
         return self.kernel_csr
 
     def require_implicit_gemm(self) -> RelationImplicitGemmView:
+        """Return or lazily build the implicit-GEMM execution view."""
         view = self.implicit_gemm
         if view is not None:
             return view
@@ -425,6 +460,7 @@ class KernelRelation:
     def require_sorted_implicit_gemm(
         self,
     ) -> RelationSortedImplicitGemmView:
+        """Return or lazily build the tile-sorted implicit-GEMM view."""
         sorted_view = self.sorted_implicit_gemm
         if sorted_view is not None:
             return sorted_view
@@ -469,6 +505,13 @@ class KernelRelation:
 
 @dataclass(frozen=True, slots=True, init=False)
 class NeighborRelation:
+    """Sparse query/source neighbor relation with row-offset metadata.
+
+    Neighbor relations are not convolution kernel relations. They describe
+    geometric connectivity between query rows and source rows, carry distances
+    in edge order, and expose row offsets grouped by query row.
+    """
+
     edges: NeighborEdges
     distances: mx.array
     row_offsets: mx.array

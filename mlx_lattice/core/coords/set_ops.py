@@ -43,6 +43,7 @@ def downsample_coords(
     coords: mx.array,
     stride: int | Sequence[int] = 2,
 ) -> CoordinateSet:
+    """Downsample coordinates by integer spatial stride."""
     validate_coords(coords)
     step = triple(stride, name='stride')
     _require_positive(step, 'stride')
@@ -50,25 +51,33 @@ def downsample_coords(
 
 
 def union_coords(lhs: mx.array, rhs: mx.array) -> CoordinateSet:
+    """Return the coordinate-set union of two coordinate arrays."""
     validate_coord_pair(lhs, rhs)
     return CoordinateSet(*ext.union_coords(lhs, rhs))
 
 
 def intersection_coords(lhs: mx.array, rhs: mx.array) -> CoordinateSet:
+    """Return coordinates present in both input coordinate arrays."""
     validate_coord_pair(lhs, rhs)
     return CoordinateSet(*ext.intersection_coords(lhs, rhs))
 
 
 def lookup_coords(coords: mx.array, queries: mx.array) -> mx.array:
+    """Map query coordinates to row indices in ``coords``.
+
+    Missing query rows are encoded as ``-1``.
+    """
     validate_coord_pair(coords, queries, rhs_name='queries')
     return ext.lookup_coords(coords, queries)
 
 
 def contains_coords(coords: mx.array, queries: mx.array) -> mx.array:
+    """Return a boolean mask indicating which queries exist in ``coords``."""
     return lookup_coords(coords, queries) >= 0
 
 
 def inverse_map(source: mx.array, target: mx.array) -> mx.array:
+    """Return row indices that gather ``target`` rows from ``source``."""
     return lookup_coords(source, target)
 
 

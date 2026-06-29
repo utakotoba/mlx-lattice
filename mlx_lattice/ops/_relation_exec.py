@@ -21,6 +21,7 @@ def sparse_quantized_conv_features_from_relation(
     weight: QuantizedWeight,
     relation: KernelRelation,
 ) -> mx.array:
+    """Execute quantized sparse convolution over a prebuilt relation."""
     if relation.n_out_capacity is None or relation.n_kernels is None:
         raise ValueError(
             'kernel relation is missing static shape metadata.'
@@ -85,6 +86,7 @@ def sparse_conv_features_from_relation(
     weight: mx.array,
     relation: KernelRelation,
 ) -> mx.array:
+    """Execute sparse convolution over a prebuilt relation."""
     if relation.n_out_capacity is None or relation.n_kernels is None:
         raise ValueError(
             'kernel relation is missing static shape metadata.'
@@ -121,6 +123,7 @@ def sparse_conv_features_sorted_from_relation(
     *,
     store_sorted: bool = False,
 ) -> mx.array:
+    """Execute the sorted implicit-GEMM convolution path explicitly."""
     if relation.n_out_capacity is None or relation.n_kernels is None:
         raise ValueError(
             'kernel relation is missing static shape metadata.'
@@ -160,6 +163,7 @@ def sparse_conv_features_sorted_direct_reference_from_relation(
     *,
     store_sorted: bool = False,
 ) -> mx.array:
+    """Execute the sorted direct reference path for diagnostics/tests."""
     if relation.n_out_capacity is None or relation.n_kernels is None:
         raise ValueError(
             'kernel relation is missing static shape metadata.'
@@ -253,6 +257,7 @@ def sparse_pool_features_from_relation(
     input_exclusive: bool,
     mode: str,
 ) -> mx.array:
+    """Execute sparse pooling over a prebuilt kernel relation."""
     if relation.n_out_capacity is None or relation.n_kernels is None:
         raise ValueError(
             'kernel relation is missing static shape metadata.'

@@ -27,6 +27,12 @@ members = ["benchmarks"]
 
 [dependency-groups]
 dev = ["nanobind>=2", "prek>=0.4.3", "pytest>=8", "ruff>=0.15.15", "ty>=0.0.42"]
+docs = [
+    "furo>=2025.12.19",
+    "sphinx>=9.1.0",
+    "sphinx-autodoc-typehints>=3.12.0",
+    "sphinx-copybutton>=0.5.2",
+]
 
 # MARK: - build
 

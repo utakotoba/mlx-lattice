@@ -31,6 +31,13 @@ __all__ = [
 
 
 class Pool3d(mxnn.Module):
+    """Configurable local sparse 3D pooling module.
+
+    ``mode`` selects ``sum``, ``max``, or ``avg`` reduction over a sparse kernel
+    relation. The module returns a sparse tensor with output stride multiplied
+    by the pooling stride.
+    """
+
     def __init__(
         self,
         *,
@@ -61,6 +68,8 @@ class Pool3d(mxnn.Module):
 
 
 class SumPool3d(Pool3d):
+    """Local sparse sum-pooling module."""
+
     def __init__(
         self,
         *,
@@ -88,6 +97,8 @@ class SumPool3d(Pool3d):
 
 
 class MaxPool3d(Pool3d):
+    """Local sparse max-pooling module."""
+
     def __init__(
         self,
         *,
@@ -115,6 +126,8 @@ class MaxPool3d(Pool3d):
 
 
 class AvgPool3d(Pool3d):
+    """Local sparse average-pooling module."""
+
     def __init__(
         self,
         *,
@@ -142,15 +155,21 @@ class AvgPool3d(Pool3d):
 
 
 class GlobalSumPool(mxnn.Module):
+    """Batch-wise global sum-pooling module returning dense ``(B, C)`` rows."""
+
     def __call__(self, x: SparseTensor) -> mx.array:
         return global_sum_pool(x)
 
 
 class GlobalAvgPool(mxnn.Module):
+    """Batch-wise global average-pooling module returning dense ``(B, C)`` rows."""
+
     def __call__(self, x: SparseTensor) -> mx.array:
         return global_avg_pool(x)
 
 
 class GlobalMaxPool(mxnn.Module):
+    """Batch-wise global max-pooling module returning dense ``(B, C)`` rows."""
+
     def __call__(self, x: SparseTensor) -> mx.array:
         return global_max_pool(x)

@@ -33,6 +33,13 @@ def pool3d(
     padding: int | Sequence[int] = 0,
     dilation: int | Sequence[int] = 1,
 ) -> SparseTensor:
+    """Apply local sparse 3D pooling with ``sum``, ``max``, or ``avg`` mode.
+
+    Local pooling builds a forward kernel relation and reduces input features
+    that contribute to each output coordinate. The output sparse stride is
+    ``x.stride * stride``. Current native pooling routes accept ``float32``
+    features; Metal routes additionally require ``int32`` coordinates.
+    """
     spec = KernelSpec(
         size=kernel_size,
         stride=stride,
@@ -55,6 +62,11 @@ def sum_pool3d(
     padding: int | Sequence[int] = 0,
     dilation: int | Sequence[int] = 1,
 ) -> SparseTensor:
+    """Apply local sparse sum pooling.
+
+    The result feature at each output row is the sum of all contributing input
+    rows in the sparse kernel relation.
+    """
     return pool3d(
         x,
         mode='sum',
@@ -73,6 +85,11 @@ def max_pool3d(
     padding: int | Sequence[int] = 0,
     dilation: int | Sequence[int] = 1,
 ) -> SparseTensor:
+    """Apply local sparse max pooling.
+
+    The result feature at each output row is the channel-wise maximum over
+    contributing input rows in the sparse kernel relation.
+    """
     return pool3d(
         x,
         mode='max',
@@ -91,6 +108,11 @@ def avg_pool3d(
     padding: int | Sequence[int] = 0,
     dilation: int | Sequence[int] = 1,
 ) -> SparseTensor:
+    """Apply local sparse average pooling.
+
+    The result feature at each output row is the sparse sum divided by the
+    number of contributing relation edges for that output row.
+    """
     return pool3d(
         x,
         mode='avg',
@@ -102,14 +124,28 @@ def avg_pool3d(
 
 
 def global_sum_pool(x: SparseTensor) -> mx.array:
+    """Sum features independently for each batch.
+
+    Requires ``x.batch_counts`` and returns a dense ``(B, C)`` MLX array.
+    """
     return _stack_batch_reductions(x, mode='sum')
 
 
 def global_avg_pool(x: SparseTensor) -> mx.array:
+    """Average features independently for each batch.
+
+    Requires ``x.batch_counts`` and returns a dense ``(B, C)`` MLX array.
+    Empty batches produce zero rows.
+    """
     return _stack_batch_reductions(x, mode='avg')
 
 
 def global_max_pool(x: SparseTensor) -> mx.array:
+    """Max-reduce features independently for each batch.
+
+    Requires ``x.batch_counts`` and returns a dense ``(B, C)`` MLX array.
+    Empty batches are rejected because max has no neutral finite sparse row.
+    """
     return _stack_batch_reductions(x, mode='max')
 
 

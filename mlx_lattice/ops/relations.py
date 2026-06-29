@@ -42,6 +42,12 @@ def kernel_relation(
     padding: int | Sequence[int] = 0,
     dilation: int | Sequence[int] = 1,
 ) -> KernelRelation:
+    """Build the forward kernel relation for a sparse tensor.
+
+    This is the functional wrapper around ``x.coord_manager.kernel_relation``.
+    The returned relation can be inspected or passed to lower-level execution
+    helpers.
+    """
     return x.coord_manager.kernel_relation(
         x.coord_key,
         kernel_size=kernel_size,
@@ -57,6 +63,7 @@ def generative_kernel_relation(
     kernel_size: int | Sequence[int] = 2,
     stride: int | Sequence[int] = 2,
 ) -> KernelRelation:
+    """Build the generative transpose-convolution relation for a tensor."""
     return x.coord_manager.generative_relation(
         x.coord_key,
         kernel_size=kernel_size,
@@ -72,6 +79,7 @@ def transposed_kernel_relation(
     padding: int | Sequence[int] = 0,
     dilation: int | Sequence[int] = 1,
 ) -> KernelRelation:
+    """Build the transpose-convolution relation for a sparse tensor."""
     return x.coord_manager.transposed_kernel_relation(
         x.coord_key,
         kernel_size=kernel_size,
@@ -90,6 +98,12 @@ def target_kernel_relation(
     padding: int | Sequence[int] = 0,
     dilation: int | Sequence[int] = 1,
 ) -> KernelRelation:
+    """Build a relation from ``x`` to an explicit target sparse tensor.
+
+    Target coordinates fix the output support. If ``target`` belongs to a
+    different coordinate manager, its coordinate array is inserted into
+    ``x``'s manager before the relation is cached.
+    """
     if x.coord_manager is not target.coord_manager:
         target_key = x.coord_manager.insert_coords(
             target.coords, target.stride, target.active_rows
@@ -112,6 +126,12 @@ def knn_relation(
     *,
     k: int,
 ) -> NeighborRelation:
+    """Build a k-nearest-neighbor relation for sparse tensors.
+
+    ``source`` supplies candidate rows and ``query`` supplies query rows. When
+    ``query`` is omitted, the relation is built within ``source``. Both tensors
+    must use the same sparse stride.
+    """
     query = source if query is None else query
     _require_matching_stride(source, query)
     return build_knn_relation(
@@ -130,6 +150,11 @@ def radius_relation(
     radius: float,
     max_neighbors: int | None = None,
 ) -> NeighborRelation:
+    """Build a radius-neighborhood relation for sparse tensors.
+
+    ``max_neighbors`` optionally caps the number of source rows associated with
+    each query row. Distances are stored in the returned relation in edge order.
+    """
     query = source if query is None else query
     _require_matching_stride(source, query)
     return build_radius_relation(
@@ -146,6 +171,11 @@ def gather_neighbor_features(
     source: SparseTensor,
     relation: NeighborRelation,
 ) -> mx.array:
+    """Gather source features in neighbor-edge order.
+
+    The result has shape ``(E, C)`` where ``E`` is the neighbor edge capacity
+    and ``C`` is ``source.channels``.
+    """
     rows = relation.edges.source_rows.astype(mx.int32)
     return mx.take(source.feats, rows, axis=0)
 

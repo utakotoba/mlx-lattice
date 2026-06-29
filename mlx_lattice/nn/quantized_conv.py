@@ -80,6 +80,13 @@ class _QuantizedConvBase(mxnn.Module):
 
 
 class QuantizedConv3d(_QuantizedConvBase):
+    """Affine weight-quantized sparse 3D convolution module.
+
+    Weights are stored as packed int4/int8 affine ``QuantizedWeight`` metadata.
+    Activations remain floating point. Coordinate semantics match
+    :class:`mlx_lattice.nn.Conv3d`.
+    """
+
     def __init__(
         self,
         in_channels: int,
@@ -151,6 +158,11 @@ class QuantizedConv3d(_QuantizedConvBase):
 
 
 class QuantizedSubmConv3d(_QuantizedConvBase):
+    """Affine weight-quantized submanifold convolution module.
+
+    Coordinate identity is preserved exactly as in ``SubmConv3d``.
+    """
+
     def __init__(
         self,
         in_channels: int,
@@ -205,6 +217,12 @@ class QuantizedSubmConv3d(_QuantizedConvBase):
 
 
 class QuantizedConvTranspose3d(_QuantizedConvBase):
+    """Affine weight-quantized sparse transpose-convolution module.
+
+    Activations remain floating point and weight storage is packed affine
+    int4/int8. Coordinate generation matches ``ConvTranspose3d``.
+    """
+
     def __init__(
         self,
         in_channels: int,
@@ -267,6 +285,12 @@ class QuantizedConvTranspose3d(_QuantizedConvBase):
 
 
 class QuantizedGenerativeConvTranspose3d(_QuantizedConvBase):
+    """Affine weight-quantized generative transpose-convolution module.
+
+    The module stores packed affine weights and delegates coordinate generation
+    to the generative transpose-convolution relation.
+    """
+
     def __init__(
         self,
         in_channels: int,

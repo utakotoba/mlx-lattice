@@ -69,6 +69,14 @@ def voxelize(
     reduction: str = 'mean',
     stride: int | Sequence[int] = 1,
 ) -> SparseTensor:
+    """Quantize points and aggregate features into a sparse voxel tensor.
+
+    ``points`` must have shape ``(N, 3)`` and ``float32`` dtype. ``feats`` must
+    have shape ``(N, C)``. Optional ``batch_indices`` has shape ``(N,)`` and
+    ``int32`` dtype. The returned tensor uses coordinates
+    ``(batch, floor((point - origin) / voxel_size))`` and aggregated voxel
+    features.
+    """
     if feats.ndim != 2:
         raise ValueError('feats must have shape (N, C).')
     if points.shape[0] != feats.shape[0]:
@@ -123,7 +131,12 @@ def voxelize_with_quantization(
     stride: int | Sequence[int] = 1,
     template: SparseTensor | None = None,
 ) -> SparseTensor:
-    """Apply a precomputed native point-to-voxel map to feature rows."""
+    """Apply precomputed sparse quantization metadata to feature rows.
+
+    This is the split form of ``voxelize`` for pipelines that reuse point to
+    voxel assignments across multiple feature tensors. If ``template`` is
+    supplied, it must share the quantization coordinate and active-row arrays.
+    """
     voxel_feats = _voxelize_features(
         feats,
         quantization,
@@ -160,7 +173,13 @@ def devoxelize(
     interpolation: PointVoxelInterpolation = 'linear',
     point_voxel_map: PointVoxelMap | None = None,
 ) -> mx.array:
-    """Sample sparse voxel features back onto dense point rows."""
+    """Sample sparse voxel features back onto dense point rows.
+
+    If ``point_voxel_map`` is not supplied, the function builds one from point
+    coordinates, voxel coordinates, voxel size, origin, batch indices, and the
+    selected interpolation mode. The returned dense array has one row per point
+    and one column per voxel feature channel.
+    """
     point_map = point_voxel_map
     if point_map is None:
         point_map = build_point_voxel_map(

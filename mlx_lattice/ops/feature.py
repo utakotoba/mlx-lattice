@@ -30,6 +30,12 @@ def linear(
     weight: mx.array | QuantizedWeight,
     bias: mx.array | None = None,
 ) -> SparseTensor:
+    """Apply a dense or quantized linear projection to sparse features.
+
+    Coordinates are preserved. Dense weights use shape ``(C_out, C_in)`` and
+    packed weights use ``QuantizedWeight`` with ``linear`` layout. Optional
+    bias has shape ``(C_out,)``.
+    """
     if isinstance(weight, QuantizedWeight):
         feats = quantized_matmul(x.feats, weight)
         return x.replace(feats=_with_bias(feats, bias))
@@ -41,10 +47,12 @@ def linear(
 
 
 def relu(x: SparseTensor) -> SparseTensor:
+    """Apply ReLU to sparse features while preserving coordinates."""
     return x.replace(feats=mx.maximum(x.feats, 0))
 
 
 def sigmoid(x: SparseTensor) -> SparseTensor:
+    """Apply sigmoid to sparse features while preserving coordinates."""
     return x.replace(feats=mx.sigmoid(x.feats))
 
 
@@ -53,6 +61,12 @@ def gelu(
     *,
     approximate: GeluApprox = 'none',
 ) -> SparseTensor:
+    """Apply GELU to sparse features while preserving coordinates.
+
+    ``approximate`` accepts ``'none'``/``'precise'`` for the erf formula,
+    ``'tanh'`` for the tanh approximation, or ``'fast'`` for the sigmoid-based
+    approximation.
+    """
     if approximate in ('none', 'precise'):
         scale = mx.array(0.5, dtype=x.feats.dtype)
         root_half = mx.array(0.7071067811865476, dtype=x.feats.dtype)
@@ -75,6 +89,7 @@ def gelu(
 
 
 def silu(x: SparseTensor) -> SparseTensor:
+    """Apply SiLU/Swish to sparse features while preserving coordinates."""
     return x.replace(feats=x.feats * mx.sigmoid(x.feats))
 
 
@@ -83,11 +98,13 @@ def leaky_relu(
     *,
     negative_slope: float = 0.01,
 ) -> SparseTensor:
+    """Apply leaky ReLU to sparse features while preserving coordinates."""
     slope = mx.array(float(negative_slope), dtype=x.feats.dtype)
     return x.replace(feats=mx.where(x.feats >= 0, x.feats, x.feats * slope))
 
 
 def tanh(x: SparseTensor) -> SparseTensor:
+    """Apply hyperbolic tangent to sparse features while preserving coordinates."""
     return x.replace(feats=mx.tanh(x.feats))
 
 
@@ -97,6 +114,11 @@ def softplus(
     beta: float = 1.0,
     threshold: float = 20.0,
 ) -> SparseTensor:
+    """Apply numerically thresholded softplus to sparse features.
+
+    Values above ``threshold`` in the scaled domain return the input directly
+    to avoid unnecessary exponential work.
+    """
     if beta <= 0:
         raise ValueError('beta must be positive.')
     scaled = x.feats * beta
@@ -114,6 +136,11 @@ def dropout(
     p: float = 0.5,
     training: bool = True,
 ) -> SparseTensor:
+    """Apply inverted dropout to sparse features during training.
+
+    Coordinates are preserved. When ``training`` is false or ``p`` is zero, the
+    feature matrix is returned unchanged inside a new sparse wrapper.
+    """
     if p < 0 or p >= 1:
         raise ValueError('p must satisfy 0 <= p < 1.')
     if not training or p == 0:
@@ -132,6 +159,11 @@ def batch_norm(
     var: mx.array | None = None,
     eps: float = 1e-5,
 ) -> SparseTensor:
+    """Apply per-channel batch normalization to sparse features.
+
+    If ``mean`` or ``var`` is omitted, statistics are computed from active
+    feature rows. Optional affine ``weight`` and ``bias`` have shape ``(C,)``.
+    """
     if eps <= 0:
         raise ValueError('eps must be positive.')
     mean = mx.mean(x.feats, axis=0) if mean is None else mean
@@ -149,6 +181,7 @@ def layer_norm(
     bias: mx.array | None = None,
     eps: float = 1e-5,
 ) -> SparseTensor:
+    """Apply layer normalization independently to each sparse row."""
     if eps <= 0:
         raise ValueError('eps must be positive.')
     if weight is not None:
@@ -164,6 +197,7 @@ def rms_norm(
     weight: mx.array | None = None,
     eps: float = 1e-5,
 ) -> SparseTensor:
+    """Apply RMS normalization independently to each sparse row."""
     if eps <= 0:
         raise ValueError('eps must be positive.')
     if weight is not None:

@@ -6,6 +6,7 @@ Triple = tuple[int, int, int]
 
 
 def triple(value: int | Sequence[int], *, name: str) -> Triple:
+    """Normalize an integer or 3-item sequence into a spatial triple."""
     if isinstance(value, int):
         return (value, value, value)
 

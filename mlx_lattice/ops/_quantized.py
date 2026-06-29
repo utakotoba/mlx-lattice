@@ -9,6 +9,7 @@ def quantized_matmul(
     feats: mx.array,
     weight: QuantizedWeight,
 ) -> mx.array:
+    """Apply affine packed-weight matrix multiplication to feature rows."""
     if weight.kernel_size != (1, 1, 1):
         raise ValueError('quantized matmul requires a pointwise weight.')
     if feats.ndim != 2 or feats.shape[1] != weight.in_channels:

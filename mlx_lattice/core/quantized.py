@@ -19,7 +19,17 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class QuantizedWeight:
-    """Packed affine INT4/INT8 inference weight."""
+    """Packed affine INT4/INT8 inference weight.
+
+    The object stores packed ``uint32`` integer codes plus per-group affine
+    ``scales`` and ``biases``. Logical values are reconstructed as
+    ``scale * code + bias`` by quantized linear and convolution paths.
+
+    ``layout`` records the logical source shape:
+    ``linear`` for ``(C_out, C_in)``, ``kernel_major`` for
+    ``(K, C_in, C_out)``, and ``dense_5d`` for
+    ``(C_out, Kx, Ky, Kz, C_in)``.
+    """
 
     weight: mx.array
     scales: mx.array
@@ -118,7 +128,21 @@ def quantize_weight(
     group_size: int | None = None,
     bits: int = 4,
 ) -> QuantizedWeight:
-    """Pack a linear or sparse-convolution weight for inference."""
+    """Pack a linear or sparse-convolution weight for inference.
+
+    Args:
+        weight: Floating ``float16`` or ``float32`` weight. Accepted shapes are
+            ``(C_out, C_in)``, ``(K, C_in, C_out)``, or
+            ``(C_out, Kx, Ky, Kz, C_in)``.
+        group_size: Quantization group size. ``None`` chooses ``64`` for
+            ``C_in >= 64`` and ``32`` otherwise.
+        bits: Packed integer width, either ``4`` or ``8``.
+
+    Returns:
+        A ``QuantizedWeight`` containing packed storage and affine metadata.
+        Input channels are padded in storage to the selected group size when
+        needed; logical ``in_channels`` remains the original channel count.
+    """
 
     if weight.dtype not in (mx.float16, mx.float32):
         raise ValueError(
@@ -165,7 +189,11 @@ def quantize_weight(
 
 
 def dequantize_weight(weight: QuantizedWeight) -> mx.array:
-    """Restore the logical floating-point weight represented by ``weight``."""
+    """Restore the logical floating-point weight represented by ``weight``.
+
+    The returned array uses the original logical layout recorded by
+    ``weight.layout`` and slices away any padded storage channels.
+    """
 
     kernel_rows = _volume(weight.kernel_size)
     packed = weight.weight

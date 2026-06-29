@@ -13,7 +13,12 @@ type SparseJoin = Literal['inner', 'left', 'right', 'outer']
 
 @dataclass(frozen=True, slots=True)
 class SparseAlignment:
-    """Coordinate value alignment for two sparse tensors."""
+    """Coordinate value alignment for two sparse tensors.
+
+    ``coords`` is the joined coordinate support. ``lhs_rows`` and ``rhs_rows``
+    gather features from the left and right tensors into that support; ``-1``
+    marks a missing value for the selected join mode.
+    """
 
     coords: mx.array
     active_rows: mx.array
@@ -59,6 +64,13 @@ def build_sparse_alignment(
     *,
     join: SparseJoin = 'inner',
 ) -> SparseAlignment:
+    """Build value-aligned row maps between two coordinate arrays.
+
+    Coordinates must have shape ``(N, 4)`` and matching dtype. Active-row
+    scalars describe the valid prefix of each coordinate buffer. The native
+    builder returns joined coordinates and row maps for ``inner``, ``left``,
+    ``right``, or ``outer`` support.
+    """
     validate_coord_pair(lhs_coords, rhs_coords)
     if lhs_coords.dtype != mx.int32:
         raise ValueError(

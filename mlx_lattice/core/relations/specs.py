@@ -8,6 +8,14 @@ from mlx_lattice.core.types import Triple, triple
 
 @dataclass(frozen=True, slots=True, init=False)
 class KernelSpec:
+    """Normalized 3D kernel geometry for sparse relation builders.
+
+    ``KernelSpec`` accepts integers or three-item sequences for size, stride,
+    padding, and dilation and stores all values as triples. The object is
+    hashable, so coordinate managers can use it directly as part of relation
+    cache keys.
+    """
+
     size: Triple
     stride: Triple
     padding: Triple
@@ -36,10 +44,12 @@ class KernelSpec:
 
     @property
     def volume(self) -> int:
+        """Number of offsets in the dense kernel footprint."""
         return self.size[0] * self.size[1] * self.size[2]
 
     @property
     def is_pointwise(self) -> bool:
+        """Whether this spec is an identity 1x1x1 pointwise mapping."""
         return (
             self.size == (1, 1, 1)
             and self.stride == (1, 1, 1)
@@ -49,6 +59,7 @@ class KernelSpec:
 
     @property
     def is_centered_submanifold(self) -> bool:
+        """Whether this spec is an odd, stride-1 submanifold footprint."""
         return (
             self.stride == (1, 1, 1)
             and self.padding == (0, 0, 0)

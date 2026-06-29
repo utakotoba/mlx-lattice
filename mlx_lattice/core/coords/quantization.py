@@ -15,7 +15,12 @@ type PointVoxelInterpolation = Literal['nearest', 'linear']
 
 @dataclass(frozen=True, slots=True)
 class SparseQuantization:
-    """Sparse voxel coordinates plus point-to-voxel metadata."""
+    """Sparse voxel coordinates plus point-to-voxel metadata.
+
+    ``coords`` stores unique voxel coordinates in ``(batch, x, y, z)`` order.
+    ``inverse_rows`` maps each input point row to its voxel row, and ``counts``
+    stores the number of active point rows accumulated into each voxel.
+    """
 
     coords: mx.array
     active_rows: mx.array
@@ -57,7 +62,12 @@ class SparseQuantization:
 
 @dataclass(frozen=True, slots=True)
 class PointVoxelMap:
-    """Fixed-width point-to-voxel interpolation rows and weights."""
+    """Fixed-width point-to-voxel interpolation rows and weights.
+
+    ``rows`` and ``weights`` both have shape ``(N, 8)``. Linear interpolation
+    may use up to eight neighboring voxel rows per point; nearest interpolation
+    uses one non-zero contribution.
+    """
 
     rows: mx.array
     weights: mx.array
@@ -87,6 +97,13 @@ def sparse_quantize(
     origin: float | Sequence[float] = 0.0,
     active_rows: mx.array | None = None,
 ) -> SparseQuantization:
+    """Voxelize floating-point points into sparse integer coordinates.
+
+    Points have shape ``(N, 3)`` and dtype ``float32``. Optional
+    ``batch_indices`` assign points to batches; omitted batches default to
+    zero. The result includes voxel coordinates, active row count, inverse
+    point-to-voxel rows, and per-voxel counts.
+    """
     _validate_points(points)
     batches = _batch_indices(batch_indices, points.shape[0])
     point_rows = _active_rows(active_rows, points.shape[0])
@@ -107,6 +124,11 @@ def voxelize_features(
     active_rows: mx.array | None = None,
     reduction: VoxelReduction = 'mean',
 ) -> mx.array:
+    """Aggregate point features into voxels using sparse quantization data.
+
+    ``feats`` must be ``float32`` with one row per original point. ``sum``
+    accumulates point rows directly; ``mean`` divides by each voxel count.
+    """
     if feats.ndim != 2:
         raise ValueError('feats must have shape (N, C).')
     if feats.dtype != mx.float32:
@@ -134,6 +156,12 @@ def build_point_voxel_map(
     origin: float | Sequence[float] = 0.0,
     interpolation: PointVoxelInterpolation = 'linear',
 ) -> PointVoxelMap:
+    """Build fixed-width interpolation rows from points to voxel centers.
+
+    The map can be reused to sample multiple voxel feature arrays as long as
+    point geometry, batch indices, voxel coordinates, voxel size, and origin
+    are unchanged.
+    """
     _validate_points(points)
     validate_coords(voxel_coords)
     if voxel_coords.dtype != mx.int32:
@@ -164,6 +192,11 @@ def interpolate_point_features(
     voxel_feats: mx.array,
     point_voxel_map: PointVoxelMap,
 ) -> mx.array:
+    """Interpolate voxel features back to point rows.
+
+    ``voxel_feats`` must be ``float32`` with shape ``(N_voxels, C)``. The
+    returned dense point feature array has shape ``(N_points, C)``.
+    """
     if voxel_feats.ndim != 2:
         raise ValueError('voxel_feats must have shape (N, C).')
     if voxel_feats.dtype != mx.float32:

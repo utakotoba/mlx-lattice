@@ -10,6 +10,8 @@ from mlx_lattice.core.coords.validation import validate_coords
 
 @dataclass(frozen=True, slots=True)
 class CoordinateOrdering:
+    """Sorted coordinate rows and the row permutation used to produce them."""
+
     coords: mx.array
     order: mx.array
     inverse_rows: mx.array
@@ -33,6 +35,7 @@ class CoordinateOrdering:
 
 
 def morton_codes(coords: mx.array) -> mx.array:
+    """Return Morton/Z-order codes for batched sparse coordinates."""
     validate_coords(coords)
     if coords.dtype == mx.int32:
         return ext.morton_codes(coords)
@@ -40,10 +43,12 @@ def morton_codes(coords: mx.array) -> mx.array:
 
 
 def morton_order(coords: mx.array) -> mx.array:
+    """Return row indices that sort coordinates by Morton order."""
     return mx.argsort(morton_codes(coords)).astype(mx.int32)
 
 
 def morton_sort_coords(coords: mx.array) -> CoordinateOrdering:
+    """Return coordinates sorted by Morton order and the ordering indices."""
     order = morton_order(coords)
     sorted_coords = mx.take(coords, order, axis=0)
     inverse = mx.argsort(order).astype(mx.int32)

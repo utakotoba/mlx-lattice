@@ -42,6 +42,7 @@ type NativeImplicitGemmView = tuple[mx.array, mx.array]
 def build_relation_implicit_gemm_view(
     relation: KernelRelation,
 ) -> RelationImplicitGemmView:
+    """Build the dense output-to-input map used by implicit-GEMM kernels."""
     contract = relation.contract
     if contract.kind not in ('forward', 'target'):
         raise ValueError(
@@ -89,6 +90,7 @@ def build_target_kernel_relation(
     padding: int | Sequence[int] = 0,
     dilation: int | Sequence[int] = 1,
 ) -> KernelRelation:
+    """Build a sparse kernel relation from source coords to target coords."""
     validate_coords(coords)
     validate_coords(target_coords)
     _require_matching_coord_dtype(coords, target_coords)
@@ -129,6 +131,7 @@ def kernel_offsets(
     kernel_size: int | Sequence[int],
     dilation: int | Sequence[int] = 1,
 ) -> tuple[Triple, ...]:
+    """Enumerate spatial offsets for a dense 3D kernel footprint."""
     kernel = triple(kernel_size, name='kernel_size')
     rate = triple(dilation, name='dilation')
     _require_positive(kernel, 'kernel_size')
@@ -158,6 +161,7 @@ def build_kernel_relation(
     padding: int | Sequence[int] = 0,
     dilation: int | Sequence[int] = 1,
 ) -> KernelRelation:
+    """Build a forward sparse convolution/pooling relation."""
     validate_coords(coords)
     spec = KernelSpec(
         size=kernel_size,
@@ -193,6 +197,7 @@ def build_generative_relation(
     kernel_size: int | Sequence[int] = 2,
     stride: int | Sequence[int] = 2,
 ) -> KernelRelation:
+    """Build a generative transpose-convolution relation."""
     validate_coords(coords)
     kernel = triple(kernel_size, name='kernel_size')
     step = triple(stride, name='stride')
@@ -226,6 +231,7 @@ def build_transposed_kernel_relation(
     padding: int | Sequence[int] = 0,
     dilation: int | Sequence[int] = 1,
 ) -> KernelRelation:
+    """Build a sparse transpose-convolution relation."""
     validate_coords(coords)
     kernel = triple(kernel_size, name='kernel_size')
     step = triple(stride, name='stride')
@@ -266,6 +272,7 @@ def build_knn_relation(
     query_active_rows: mx.array | None = None,
     k: int,
 ) -> NeighborRelation:
+    """Build a k-nearest-neighbor relation between source and query coords."""
     query_coords = source_coords if query_coords is None else query_coords
     source_active_rows = _active_rows(source_active_rows, source_coords)
     query_active_rows = (
@@ -301,6 +308,7 @@ def build_radius_relation(
     radius: float,
     max_neighbors: int | None = None,
 ) -> NeighborRelation:
+    """Build a radius-neighborhood relation between source and query coords."""
     query_coords = source_coords if query_coords is None else query_coords
     source_active_rows = _active_rows(source_active_rows, source_coords)
     query_active_rows = (

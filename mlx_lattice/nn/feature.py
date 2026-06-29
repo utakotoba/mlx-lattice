@@ -29,6 +29,12 @@ if TYPE_CHECKING:
 
 
 class Linear(mxnn.Linear):
+    """Sparse-feature linear projection module.
+
+    This is the sparse analogue of ``mlx.nn.Linear``. It applies the dense
+    projection to ``x.feats`` and preserves sparse coordinate identity.
+    """
+
     def __call__(self, x: SparseTensor) -> SparseTensor:
         return F.linear(
             x,
@@ -58,46 +64,68 @@ class Linear(mxnn.Linear):
 
 
 class ReLU(mxnn.ReLU):
+    """Sparse-feature ReLU module preserving sparse coordinates."""
+
     def __call__(self, x: SparseTensor) -> SparseTensor:
         return F.relu(x)
 
 
 class Sigmoid(mxnn.Sigmoid):
+    """Sparse-feature sigmoid module preserving sparse coordinates."""
+
     def __call__(self, x: SparseTensor) -> SparseTensor:
         return F.sigmoid(x)
 
 
 class GELU(mxnn.GELU):
+    """Sparse-feature GELU module preserving sparse coordinates."""
+
     def __call__(self, x: SparseTensor) -> SparseTensor:
         return F.gelu(x, approximate=cast('GeluApprox', self._approx))
 
 
 class SiLU(mxnn.SiLU):
+    """Sparse-feature SiLU module preserving sparse coordinates."""
+
     def __call__(self, x: SparseTensor) -> SparseTensor:
         return F.silu(x)
 
 
 class LeakyReLU(mxnn.LeakyReLU):
+    """Sparse-feature leaky ReLU module preserving sparse coordinates."""
+
     def __call__(self, x: SparseTensor) -> SparseTensor:
         return F.leaky_relu(x, negative_slope=self._negative_slope)
 
 
 class Tanh(mxnn.Tanh):
+    """Sparse-feature tanh module preserving sparse coordinates."""
+
     def __call__(self, x: SparseTensor) -> SparseTensor:
         return F.tanh(x)
 
 
 class Softplus(mxnn.Softplus):
+    """Sparse-feature softplus module preserving sparse coordinates."""
+
     def __call__(self, x: SparseTensor) -> SparseTensor:
         return F.softplus(x)
 
 
 class Dropout(mxnn.Dropout):
+    """Sparse-feature dropout module preserving sparse coordinates."""
+
     def __call__(self, x: SparseTensor) -> SparseTensor:
         return F.dropout(x, p=1 - self._p_1, training=self.training)
 
 
 class BatchNorm(mxnn.BatchNorm):
+    """Sparse-feature batch normalization module.
+
+    Statistics are computed over sparse feature rows. Running-stat behavior
+    follows the underlying ``mlx.nn.BatchNorm`` fields.
+    """
+
     def __call__(self, x: SparseTensor) -> SparseTensor:
         mean = mx.mean(x.feats, axis=0)
         var = mx.var(x.feats, axis=0)
@@ -119,6 +147,8 @@ class BatchNorm(mxnn.BatchNorm):
 
 
 class LayerNorm(mxnn.LayerNorm):
+    """Sparse-feature layer normalization module preserving sparse coordinates."""
+
     def __call__(self, x: SparseTensor) -> SparseTensor:
         return F.layer_norm(
             x,
@@ -129,5 +159,7 @@ class LayerNorm(mxnn.LayerNorm):
 
 
 class RMSNorm(mxnn.RMSNorm):
+    """Sparse-feature RMS normalization module preserving sparse coordinates."""
+
     def __call__(self, x: SparseTensor) -> SparseTensor:
         return F.rms_norm(x, weight=self.weight, eps=self.eps)

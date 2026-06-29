@@ -10,6 +10,13 @@ __all__ = ['QuantizedLinear']
 
 
 class QuantizedLinear(mxnn.Module):
+    """Affine weight-quantized sparse-feature linear module.
+
+    The module stores packed int4/int8 weight, scale, and bias arrays and uses
+    floating-point sparse activations. Calling the module preserves coordinate
+    identity and projects ``x.feats`` to ``output_dims`` channels.
+    """
+
     def __init__(
         self,
         input_dims: int,

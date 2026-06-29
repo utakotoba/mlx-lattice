@@ -15,6 +15,37 @@ from mlx_lattice.core.types import Triple, triple
 
 @dataclass(frozen=True, slots=True, init=False)
 class SparseTensor:
+    """Sparse feature tensor indexed by batched integer coordinates.
+
+    ``SparseTensor`` is the public sparse value container used by convolution,
+    pooling, sparse algebra, point/voxel conversion, and ``mlx_lattice.nn``
+    modules. Coordinates have shape ``(N, 4)`` ordered as
+    ``(batch, x, y, z)``. Features have shape ``(N, C)`` and share row order
+    with coordinates.
+
+    The object also carries coordinate identity metadata. A
+    ``CoordinateManager`` owns the coordinate array, a ``CoordinateMapKey``
+    names it, and ``active_rows`` records the number of valid rows inside the
+    static buffer capacity. Feature-only operations preserve that identity;
+    row-changing operations create a new coordinate key.
+
+    Args:
+        coords: Integer coordinate rows with shape ``(N, 4)``. CPU paths accept
+            ``int32`` or ``int64``. Metal sparse kernels require ``int32``.
+        feats: Feature matrix with shape ``(N, C)``.
+        stride: Spatial lattice stride for the coordinates. An integer expands
+            to ``(s, s, s)``.
+        coord_key: Existing coordinate key to reuse. When supplied, ``coords``
+            must be the manager-owned coordinate array for that key.
+        coord_manager: Manager that owns ``coord_key`` or that receives newly
+            inserted coordinates.
+        batch_counts: Optional number of rows per batch. Required by global
+            pooling and batch-partitioned utilities.
+        active_rows: Optional ``int32`` scalar array with shape ``(1,)``. This
+            lets native builders use a fixed-capacity coordinate buffer while
+            considering only the active prefix.
+    """
+
     coords: mx.array
     feats: mx.array
     stride: Triple
@@ -75,22 +106,27 @@ class SparseTensor:
 
     @property
     def channels(self) -> int:
+        """Number of feature channels per sparse row."""
         return int(self.feats.shape[1])
 
     @property
     def shape(self) -> tuple[int, int]:
+        """Sparse buffer shape as ``(capacity, channels)``."""
         return (self.capacity, self.channels)
 
     @property
     def dtype(self) -> mx.Dtype:
+        """Feature dtype."""
         return self.feats.dtype
 
     @property
     def batch_indices(self) -> mx.array:
+        """Batch column from ``coords``."""
         return self.coords[:, 0]
 
     @property
     def batch_rows(self) -> tuple[mx.array, ...]:
+        """Row indices for each batch using ``batch_counts`` metadata."""
         counts = self._require_batch_counts()
         start = 0
         batches = []
@@ -102,6 +138,7 @@ class SparseTensor:
 
     @property
     def decomposed_coordinates(self) -> tuple[mx.array, ...]:
+        """Spatial coordinates split by batch."""
         return tuple(
             mx.take(self.coords[:, 1:], rows, axis=0)
             for rows in self.batch_rows
@@ -109,11 +146,17 @@ class SparseTensor:
 
     @property
     def decomposed_features(self) -> tuple[mx.array, ...]:
+        """Feature rows split by batch."""
         return tuple(
             mx.take(self.feats, rows, axis=0) for rows in self.batch_rows
         )
 
     def astype(self, dtype: mx.Dtype) -> SparseTensor:
+        """Return a tensor with features converted to ``dtype``.
+
+        Coordinate identity, stride, batch metadata, and active-row metadata
+        are preserved because only the feature matrix changes.
+        """
         return self.replace(feats=self.feats.astype(dtype))
 
     def replace(
@@ -123,6 +166,13 @@ class SparseTensor:
         feats: mx.array | None = None,
         stride: int | Sequence[int] | None = None,
     ) -> SparseTensor:
+        """Return a sparse tensor with selected fields replaced.
+
+        Replacing only ``feats`` preserves coordinate identity. Replacing
+        ``coords`` or changing ``stride`` inserts the new coordinate buffer
+        into the existing manager and drops stale batch metadata because the row
+        support may have changed.
+        """
         next_coords = self.coords if coords is None else coords
         next_stride = (
             self.stride if stride is None else triple(stride, name='stride')
@@ -140,6 +190,13 @@ class SparseTensor:
         )
 
     def reuse_coords_from(self, other: SparseTensor) -> SparseTensor:
+        """Attach this tensor's features to ``other``'s coordinate identity.
+
+        The two tensors must already describe the same coordinate identity.
+        This helper is useful when a feature computation produced a fresh
+        ``SparseTensor`` wrapper but the caller wants the metadata object from
+        another tensor.
+        """
         if not self.same_coords(other):
             raise ValueError('sparse tensor coordinates must match.')
         return SparseTensor(
@@ -153,6 +210,12 @@ class SparseTensor:
         )
 
     def same_coords(self, other: SparseTensor) -> bool:
+        """Return whether two tensors share coordinate identity.
+
+        This is an identity check over manager/key ownership, not a row-wise
+        equality check. Two separate coordinate arrays with equal values do not
+        share identity until they are registered under the same manager/key.
+        """
         return (
             self.coord_manager is other.coord_manager
             and self.coord_key == other.coord_key

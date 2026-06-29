@@ -18,6 +18,12 @@ def sparse_collate(
     *,
     stride: int | Sequence[int] = 1,
 ) -> SparseTensor:
+    """Collate unbatched sparse coordinates/features into one tensor.
+
+    Input coordinates must have shape ``(N, 3)``; the function prepends a
+    batch column and records ``batch_counts`` metadata. Feature arrays must
+    each have shape ``(N_i, C)`` and all coordinate arrays must share dtype.
+    """
     if len(coords) != len(feats):
         raise ValueError('coords and feats batch sizes must match.')
     if not coords:
@@ -64,6 +70,12 @@ def align_sparse(
     *,
     join: SparseJoin = 'inner',
 ) -> SparseAlignment:
+    """Build coordinate-value alignment metadata for two sparse tensors.
+
+    Both tensors must have the same sparse stride and coordinate dtype. The
+    returned row maps can be used to gather feature rows under ``inner``,
+    ``left``, ``right``, or ``outer`` sparse support semantics.
+    """
     _require_compatible_sparse_tensors(lhs, rhs)
     return build_sparse_alignment(
         lhs.coords,
@@ -80,6 +92,12 @@ def gather_aligned_features(
     *,
     fill: float = 0.0,
 ) -> mx.array:
+    """Gather sparse features with ``-1`` rows filled by ``fill``.
+
+    ``rows`` must be an ``int32`` vector. Non-negative entries gather
+    ``x.feats``; negative entries produce the scalar fill value in every
+    channel.
+    """
     if rows.ndim != 1 or rows.dtype != mx.int32:
         raise ValueError('rows must have shape (N,) and int32 dtype.')
     clipped = mx.maximum(rows, 0)
@@ -100,6 +118,12 @@ def sparse_binary_op(
     lhs_fill: float = 0.0,
     rhs_fill: float = 0.0,
 ) -> SparseTensor:
+    """Apply an elementwise binary op after coordinate-value alignment.
+
+    If operands share coordinate identity, the operation runs directly on
+    feature matrices. Otherwise it builds a sparse alignment and fills missing
+    rows according to ``lhs_fill`` and ``rhs_fill``.
+    """
     _require_compatible_sparse_tensors(lhs, rhs)
     if lhs.channels != rhs.channels:
         raise ValueError(
@@ -129,6 +153,7 @@ def sparse_add(
     *,
     join: SparseJoin = 'outer',
 ) -> SparseTensor:
+    """Add sparse tensors after coordinate alignment."""
     return sparse_binary_op(lhs, rhs, 'add', join=join)
 
 
@@ -138,6 +163,7 @@ def sparse_sub(
     *,
     join: SparseJoin = 'outer',
 ) -> SparseTensor:
+    """Subtract sparse tensors after coordinate alignment."""
     return sparse_binary_op(lhs, rhs, 'sub', join=join)
 
 
@@ -147,6 +173,7 @@ def sparse_mul(
     *,
     join: SparseJoin = 'inner',
 ) -> SparseTensor:
+    """Multiply sparse tensors after coordinate alignment."""
     return sparse_binary_op(lhs, rhs, 'mul', join=join)
 
 
@@ -156,6 +183,7 @@ def sparse_maximum(
     *,
     join: SparseJoin = 'inner',
 ) -> SparseTensor:
+    """Take elementwise maximum after coordinate alignment."""
     return sparse_binary_op(lhs, rhs, 'maximum', join=join)
 
 
@@ -165,6 +193,7 @@ def sparse_minimum(
     *,
     join: SparseJoin = 'inner',
 ) -> SparseTensor:
+    """Take elementwise minimum after coordinate alignment."""
     return sparse_binary_op(lhs, rhs, 'minimum', join=join)
 
 
@@ -173,6 +202,12 @@ def cat(
     *,
     join: SparseJoin = 'inner',
 ) -> SparseTensor:
+    """Concatenate sparse features, aligning coordinates when needed.
+
+    Multiple tensors are supported when they already share coordinate identity.
+    Value-aligned concatenation currently accepts two tensors because the join
+    support and fill behavior must be unambiguous.
+    """
     if not tensors:
         raise ValueError('expected at least one sparse tensor.')
 
@@ -196,6 +231,7 @@ def sparse_cat_aligned(
     *,
     join: SparseJoin = 'inner',
 ) -> SparseTensor:
+    """Concatenate two sparse tensors after coordinate-value alignment."""
     _require_compatible_sparse_tensors(lhs, rhs)
     if lhs.same_coords(rhs):
         return lhs.replace(
@@ -219,6 +255,11 @@ def crop(
     min_coord: Sequence[int],
     max_coord: Sequence[int],
 ) -> SparseTensor:
+    """Crop a sparse tensor to an inclusive spatial coordinate box.
+
+    ``min_coord`` and ``max_coord`` are spatial triples over ``x, y, z``. The
+    batch column is not filtered.
+    """
     lower = _spatial_bound(min_coord, 'min_coord')
     upper = _spatial_bound(max_coord, 'max_coord')
     if any(lo > hi for lo, hi in zip(lower, upper, strict=True)):
@@ -233,6 +274,11 @@ def crop(
 
 
 def replace_feature(x: SparseTensor, feats: mx.array) -> SparseTensor:
+    """Return ``x`` with its feature matrix replaced.
+
+    The replacement must satisfy the ``SparseTensor`` row contract: same row
+    count as ``x.coords`` and two-dimensional ``(N, C_new)`` shape.
+    """
     return x.replace(feats=feats)
 
 
@@ -268,6 +314,12 @@ def _spatial_bound(value: Sequence[int], name: str) -> tuple[int, int, int]:
 
 
 def prune(x: SparseTensor, rows: mx.array) -> SparseTensor:
+    """Keep the specified sparse rows.
+
+    ``rows`` is a one-dimensional index vector. The result contains gathered
+    coordinates and features and receives a new coordinate key in the same
+    manager.
+    """
     if rows.ndim != 1:
         raise ValueError('rows must have shape (M,).')
     rows = rows.astype(mx.int32)
@@ -280,6 +332,11 @@ def prune(x: SparseTensor, rows: mx.array) -> SparseTensor:
 
 
 def prune_mask(x: SparseTensor, mask: mx.array) -> SparseTensor:
+    """Keep sparse rows selected by a boolean mask.
+
+    ``mask`` must have length equal to the sparse buffer capacity. Selected
+    rows are gathered into a compact sparse tensor.
+    """
     if mask.ndim != 1:
         raise ValueError('mask must have shape (N,).')
     if mask.shape[0] != x.capacity:
@@ -299,6 +356,12 @@ def topk_rows(
     *,
     rho: float = 1.0,
 ) -> mx.array:
+    """Select top-scoring rows per batch using the first feature channel.
+
+    ``counts`` gives the requested rows per batch and ``rho`` scales those
+    counts before clamping to the available rows in each batch. Requires
+    ``x.batch_counts``.
+    """
     if rho <= 0:
         raise ValueError('rho must be positive.')
 
